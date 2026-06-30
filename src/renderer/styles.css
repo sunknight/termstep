@@ -38,3 +38,8 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .meta-form input { padding: 4px; }
 .editor-md { flex: 1; min-height: 0; overflow: hidden; }
 .editor-actions { display: flex; gap: 8px; }
+.sidebar li { justify-content: space-between; }
+.sidebar li .row { display: flex; gap: 8px; align-items: center; flex: 1; }
+.sidebar .row-actions { display: none; gap: 2px; }
+.sidebar li:hover .row-actions, .sidebar li.active .row-actions { display: inline-flex; }
+.sidebar .row-actions button { padding: 0 4px; font-size: 11px; line-height: 1.4; }

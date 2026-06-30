@@ -15,15 +15,35 @@ export default function App() {
     if (!activeId && tools.length > 0) setActiveId(tools[0].meta.id);
   }, [tools, activeId]);
 
+  const createTool = async () => {
+    const name = window.prompt('工具名称');
+    if (!name) return;
+    const id = await window.api.tool.create(name);
+    setActiveId(id);
+  };
+  const deleteTool = async (id: string) => {
+    if (!window.confirm('删除该工具？')) return;
+    await window.api.tool.del(id);
+    if (activeId === id) setActiveId(null);
+  };
+  const moveTool = async (id: string, dir: -1 | 1) => {
+    const ids = tools.map((t) => t.meta.id);
+    const i = ids.indexOf(id);
+    const j = i + dir;
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    await window.api.tool.reorder(ids);
+  };
+
   return (
     <div className="app">
       <Sidebar
         tools={tools}
         activeId={activeId}
         onSelect={setActiveId}
-        onNew={() => {
-          /* Task 12 */
-        }}
+        onNew={createTool}
+        onDelete={deleteTool}
+        onMove={moveTool}
       />
       <section className="terminal-area">
         {activeId ? <TerminalPane tools={tools} activeId={activeId} /> : <div className="placeholder">选择一个工具</div>}
