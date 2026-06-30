@@ -22,6 +22,10 @@ const api = {
     },
     write: (toolId: string, data: string, opts?: PtySpawnOpts) =>
       ipcRenderer.invoke(IPC.PTY_WRITE, toolId, data, opts),
+    open: (toolId: string, opts?: PtySpawnOpts) =>
+      ipcRenderer.invoke(IPC.PTY_OPEN, toolId, opts),
+    restart: (toolId: string, opts?: PtySpawnOpts) =>
+      ipcRenderer.invoke(IPC.PTY_RESTART, toolId, opts),
     resize: (toolId: string, cols: number, rows: number) =>
       ipcRenderer.invoke(IPC.PTY_RESIZE, toolId, cols, rows),
     kill: (toolId: string) => ipcRenderer.invoke(IPC.PTY_KILL, toolId),

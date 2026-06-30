@@ -4,6 +4,8 @@ export const IPC = {
   TOOLS_CHANGED: 'tools:changed',
   PTY_DATA: 'pty:data',
   PTY_WRITE: 'pty:write',
+  PTY_OPEN: 'pty:open',
+  PTY_RESTART: 'pty:restart',
   PTY_RESIZE: 'pty:resize',
   PTY_KILL: 'pty:kill',
   TOOL_SAVE: 'tool:save',

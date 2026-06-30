@@ -37,6 +37,12 @@ export function registerIpc(deps: {
   ipcMain.handle(IPC.PTY_WRITE, (_e, toolId: string, data: string, opts?: PtySpawnOpts) => {
     ptyService.write(toolId, data, opts ?? {});
   });
+  ipcMain.handle(IPC.PTY_OPEN, (_e, toolId: string, opts?: PtySpawnOpts) => {
+    ptyService.open(toolId, opts ?? {});
+  });
+  ipcMain.handle(IPC.PTY_RESTART, (_e, toolId: string, opts?: PtySpawnOpts) => {
+    ptyService.restart(toolId, opts ?? {});
+  });
   ipcMain.handle(IPC.PTY_RESIZE, (_e, toolId: string, cols: number, rows: number) => {
     ptyService.resize(toolId, cols, rows);
   });

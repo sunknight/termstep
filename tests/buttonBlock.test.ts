@@ -41,6 +41,14 @@ describe('renderButtonsBlock', () => {
     expect(html).toContain('>say<');
   });
 
+  it('data-tip carries the command for labeled buttons (drives the custom tooltip)', () => {
+    const html = renderButtonsBlock('git status # 查看状态');
+    expect(html).toContain('data-tip="git status"');
+    expect(html).toContain('>查看状态<');
+    // command-only buttons (label === command) get no tooltip
+    expect(renderButtonsBlock('git log')).not.toContain('data-tip');
+  });
+
   it('data-edit is 1 or 0', () => {
     expect(renderButtonsBlock('a // edit')).toContain('data-edit="1"');
     expect(renderButtonsBlock('a')).toContain('data-edit="0"');

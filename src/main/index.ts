@@ -1,4 +1,5 @@
 import { app, BrowserWindow } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { PtyService } from './ptyService';
 import { ToolManager } from './toolManager';
@@ -8,6 +9,25 @@ import { IPC, type ScanResult } from '../shared/types';
 
 const TOOLS_DIR = path.join(app.getPath('userData'), 'tools');
 let ptyService: PtyService | null = null;
+
+// The app was renamed (cmd_gui/cmd-gui -> gui_anything); userData is derived from
+// the app name, so storage moved. One-time: carry forward tools created under the
+// old name so they aren't silently lost.
+function migrateOldTools(toolsDir: string): void {
+  const hasCurrent = fs.existsSync(toolsDir) && fs.readdirSync(toolsDir).length > 0;
+  if (hasCurrent) return;
+  const appData = app.getPath('appData');
+  for (const oldName of ['cmd-gui', 'cmd_gui']) {
+    const oldTools = path.join(appData, oldName, 'tools');
+    if (fs.existsSync(oldTools) && fs.readdirSync(oldTools).length > 0) {
+      fs.mkdirSync(toolsDir, { recursive: true });
+      for (const entry of fs.readdirSync(oldTools)) {
+        fs.cpSync(path.join(oldTools, entry), path.join(toolsDir, entry), { recursive: true });
+      }
+      return;
+    }
+  }
+}
 
 async function createWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
@@ -25,6 +45,7 @@ async function createWindow(): Promise<BrowserWindow> {
 }
 
 app.whenReady().then(async () => {
+  migrateOldTools(TOOLS_DIR);
   await seedDefaultTools(TOOLS_DIR);
 
   ptyService = new PtyService();

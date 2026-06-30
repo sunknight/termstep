@@ -43,12 +43,33 @@ export class PtyService {
     p.onData((data) => {
       for (const cb of this.listeners) cb(toolId, data);
     });
+    // When the shell exits (e.g. user runs `exit'), drop it so the next open/write
+    // spawns a fresh shell. Guard with identity: restart swaps in a new pty, and the
+    // old pty's late onExit must not evict the new one or reset the terminal size.
+    p.onExit(() => {
+      if (this.ptys.get(toolId) === p) {
+        this.ptys.delete(toolId);
+      }
+    });
     this.ptys.set(toolId, p);
     return p;
   }
 
   write(toolId: string, data: string, opts: PtySpawnOpts): void {
     this.ensure(toolId, opts).write(data);
+  }
+
+  // Eagerly spawn the shell for a tool so its prompt appears without waiting for
+  // the first keystroke. No-op if already spawned.
+  open(toolId: string, opts: PtySpawnOpts): void {
+    this.ensure(toolId, opts);
+  }
+
+  // Kill the current shell (if any) and spawn a fresh one. Used by the restart
+  // button to recover after the shell exits.
+  restart(toolId: string, opts: PtySpawnOpts): void {
+    this.kill(toolId);
+    this.ensure(toolId, opts);
   }
 
   resize(toolId: string, cols: number, rows: number): void {

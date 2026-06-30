@@ -41,10 +41,12 @@ export function renderButtonsBlock(code: string): string {
   }
   if (buttons.length === 0) return '';
   const items = buttons
-    .map(
-      (b) =>
-        `<button class="cmd-btn" data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`
-    )
+    .map((b) => {
+      // Only labeled buttons (command # label) get a tooltip — for them the visible
+      // text differs from the command, so hovering reveals the full command.
+      const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
+      return `<button class="cmd-btn"${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`;
+    })
     .join('');
   return `<div class="cmd-buttons">${items}</div>`;
 }

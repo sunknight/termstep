@@ -13,43 +13,33 @@ export function TerminalView(props: {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const offDataRef = useRef<(() => void) | null>(null);
 
+  // Create the xterm terminal lazily the first time this tool becomes visible.
+  // Opening xterm while its container is display:none leaves the renderer unable
+  // to paint — which is why the auto-selected first tool showed a blank terminal
+  // on startup (it mounted hidden, then was activated before the renderer settled).
   useEffect(() => {
-    if (!containerRef.current || termRef.current) return;
-    const term = new Terminal({ fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 5000 });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(containerRef.current);
-    try {
-      fit.fit();
-      if (term.cols > 0 && term.rows > 0) {
-        window.api.pty.resize(props.toolId, term.cols, term.rows);
-      }
-    } catch {
-      // container not laid out yet; refit on active change
+    if (!props.active) return;
+
+    if (!termRef.current && containerRef.current) {
+      const term = new Terminal({ fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 5000 });
+      const fit = new FitAddon();
+      term.loadAddon(fit);
+      term.open(containerRef.current); // container is visible (active => display:block)
+      termRef.current = term;
+      fitRef.current = fit;
+      termRegistry.set(props.toolId, term);
+
+      offDataRef.current = window.api.pty.onData((tid, data) => {
+        if (tid === props.toolId) term.write(data);
+      });
+      term.onData((data) => window.api.pty.write(props.toolId, data, props.spawnOpts));
+      term.onResize(({ cols, rows }) => window.api.pty.resize(props.toolId, cols, rows));
     }
-    termRef.current = term;
-    fitRef.current = fit;
-    termRegistry.set(props.toolId, term);
 
-    const offData = window.api.pty.onData((tid, data) => {
-      if (tid === props.toolId) term.write(data);
-    });
-    const dInput = term.onData((data) => window.api.pty.write(props.toolId, data, props.spawnOpts));
-    const dResize = term.onResize(({ cols, rows }) => window.api.pty.resize(props.toolId, cols, rows));
-
-    return () => {
-      offData();
-      dInput.dispose();
-      dResize.dispose();
-      termRegistry.del(props.toolId);
-      term.dispose();
-      termRef.current = null;
-    };
-  }, [props.toolId]);
-
-  useEffect(() => {
-    if (props.active) {
+    // Defer fit + spawn to the next frame so the just-shown container is laid out.
+    const raf = requestAnimationFrame(() => {
       const term = termRef.current;
       try {
         fitRef.current?.fit();
@@ -59,9 +49,25 @@ export function TerminalView(props: {
       if (term && term.cols > 0 && term.rows > 0) {
         window.api.pty.resize(props.toolId, term.cols, term.rows);
       }
+      window.api.pty.open(props.toolId, props.spawnOpts);
       term?.focus();
-    }
+    });
+    return () => cancelAnimationFrame(raf);
   }, [props.active]);
+
+  // Dispose the terminal (and its global data listener) when the tool unmounts.
+  useEffect(() => {
+    return () => {
+      offDataRef.current?.();
+      offDataRef.current = null;
+      const term = termRef.current;
+      if (term) {
+        termRegistry.del(props.toolId);
+        term.dispose();
+        termRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div

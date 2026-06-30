@@ -1,5 +1,5 @@
-appId: local.cmdgui
-productName: cmd_gui
+appId: local.guianything
+productName: gui_anything
 directories:
   output: release
 asar: true

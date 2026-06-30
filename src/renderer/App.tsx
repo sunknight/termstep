@@ -4,22 +4,26 @@ import { Sidebar } from './components/Sidebar';
 import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
 import { EditorPane } from './components/EditorPane';
+import { termRegistry } from './lib/termRegistry';
 
 export default function App() {
   const { tools, errors } = useTools();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
+  const activeIndex = activeId ? tools.findIndex((t) => t.meta.id === activeId) : -1;
 
   useEffect(() => {
     if (!activeId && tools.length > 0) setActiveId(tools[0].meta.id);
   }, [tools, activeId]);
 
+  // Electron's window.prompt() is not implemented (returns null), so we create the
+  // tool with a placeholder name and drop straight into the editor, where the user
+  // can set the real name, icon, and cwd.
   const createTool = async () => {
-    const name = window.prompt('工具名称');
-    if (!name) return;
-    const id = await window.api.tool.create(name);
+    const id = await window.api.tool.create('新工具');
     setActiveId(id);
+    setEditingId(id);
   };
   const deleteTool = async (id: string) => {
     if (!window.confirm('删除该工具？')) return;
@@ -42,11 +46,25 @@ export default function App() {
         activeId={activeId}
         onSelect={setActiveId}
         onNew={createTool}
-        onDelete={deleteTool}
-        onMove={moveTool}
       />
       <section className="terminal-area">
         {activeId ? <TerminalPane tools={tools} activeId={activeId} /> : <div className="placeholder">选择一个工具</div>}
+        {active && (
+          <button
+            className="term-restart"
+            title="重启终端"
+            onClick={() => {
+              termRegistry.get(active.meta.id)?.reset();
+              window.api.pty.restart(active.meta.id, {
+                cwd: active.meta.cwd,
+                shell: active.meta.shell,
+                env: active.meta.env,
+              });
+            }}
+          >
+            ↻ 重启终端
+          </button>
+        )}
       </section>
       <section className="help-area">
         {active && editingId === active.meta.id ? (
@@ -54,7 +72,10 @@ export default function App() {
         ) : active ? (
           <>
             <div className="help-toolbar">
-              <button onClick={() => setEditingId(active.meta.id)}>编辑</button>
+              <button title="上移" disabled={activeIndex <= 0} onClick={() => moveTool(active.meta.id, -1)}>↑ 上移</button>
+              <button title="下移" disabled={activeIndex >= tools.length - 1} onClick={() => moveTool(active.meta.id, 1)}>↓ 下移</button>
+              <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
+              <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
             </div>
             <HelpPane tool={active} activeToolId={active.meta.id} />
           </>
