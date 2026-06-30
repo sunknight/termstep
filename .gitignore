@@ -21,3 +21,6 @@ yarn-error.log*
 # editor
 .vscode/
 .idea/
+
+# superpowers subagent-driven-dev scratch (progress ledger)
+.superpowers/
