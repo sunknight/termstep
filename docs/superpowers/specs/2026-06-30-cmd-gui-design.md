@@ -28,7 +28,7 @@
 | 布局 | 菜单（最左）→ 终端（左）→ 帮助（右） | 用户审定 |
 | 技术栈 | Electron + electron-vite + React | 终端是核心，xterm.js+node-pty 最成熟；本地应用不计体积 |
 | 按钮点击默认行为 | 即运行（`term.paste` + `\r`），盲注入 | 便捷优先；真终端无法可靠判断 shell 空闲，接受此副作用 |
-| 按钮语法 | 标准 Markdown 链接 `[标签](cmd:命令)` + `?edit` 后缀 | 零学习成本、随处可写；放弃自造方言 |
+| 按钮语法 | `buttons` 围栏块，每行 `命令 [# 标签] [// edit]` | CommonMark 的 `cmd:` 链接目标不能含空格，而真实命令几乎都带空格；围栏块内任意字符安全、无转义烦恼 |
 | 会话生命周期 | 退出即清空（不挂 tmux） | YAGNI；切换不清空只在运行期内成立 |
 | 配置字段 | v1 保留 `name`/`icon`/`order`/`cwd`；`shell`/`env` 仅解析、不进编辑器 | YAGNI 预留 |
 | 信任边界 | 只信任本地手写工具 | 无导入即无外部木马风险 |
@@ -99,27 +99,30 @@ cmd_gui/
 }
 ```
 
-### `help.md` 的按钮语法（`cmd:` 链接）
-标准 Markdown 链接，`href` 以 `cmd:` 开头即渲染为按钮；末尾 `?edit` 表示"只填入不回车"。
+### `help.md` 的按钮语法（`buttons` 围栏块）
+用 `buttons` 围栏代码块，每行一个按钮。行格式：`命令 [# 标签] [// edit]`——命令必填；` # 标签`（空格-井号-空格）给按钮显示名，省略则用命令本身；行尾 ` // edit` 表示"只填入不回车"。
+
 ````markdown
 # Git 常用命令
 
 点击按钮直接在终端运行：
 
-- 查看状态：[git status](cmd:git status)
-- 最近提交：[git log --oneline -20](cmd:git log --oneline -20)
-- 提交（只填入，自己补消息再回车）：[commit](cmd:git commit -m ""?edit)
-- 推送：[git push](cmd:git push)
+```buttons
+git status # 查看状态
+git log --oneline -20
+git commit -m "" // edit
+git push # 推送
+```
 
-命令里可含空格、引号；交互式程序（vim/less 等）请在 shell 空闲时再点。
-
-> 限制：命令内不能含未转义的 `)`（会截断 Markdown 链接）；需要时用全角括号或 `&#41;`。
+命令里可含空格、引号、管道 `|` 等（围栏块内任意字符安全）；交互式程序（vim/less 等）请在 shell 空闲时再点。
 ````
+
+> 解析规则：先剥行尾 ` // edit`（置 edit=true），再用 ` # ` 切分命令与标签（无则标签=命令）。` # ` 出现在命令中段极少见，可接受。
 
 ## 5. 关键行为
 
 ### 5.1 点按钮（盲注入的安全解法）
-1. `HelpPane` 解析 `cmd:` 链接 → 得到命令文本与 `edit` 标志。
+1. `HelpPane` 解析 `buttons` 围栏块里的每行（渲染时已写入按钮的 `data-cmd`/`data-edit`）→ 得到命令文本与 `edit` 标志。
 2. 调 `term.paste(命令)`（**非裸 `pty.write`**）：xterm.js 会按当前 shell 是否开启 bracketed-paste 自动决定是否包裹转义序列——现代 zsh/bash 开了就当"粘贴"安全插入，没开就当普通打字。
 3. 非 edit 模式补一个 `\r`（回车）→ 执行；`?edit` 不补，命令停在行上供编辑。
 4. 焦点回到终端。
@@ -149,7 +152,7 @@ cmd_gui/
 
 ## 8. 测试策略
 - **纯逻辑单元测试（TDD）**：
-  - `cmd:` 链接解析器（markdown-it 插件）：给定 Markdown，正确提取命令与 `?edit` 标志。
+  - `buttons` 块解析器（`parseButtonLine` + `renderButtonsBlock`）：给定行/块，正确提取命令、标签、`// edit` 标志。
   - 工具配置加载器：解析 `tool.json`、填默认值、校验非法值。
   - 按钮命令构造：`命令 + (\r | "")`。
 - **终端/UI（集成）**：本质难单测；用人工验证清单 + 轻量冒烟（spawn `echo`，断言输出回流）。
