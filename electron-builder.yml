@@ -1,0 +1,13 @@
+appId: local.cmdgui
+productName: cmd_gui
+directories:
+  output: release
+asar: true
+asarUnpack:
+  - '**/node-pty/**'   # native module must be unpacked from the asar
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
+# No `files` override: electron-builder includes production deps (node-pty,
+# chokidar, etc.) from node_modules by default. Setting files to only out/**
+# would drop node_modules and break the packaged app at runtime.
