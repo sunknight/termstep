@@ -14,6 +14,9 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .sidebar .icon { width: 1.2em; }
 .new-tool { margin-top: 8px; padding: 8px; cursor: pointer; }
 .terminal-area { flex: 1; min-width: 0; background: #1e1e1e; }
+.terminal-area { position: relative; }
+.term { padding: 6px; }
+.term .xterm { height: 100%; }
 .help-area { width: 340px; flex: 0 0 340px; border-left: 1px solid #ddd; padding: 12px; overflow-y: auto; }
 .placeholder { color: #999; padding: 16px; }
 .errors { position: fixed; bottom: 0; left: 160px; right: 0; background: #ffe0e0; color: #900; padding: 6px 12px; font-size: 12px; }

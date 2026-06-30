@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTools } from './hooks/useTools';
 import { Sidebar } from './components/Sidebar';
+import { TerminalPane } from './components/TerminalPane';
 
 export default function App() {
   const { tools, errors } = useTools();
@@ -21,7 +22,7 @@ export default function App() {
         }}
       />
       <section className="terminal-area">
-        <div className="placeholder">终端（Task 9）</div>
+        {activeId ? <TerminalPane tools={tools} activeId={activeId} /> : <div className="placeholder">选择一个工具</div>}
       </section>
       <section className="help-area">
         <div className="placeholder">帮助（Task 10）</div>
