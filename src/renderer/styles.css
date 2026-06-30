@@ -1,0 +1,19 @@
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { font-family: -apple-system, system-ui, sans-serif; }
+.app { display: flex; height: 100%; }
+.sidebar {
+  width: 160px; flex: 0 0 160px;
+  background: #f4f4f6; border-right: 1px solid #ddd;
+  display: flex; flex-direction: column; padding: 8px;
+  overflow-y: auto;
+}
+.sidebar ul { list-style: none; padding: 0; margin: 0; flex: 1; }
+.sidebar li { padding: 8px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.sidebar li.active { background: #d9e3ff; }
+.sidebar .icon { width: 1.2em; }
+.new-tool { margin-top: 8px; padding: 8px; cursor: pointer; }
+.terminal-area { flex: 1; min-width: 0; background: #1e1e1e; }
+.help-area { width: 340px; flex: 0 0 340px; border-left: 1px solid #ddd; padding: 12px; overflow-y: auto; }
+.placeholder { color: #999; padding: 16px; }
+.errors { position: fixed; bottom: 0; left: 160px; right: 0; background: #ffe0e0; color: #900; padding: 6px 12px; font-size: 12px; }

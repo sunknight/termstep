@@ -11,5 +11,5 @@
     "composite": true,
     "outDir": "out"
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*"]
+  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/global.d.ts"]
 }

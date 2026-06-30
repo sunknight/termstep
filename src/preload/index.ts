@@ -7,14 +7,18 @@ const api = {
     onChanged: (cb: (r: ScanResult) => void) => {
       const h = (_e: unknown, r: ScanResult) => cb(r);
       ipcRenderer.on(IPC.TOOLS_CHANGED, h);
-      return () => ipcRenderer.off(IPC.TOOLS_CHANGED, h);
+      return () => {
+        ipcRenderer.off(IPC.TOOLS_CHANGED, h);
+      };
     },
   },
   pty: {
     onData: (cb: (toolId: string, data: string) => void) => {
       const h = (_e: unknown, payload: { toolId: string; data: string }) => cb(payload.toolId, payload.data);
       ipcRenderer.on(IPC.PTY_DATA, h);
-      return () => ipcRenderer.off(IPC.PTY_DATA, h);
+      return () => {
+        ipcRenderer.off(IPC.PTY_DATA, h);
+      };
     },
     write: (toolId: string, data: string, opts?: PtySpawnOpts) =>
       ipcRenderer.invoke(IPC.PTY_WRITE, toolId, data, opts),
