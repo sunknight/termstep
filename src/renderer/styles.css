@@ -20,3 +20,14 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .help-area { width: 340px; flex: 0 0 340px; border-left: 1px solid #ddd; padding: 12px; overflow-y: auto; }
 .placeholder { color: #999; padding: 16px; }
 .errors { position: fixed; bottom: 0; left: 160px; right: 0; background: #ffe0e0; color: #900; padding: 6px 12px; font-size: 12px; }
+.help h1 { font-size: 1.2em; }
+.help pre { background: #f6f8fa; padding: 8px; border-radius: 6px; overflow: auto; }
+.help code { font-family: Menlo, monospace; }
+.cmd-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.cmd-btn {
+  font-family: Menlo, monospace; font-size: 12px;
+  padding: 6px 10px; border: 1px solid #c8d2ff; background: #eef2ff;
+  border-radius: 6px; cursor: pointer;
+}
+.cmd-btn:hover { background: #dbe3ff; }
+.cmd-btn[data-edit="1"] { border-style: dashed; }
