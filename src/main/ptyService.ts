@@ -16,6 +16,7 @@ function expandHome(p?: string): string | undefined {
 
 export class PtyService {
   private ptys = new Map<string, pty.IPty>();
+  private desired = new Map<string, { cols: number; rows: number }>();
   private listeners = new Set<(toolId: string, data: string) => void>();
 
   onData(cb: (toolId: string, data: string) => void): () => void {
@@ -31,10 +32,11 @@ export class PtyService {
     const shell = opts.shell || defaultShell();
     const cwd = expandHome(opts.cwd) ?? os.homedir();
     const env = { ...process.env, ...(opts.env ?? {}) } as Record<string, string>;
+    const d = this.desired.get(toolId);
     const p = pty.spawn(shell, [], {
       name: 'xterm-color',
-      cols: 80,
-      rows: 24,
+      cols: d?.cols ?? 80,
+      rows: d?.rows ?? 24,
       cwd,
       env,
     });
@@ -50,6 +52,7 @@ export class PtyService {
   }
 
   resize(toolId: string, cols: number, rows: number): void {
+    this.desired.set(toolId, { cols, rows });
     this.ptys.get(toolId)?.resize(cols, rows);
   }
 
@@ -74,5 +77,6 @@ export class PtyService {
       }
     }
     this.ptys.clear();
+    this.desired.clear();
   }
 }

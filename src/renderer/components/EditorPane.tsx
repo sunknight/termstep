@@ -9,14 +9,18 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
   const [icon, setIcon] = useState(props.tool.meta.icon);
   const [cwd, setCwd] = useState(props.tool.meta.cwd ?? '');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
     setSaving(true);
+    setError(null);
     const meta: Partial<ToolMeta> = { name, icon, order: props.tool.meta.order };
     if (cwd.trim()) meta.cwd = cwd.trim();
     try {
       await window.api.tool.save(props.tool.meta.id, markdownText, meta);
       props.onDone();
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e));
     } finally {
       setSaving(false);
     }
@@ -42,6 +46,7 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
         <button onClick={save} disabled={saving}>{saving ? '保存中…' : '保存'}</button>
         <button onClick={props.onDone}>取消</button>
       </div>
+      {error && <div className="editor-error">{error}</div>}
     </div>
   );
 }

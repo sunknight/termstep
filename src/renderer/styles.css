@@ -38,6 +38,7 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .meta-form input { padding: 4px; }
 .editor-md { flex: 1; min-height: 0; overflow: hidden; }
 .editor-actions { display: flex; gap: 8px; }
+.editor-error { color: #900; font-size: 12px; }
 .sidebar li { justify-content: space-between; }
 .sidebar li .row { display: flex; gap: 8px; align-items: center; flex: 1; }
 .sidebar .row-actions { display: none; gap: 2px; }

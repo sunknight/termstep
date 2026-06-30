@@ -22,6 +22,9 @@ export function TerminalView(props: {
     term.open(containerRef.current);
     try {
       fit.fit();
+      if (term.cols > 0 && term.rows > 0) {
+        window.api.pty.resize(props.toolId, term.cols, term.rows);
+      }
     } catch {
       // container not laid out yet; refit on active change
     }
@@ -47,12 +50,16 @@ export function TerminalView(props: {
 
   useEffect(() => {
     if (props.active) {
+      const term = termRef.current;
       try {
         fitRef.current?.fit();
       } catch {
         // ignore
       }
-      termRef.current?.focus();
+      if (term && term.cols > 0 && term.rows > 0) {
+        window.api.pty.resize(props.toolId, term.cols, term.rows);
+      }
+      term?.focus();
     }
   }, [props.active]);
 
