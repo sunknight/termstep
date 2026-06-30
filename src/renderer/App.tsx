@@ -3,10 +3,12 @@ import { useTools } from './hooks/useTools';
 import { Sidebar } from './components/Sidebar';
 import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
+import { EditorPane } from './components/EditorPane';
 
 export default function App() {
   const { tools, errors } = useTools();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
 
   useEffect(() => {
@@ -27,8 +29,15 @@ export default function App() {
         {activeId ? <TerminalPane tools={tools} activeId={activeId} /> : <div className="placeholder">选择一个工具</div>}
       </section>
       <section className="help-area">
-        {active ? (
-          <HelpPane tool={active} activeToolId={active.meta.id} />
+        {active && editingId === active.meta.id ? (
+          <EditorPane tool={active} onDone={() => setEditingId(null)} />
+        ) : active ? (
+          <>
+            <div className="help-toolbar">
+              <button onClick={() => setEditingId(active.meta.id)}>编辑</button>
+            </div>
+            <HelpPane tool={active} activeToolId={active.meta.id} />
+          </>
         ) : (
           <div className="placeholder">无选中工具</div>
         )}

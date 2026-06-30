@@ -31,3 +31,10 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .cmd-btn:hover { background: #dbe3ff; }
 .cmd-btn[data-edit="1"] { border-style: dashed; }
+.help-area { display: flex; flex-direction: column; }
+.help-toolbar { padding: 4px 0 8px; }
+.editor { display: flex; flex-direction: column; height: 100%; gap: 8px; }
+.meta-form { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.meta-form input { padding: 4px; }
+.editor-md { flex: 1; min-height: 0; overflow: hidden; }
+.editor-actions { display: flex; gap: 8px; }
