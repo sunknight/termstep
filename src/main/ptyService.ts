@@ -38,6 +38,10 @@ export class PtyService {
     // unset (only when unset, so a user-set locale in dev/tool env is preserved).
     if (!env['LANG']) env['LANG'] = 'en_US.UTF-8';
     if (!env['LC_CTYPE']) env['LC_CTYPE'] = 'en_US.UTF-8';
+    // Advertise color capability: xterm.js renders 256-color and truecolor, but
+    // node-pty defaults TERM to the limited `xterm-color` and COLORTERM is unset
+    // in GUI launches — so tools dim down to mono. `name` below sets TERM.
+    if (!env['COLORTERM']) env['COLORTERM'] = 'truecolor';
     // tmux: when a sanitized session name is configured, exec into
     // `tmux new -A -s NAME` (attach if it exists, else create). An invalid name
     // is silently ignored so a bad tool.json never bricks spawning.
@@ -51,7 +55,7 @@ export class PtyService {
     const args = ['-l', ...(tmuxName ? tmuxArgv(tmuxName) : [])];
     const d = this.desired.get(toolId);
     const p = pty.spawn(shell, args, {
-      name: 'xterm-color',
+      name: 'xterm-256color',
       cols: d?.cols ?? 80,
       rows: d?.rows ?? 24,
       cwd,
