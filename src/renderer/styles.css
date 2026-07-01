@@ -342,3 +342,20 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .modal-actions button.primary { background: #4a6cff; border-color: #4a6cff; color: #fff; }
 .modal-actions button.primary:hover { background: #3a58f0; }
 .modal-actions button:disabled { opacity: 0.6; cursor: default; }
+
+/* ParamPromptModal (reuses .modal / .modal-overlay / .modal-actions). */
+.param-modal { width: 420px; }
+.param-preview {
+  flex: 0 0 auto; font-family: Menlo, monospace; font-size: 12px; color: #444;
+  background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px;
+  padding: 6px 10px; margin: 8px 16px 0; word-break: break-all;
+}
+.param-fields { flex: 1 1 auto; overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 8px; }
+.param-field label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 2px; }
+.param-field input {
+  width: 100%; box-sizing: border-box; font-family: Menlo, monospace; font-size: 12px;
+  padding: 5px 8px; border: 1px solid #c8d2ff; border-radius: 5px; outline: none;
+}
+.param-field input:focus { border-color: #6b8aff; box-shadow: 0 0 0 2px #dbe3ff; }
+.param-hint { font-size: 11px; color: #888; margin-top: 2px; }
+.param-error { flex: 0 0 auto; font-size: 12px; color: #b00; padding: 0 16px 4px; }
