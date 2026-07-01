@@ -26,6 +26,21 @@ export async function seedDefaultTools(toolsDir: string): Promise<void> {
       'git push # 推送',
       '```',
       '',
+      '带参数：',
+      '',
+      '```buttons-json',
+      '[',
+      '  {',
+      '    "label": "提交（填信息）",',
+      '    "command": "git commit -m \\"{{message}}\\"",',
+      '    "edit": true,',
+      '    "params": [',
+      '      { "name": "message", "hint": "提交信息", "required": true }',
+      '    ]',
+      '  }',
+      ']',
+      '```',
+      '',
     ].join('\n')
   );
 }
