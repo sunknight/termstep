@@ -60,17 +60,27 @@ export function renderButtonsBlock(code: string): string {
   return `<div class="cmd-buttons">${items}</div>`;
 }
 
-// Collect every button declared across all `buttons` fenced blocks in a markdown
-// doc. Used by the global quick-command dropdown, which surfaces one tool's
-// buttons app-wide. Order is document order; duplicates across blocks kept.
-const FENCE_RE = /```buttons[^\n]*\n([\s\S]*?)\n?```/g;
+// Collect every button declared across all `buttons` and `buttons-json` fenced
+// blocks in a markdown doc. Used by the global quick-command dropdown, which
+// surfaces one tool's buttons app-wide. Order is document order; duplicates
+// across blocks kept. JSON fences are parsed via parseButtonsJson; errors are
+// ignored here (the dropdown just shows fewer buttons).
+const FENCE_RE = /```(buttons-json|buttons)[^\n]*\n([\s\S]*?)\n?```/g;
 export function parseButtonsFromMarkdown(markdown: string): ParsedButton[] {
   const out: ParsedButton[] = [];
   for (const match of markdown.matchAll(FENCE_RE)) {
-    const body = match[1] ?? '';
-    for (const line of body.split('\n')) {
-      const b = parseButtonLine(line);
-      if (b) out.push(b);
+    const type = match[1];
+    const body = match[2] ?? '';
+    if (type === 'buttons-json') {
+      const r = parseButtonsJson(body);
+      // Errors are ignored here: the dropdown just shows fewer buttons. The
+      // rendered help page surfaces the error via renderButtonsJsonBlock.
+      if ('buttons' in r) out.push(...r.buttons);
+    } else {
+      for (const line of body.split('\n')) {
+        const b = parseButtonLine(line);
+        if (b) out.push(b);
+      }
     }
   }
   return out;

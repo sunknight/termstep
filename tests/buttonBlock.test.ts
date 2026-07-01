@@ -100,6 +100,29 @@ describe('parseButtonsFromMarkdown', () => {
     expect(parseButtonsFromMarkdown('# nothing here')).toEqual([]);
     expect(parseButtonsFromMarkdown('')).toEqual([]);
   });
+
+  it('merges buttons and buttons-json in document order', () => {
+    const md = [
+      '```buttons',
+      'git status',
+      '```',
+      '```buttons-json',
+      '[{"command":"git push","label":"推送"}]',
+      '```',
+    ].join('\n');
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns.map((b) => b.command)).toEqual(['git status', 'git push']);
+    expect(btns[1].label).toBe('推送');
+  });
+
+  it('carries params from buttons-json', () => {
+    const md =
+      '```buttons-json\n' +
+      '{"command":"git commit -m \\"{{message}}\\"","params":[{"name":"message","required":true}]}\n' +
+      '```';
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns[0].params?.[0]).toEqual({ name: 'message', required: true });
+  });
 });
 
 import { substituteParams } from '../src/shared/buttonBlock';
