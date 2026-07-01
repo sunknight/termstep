@@ -148,3 +148,25 @@ function coerceParams(raw: unknown[]): ButtonParam[] {
   }
   return out;
 }
+
+// Render a ```buttons-json fence. Parametrized buttons carry their param spec
+// serialized (and attribute-escaped) in data-params so the delegated click
+// handler can rebuild the form without a separate registry. A parse failure
+// renders a visible error block so the author sees the syntax problem.
+export function renderButtonsJsonBlock(code: string): string {
+  const r = parseButtonsJson(code);
+  if ('error' in r) {
+    return `<div class="cmd-error">⚠️ buttons-json 解析失败：${escapeHtml(r.error)}</div>`;
+  }
+  if (r.buttons.length === 0) return '';
+  const items = r.buttons
+    .map((b) => {
+      const paramsAttr = b.params
+        ? ` data-params="${escapeAttr(JSON.stringify(b.params))}"`
+        : '';
+      const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
+      return `<button class="cmd-btn"${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}"${paramsAttr}>${escapeHtml(b.label)}</button>`;
+    })
+    .join('');
+  return `<div class="cmd-buttons">${items}</div>`;
+}

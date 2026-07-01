@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson } from '../src/shared/buttonBlock';
+import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock } from '../src/shared/buttonBlock';
 
 describe('parseButtonLine', () => {
   it('command only -> label is the command', () => {
@@ -196,5 +196,31 @@ describe('parseButtonsJson', () => {
   it('omits params key when params is empty', () => {
     const r = parseButtonsJson(JSON.stringify({ command: 'x', params: [] }));
     expect((r as { buttons: any[] }).buttons[0].params).toBeUndefined();
+  });
+});
+
+describe('renderButtonsJsonBlock', () => {
+  it('renders a button with the template in data-cmd', () => {
+    const html = renderButtonsJsonBlock(JSON.stringify({ command: 'echo {{msg}}', label: 'say' }));
+    expect(html).toContain('data-cmd="echo {{msg}}"');
+    expect(html).toContain('>say<');
+  });
+  it('omits data-params when the button has no params', () => {
+    const html = renderButtonsJsonBlock(JSON.stringify({ command: 'ls' }));
+    expect(html).not.toContain('data-params');
+  });
+  it('serializes params into data-params (attribute-escaped JSON)', () => {
+    const html = renderButtonsJsonBlock(
+      JSON.stringify({ command: 'x {{p}}', params: [{ name: 'p', required: true }] })
+    );
+    expect(html).toContain('data-params=');
+    expect(html).toContain('&quot;name&quot;');
+  });
+  it('renders an error block on malformed JSON', () => {
+    const html = renderButtonsJsonBlock('{ bad');
+    expect(html).toContain('class="cmd-error"');
+  });
+  it('empty array -> empty string', () => {
+    expect(renderButtonsJsonBlock('[]')).toBe('');
   });
 });
