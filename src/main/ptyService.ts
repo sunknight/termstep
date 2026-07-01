@@ -37,7 +37,13 @@ export class PtyService {
     // `tmux new -A -s NAME` (attach if it exists, else create). An invalid name
     // is silently ignored so a bad tool.json never bricks spawning.
     const tmuxName = opts.tmux ? sanitizeTmuxName(opts.tmux) : null;
-    const args = tmuxName ? tmuxArgv(tmuxName) : [];
+    // Always spawn a LOGIN shell (`-l`). GUI-launched (packaged) apps inherit a
+    // minimal launchd PATH (e.g. /usr/bin:/bin) that lacks Homebrew's
+    // /opt/homebrew/bin — which ~/.zprofile adds. Without `-l` the profile isn't
+    // sourced and commands like tmux/brew are "not found" in the packaged app.
+    // (Dev worked only because it inherited the launching terminal's PATH.) `-l`
+    // before the optional `-c exec tmux ...` keeps the tmux path working too.
+    const args = ['-l', ...(tmuxName ? tmuxArgv(tmuxName) : [])];
     const d = this.desired.get(toolId);
     const p = pty.spawn(shell, args, {
       name: 'xterm-color',
