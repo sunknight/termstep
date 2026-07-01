@@ -5,6 +5,7 @@ import { PtyService } from './ptyService';
 import { ToolManager } from './toolManager';
 import { registerIpc } from './ipc';
 import { seedDefaultTools } from './seed';
+import { setAppMenu } from './menu';
 import { IPC, type ScanResult } from '../shared/types';
 
 // In dev we run the bare `electron` binary, so macOS's menu bar and Dock default
@@ -67,6 +68,16 @@ app.whenReady().then(async () => {
 
   migrateOldTools(TOOLS_DIR);
   await seedDefaultTools(TOOLS_DIR);
+
+  // Native app menu (first item's label = the bold menu-bar name on macOS) and a
+  // correct About panel — both replace Electron's defaults.
+  setAppMenu();
+  app.setAboutPanelOptions({
+    applicationName: 'gui_anything',
+    applicationVersion: app.getVersion(),
+    version: app.getVersion(),
+    credits: 'gui_anything',
+  });
 
   ptyService = new PtyService();
   const toolManager = new ToolManager(TOOLS_DIR);
