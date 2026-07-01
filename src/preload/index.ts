@@ -28,6 +28,8 @@ const api = {
       ipcRenderer.invoke(IPC.PTY_RESTART, toolId, opts),
     resize: (toolId: string, cols: number, rows: number) =>
       ipcRenderer.invoke(IPC.PTY_RESIZE, toolId, cols, rows),
+    // Live cwd of the tool's shell (follows the user's cd).
+    cwd: (toolId: string) => ipcRenderer.invoke(IPC.PTY_CWD, toolId) as Promise<string>,
     kill: (toolId: string) => ipcRenderer.invoke(IPC.PTY_KILL, toolId),
   },
   tool: {
@@ -47,6 +49,16 @@ const api = {
     import: () => ipcRenderer.invoke(IPC.TOOLS_IMPORT),
   },
   refreshMd: () => ipcRenderer.invoke(IPC.TOOL_REFRESH_MD),
+  // Preview-fetch a URL (no save). Returns {markdown, error}.
+  fetchMdPreview: (url: string) =>
+    ipcRenderer.invoke(IPC.MD_FETCH_PREVIEW, url) as Promise<{
+      markdown: string;
+      error: string | null;
+    }>,
+  quick: {
+    get: () => ipcRenderer.invoke(IPC.QUICK_GET) as Promise<string>,
+    save: (md: string) => ipcRenderer.invoke(IPC.QUICK_SAVE, md),
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

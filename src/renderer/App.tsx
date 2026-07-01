@@ -5,6 +5,8 @@ import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
 import { EditorPane } from './components/EditorPane';
 import { QuickCommands } from './components/QuickCommands';
+import { Notifications } from './components/Notifications';
+import { HoverTip } from './components/HoverTip';
 import { termRegistry } from './lib/termRegistry';
 
 export default function App() {
@@ -12,11 +14,36 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
-  const activeIndex = activeId ? tools.findIndex((t) => t.meta.id === activeId) : -1;
+  const [liveCwd, setLiveCwd] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeId && tools.length > 0) setActiveId(tools[0].meta.id);
   }, [tools, activeId]);
+
+  // Poll the active shell's live cwd (resolved from its OS pid) so the terminal
+  // header follows the user's `cd`. Cheap readlink, ~1.5s cadence.
+  useEffect(() => {
+    if (!activeId) {
+      setLiveCwd(null);
+      return;
+    }
+    let cancelled = false;
+    let timer: number | undefined;
+    const tick = async () => {
+      try {
+        const c = await window.api.pty.cwd(activeId);
+        if (!cancelled) setLiveCwd(c);
+      } catch {
+        // shell not spawned yet / gone — ignore
+      }
+      if (!cancelled) timer = window.setTimeout(tick, 1500);
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeId]);
 
   // Electron's window.prompt() is not implemented (returns null), so we create the
   // tool with a placeholder name and drop straight into the editor, where the user
@@ -31,13 +58,9 @@ export default function App() {
     await window.api.tool.del(id);
     if (activeId === id) setActiveId(null);
   };
-  const moveTool = async (id: string, dir: -1 | 1) => {
-    const ids = tools.map((t) => t.meta.id);
-    const i = ids.indexOf(id);
-    const j = i + dir;
-    if (j < 0 || j >= ids.length) return;
-    [ids[i], ids[j]] = [ids[j], ids[i]];
-    await window.api.tool.reorder(ids);
+  // Tool ordering is done by drag-and-drop in the sidebar now.
+  const reorderTools = async (orderedIds: string[]) => {
+    await window.api.tool.reorder(orderedIds);
   };
 
   const exportTools = async () => {
@@ -65,31 +88,46 @@ export default function App() {
         tools={tools}
         activeId={activeId}
         onSelect={setActiveId}
+        onReorder={reorderTools}
         onNew={createTool}
         onExport={exportTools}
         onImport={importTools}
       />
       <section className="terminal-area">
-        {activeId ? <TerminalPane tools={tools} activeId={activeId} /> : <div className="placeholder">选择一个工具</div>}
-        <div className="term-toolbar">
-          <QuickCommands tools={tools} activeTool={active} />
-          {active && (
-            <button
-              className="term-restart"
-              title="重启终端"
-              onClick={() => {
-                termRegistry.get(active.meta.id)?.reset();
-                window.api.pty.restart(active.meta.id, {
-                  cwd: active.meta.cwd,
-                  shell: active.meta.shell,
-                  env: active.meta.env,
-                  tmux: active.meta.tmux,
-                  initCommands: active.meta.initCommands,
-                });
-              }}
-            >
-              ↻ 重启终端
-            </button>
+        <div className="term-header">
+          <span className="term-cwd">
+            <span className="term-cwd-icon">📂</span>
+            <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
+              {liveCwd ?? active?.meta.cwd ?? '~'}
+            </HoverTip>
+          </span>
+          <div className="term-actions">
+            <QuickCommands activeTool={active} />
+            {active && (
+              <button
+                className="term-restart"
+                title="重启终端"
+                onClick={() => {
+                  termRegistry.get(active.meta.id)?.reset();
+                  window.api.pty.restart(active.meta.id, {
+                    cwd: active.meta.cwd,
+                    shell: active.meta.shell,
+                    env: active.meta.env,
+                    tmux: active.meta.tmux,
+                    initCommands: active.meta.initCommands,
+                  });
+                }}
+              >
+                ↻ 重启终端
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="term-pane-wrap">
+          {activeId ? (
+            <TerminalPane tools={tools} activeId={activeId} />
+          ) : (
+            <div className="placeholder">选择一个工具</div>
           )}
         </div>
       </section>
@@ -99,35 +137,29 @@ export default function App() {
         ) : active ? (
           <>
             <div className="help-toolbar">
-              <button title="上移" disabled={activeIndex <= 0} onClick={() => moveTool(active.meta.id, -1)}>↑ 上移</button>
-              <button title="下移" disabled={activeIndex >= tools.length - 1} onClick={() => moveTool(active.meta.id, 1)}>↓ 下移</button>
-              {!active.meta.special && (
-                <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
-              )}
+              <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
               <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>⤓ 导出</button>
-              {active.meta.readOnly && (
+              {active.meta.useRemote && (
                 <button title="重新读取远程内容" onClick={() => window.api.refreshMd()}>⟳ 重新读取</button>
               )}
               <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
             </div>
-            {active.meta.readOnly && (
-              <div className="readonly-banner">📡 远程只读 · 来自 {active.meta.mdUrl}</div>
-            )}
-            <HelpPane tool={active} activeToolId={active.meta.id} />
+            <div className={'md-source-badge' + (active.meta.useRemote ? ' remote' : '')}>
+              {active.meta.useRemote ? '📡 远程内容' : '📄 本地内容'}
+            </div>
+            <HelpPane
+              tool={active}
+              activeToolId={active.meta.id}
+              markdown={
+                active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
+              }
+            />
           </>
         ) : (
           <div className="placeholder">无选中工具</div>
         )}
       </section>
-      {errors.length > 0 && (
-        <div className="errors">
-          {errors.map((e) => (
-            <div key={e.id}>
-              {e.id}: {e.message}
-            </div>
-          ))}
-        </div>
-      )}
+      {errors.length > 0 && <Notifications errors={errors} />}
     </div>
   );
 }

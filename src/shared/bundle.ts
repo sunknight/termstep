@@ -5,9 +5,9 @@ import { parseToolMeta } from './toolConfig';
 
 export const BUNDLE_VERSION = 1;
 
-// ToolMeta minus the derived flags the scanner sets (special/readOnly) — these
-// are never persisted to tool.json and must not round-trip through a bundle.
-export type SerializableMeta = Omit<ToolMeta, 'special' | 'readOnly'>;
+// ToolMeta minus the derived flag the scanner sets (special) — it is never
+// persisted to tool.json and must not round-trip through a bundle.
+export type SerializableMeta = ToolMeta;
 
 export interface BundleTool {
   meta: SerializableMeta;
@@ -23,10 +23,7 @@ export interface ToolsBundle {
 }
 
 function stripDerived(meta: ToolMeta): SerializableMeta {
-  const { special: _s, readOnly: _r, ...rest } = meta;
-  void _s;
-  void _r;
-  return rest;
+  return { ...meta };
 }
 
 export function serializeTools(tools: Tool[], exportedAt: string): ToolsBundle {

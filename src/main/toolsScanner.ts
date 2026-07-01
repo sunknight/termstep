@@ -3,12 +3,13 @@ import path from 'node:path';
 import type { ScanResult, Tool } from '../shared/types';
 import { parseToolMeta } from '../shared/toolConfig';
 
-export const DEFAULT_AUTO_UPDATE_MINUTES = 5;
+export const DEFAULT_AUTO_UPDATE_MINUTES = 0;
 
 // Fetch a remote help.md. Returns {markdown, error}; on failure markdown is ''
-// so a broken URL degrades to an empty (but still read-only) pane rather than
-// crashing the whole scan.
-async function fetchRemoteMarkdown(url: string): Promise<{ markdown: string; error?: string }> {
+// so a broken URL degrades to an empty (but still present) copy rather than
+// crashing the whole scan. Exported so the editor's "重新读取" can preview-fetch
+// a draft URL before it is saved.
+export async function fetchRemoteMarkdown(url: string): Promise<{ markdown: string; error?: string }> {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
@@ -55,27 +56,30 @@ export async function scanTools(toolsDir: string): Promise<ScanResult> {
     }
     const meta = parseToolMeta(metaRaw, id);
 
-    // Help source: a configured mdUrl wins (read-only, fetched remotely);
-    // otherwise read the local help.md. The two are mutually exclusive by design.
+    // Local help.md is always read — it is the editable source of truth and is
+    // never overwritten by a remote subscription.
     let helpMarkdown = '';
+    try {
+      helpMarkdown = await fs.readFile(path.join(child, 'help.md'), 'utf8');
+    } catch {
+      // missing help -> empty
+    }
+
+    // A configured mdUrl adds a SEPARATE read-only remote copy (fetched). It does
+    // not replace helpMarkdown, so clearing the URL later restores the local
+    // content untouched.
+    let remoteMarkdown: string | undefined;
     if (meta.mdUrl) {
-      meta.readOnly = true;
       if (meta.autoUpdateMinutes === undefined) {
         meta.autoUpdateMinutes = DEFAULT_AUTO_UPDATE_MINUTES;
       }
       const fetched = await fetchRemoteMarkdown(meta.mdUrl);
-      helpMarkdown = fetched.markdown;
+      remoteMarkdown = fetched.markdown;
       if (fetched.error) {
         result.errors.push({ id, message: `远程帮助加载失败 (${meta.mdUrl}): ${fetched.error}` });
       }
-    } else {
-      try {
-        helpMarkdown = await fs.readFile(path.join(child, 'help.md'), 'utf8');
-      } catch {
-        // missing help -> empty
-      }
     }
-    result.tools.push({ meta, helpMarkdown });
+    result.tools.push({ meta, helpMarkdown, ...(remoteMarkdown !== undefined ? { remoteMarkdown } : {}) });
   }
   result.tools.sort(
     (a, b) => a.meta.order - b.meta.order || a.meta.id.localeCompare(b.meta.id)

@@ -1,5 +1,4 @@
 import type { ToolMeta } from './types';
-import { QUICK_TOOL_ID } from './types';
 
 const DEFAULT_ICON = '▣';
 
@@ -37,7 +36,6 @@ export function parseToolMeta(raw: unknown, id: string): ToolMeta {
   if (typeof o.autoUpdateMinutes === 'number' && Number.isFinite(o.autoUpdateMinutes)) {
     meta.autoUpdateMinutes = o.autoUpdateMinutes;
   }
-  // Derived: the reserved quick-command tool is "special" regardless of its json.
-  if (id === QUICK_TOOL_ID) meta.special = true;
+  if (o.useRemote === true) meta.useRemote = true;
   return meta;
 }

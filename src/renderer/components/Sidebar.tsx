@@ -10,6 +10,7 @@ export function Sidebar(props: {
   tools: Tool[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  onReorder: (orderedIds: string[]) => void;
   onNew: () => void;
   onExport: () => void;
   onImport: () => void;
@@ -18,6 +19,9 @@ export function Sidebar(props: {
     const v = Number(localStorage.getItem(STORAGE_KEY));
     return v >= MIN_WIDTH && v <= MAX_WIDTH ? v : DEFAULT_WIDTH;
   });
+  // Drag-to-reorder state for the normal tool list.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(width));
@@ -44,40 +48,61 @@ export function Sidebar(props: {
     document.body.style.userSelect = 'none';
   };
 
-  // Special tools (e.g. the _quick command source) are shown in their own section
-  // above "新建工具", separated from the normal tool list.
-  const normal = props.tools.filter((t) => !t.meta.special);
-  const special = props.tools.filter((t) => t.meta.special);
+  // Reorder the list by dropping dragId onto overId's position.
+  const handleDrop = () => {
+    if (dragId && overId && dragId !== overId) {
+      const ids = props.tools.map((t) => t.meta.id);
+      const from = ids.indexOf(dragId);
+      const to = ids.indexOf(overId);
+      if (from >= 0 && to >= 0) {
+        ids.splice(from, 1);
+        ids.splice(to, 0, dragId);
+        props.onReorder(ids);
+      }
+    }
+    setDragId(null);
+    setOverId(null);
+  };
 
   return (
     <nav className="sidebar" style={{ width: `${width}px`, flex: `0 0 ${width}px` }}>
       <ul>
-        {normal.map((t) => (
-          <li
-            key={t.meta.id}
-            className={t.meta.id === props.activeId ? 'active' : ''}
-            onClick={() => props.onSelect(t.meta.id)}
-          >
-            <span className="icon">{t.meta.icon}</span>
-            <span className="name">{t.meta.name}</span>
-          </li>
-        ))}
-      </ul>
-      {special.length > 0 && (
-        <div className="sidebar-special">
-          {special.map((t) => (
-            <div
-              key={t.meta.id}
-              className={'sidebar-special-item' + (t.meta.id === props.activeId ? ' active' : '')}
-              title="快捷命令：其按钮在任意工具终端的全局下拉中可用"
-              onClick={() => props.onSelect(t.meta.id)}
+        {props.tools.map((t) => {
+          const id = t.meta.id;
+          const cls = [
+            id === props.activeId ? 'active' : '',
+            dragId === id ? 'dragging' : '',
+            overId === id && dragId && dragId !== id ? 'drag-over' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <li
+              key={id}
+              className={cls}
+              draggable
+              onDragStart={() => setDragId(id)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (overId !== id) setOverId(id);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                handleDrop();
+              }}
+              onDragEnd={() => {
+                setDragId(null);
+                setOverId(null);
+              }}
+              onClick={() => props.onSelect(id)}
+              title="拖动以排序"
             >
               <span className="icon">{t.meta.icon}</span>
               <span className="name">{t.meta.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
+            </li>
+          );
+        })}
+      </ul>
       <button className="new-tool" onClick={props.onNew}>+ 新建工具</button>
       <div className="sidebar-io">
         <button className="io-btn" onClick={props.onExport} title="导出全部工具为 JSON">⤓ 导出</button>

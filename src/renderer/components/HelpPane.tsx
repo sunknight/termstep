@@ -11,11 +11,11 @@ interface TipState {
   below: boolean;
 }
 
-export function HelpPane(props: { tool: Tool; activeToolId: string }) {
+export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastBtn = useRef<HTMLElement | null>(null);
   const [tip, setTip] = useState<TipState | null>(null);
-  const html = useMemo(() => md.render(props.tool.helpMarkdown), [props.tool.helpMarkdown]);
+  const html = useMemo(() => md.render(props.markdown), [props.markdown]);
 
   useEffect(() => {
     // Clear any showing tooltip when the rendered content changes.

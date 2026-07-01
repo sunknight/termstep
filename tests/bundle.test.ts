@@ -32,13 +32,10 @@ describe('serializeTools / parseToolsBundle round-trip', () => {
     expect(b.app).toBe('gui_anything');
   });
 
-  it('does not serialize derived special/readOnly flags', () => {
-    const t = tool('_quick', '快捷命令');
-    t.meta.special = true;
-    t.meta.readOnly = true;
-    const json = JSON.stringify(serializeTools([t], 'now'));
-    expect(json).not.toContain('"special"');
-    expect(json).not.toContain('"readOnly"');
+  it('round-trips useRemote', () => {
+    const original = [tool('git', 'Git', '# Git', { useRemote: true })];
+    const res = parseToolsBundle(JSON.stringify(serializeTools(original, 'now')));
+    expect(res.tools[0].meta.useRemote).toBe(true);
   });
 });
 

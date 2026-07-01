@@ -25,35 +25,41 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   border: 1px dashed #b8c0d6; background: #fff; color: #555; border-radius: 6px;
 }
 .new-tool:hover { background: #eef2ff; border-color: #6b8cff; color: #4a6cff; }
-/* Special tools (e.g. the quick-command source) sit in their own divider-topped
-   section above "新建工具", kept apart from the normal tool list. */
-.sidebar-special {
-  margin-top: 6px; padding-top: 6px; border-top: 1px solid #d8d8de;
-  display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto;
+/* Drag-to-reorder feedback for tool list items. */
+.sidebar li[draggable] { cursor: grab; }
+.sidebar li.dragging { opacity: 0.4; }
+.sidebar li.drag-over { box-shadow: inset 0 3px 0 #6b8cff; }
+.terminal-area {
+  flex: 1; min-width: 0; min-height: 0; background: #1e1e1e;
+  display: flex; flex-direction: column; overflow: hidden;
 }
-.sidebar-special-item {
-  padding: 8px; border-radius: 6px; cursor: pointer;
-  display: flex; align-items: center; gap: 8px; min-width: 0;
-  background: #fff8e6; font-size: 12px;
+/* Title bar above the terminal: cwd on the left, quick/restart on the right
+   (buttons are no longer floating over the terminal). */
+.term-header {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 6px 10px; background: #252526; border-bottom: 1px solid #333;
 }
-.sidebar-special-item:hover { background: #fff1cc; }
-.sidebar-special-item.active { background: #ffe6a8; }
-.sidebar-special-item .icon { width: 1.2em; flex: 0 0 auto; }
-.sidebar-special-item .name {
-  flex: 1 1 auto; min-width: 0; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
+.term-cwd {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 5px;
+  color: #ddd; opacity: 0.9; font-family: Menlo, monospace; font-size: 12px;
+  overflow: hidden;
 }
-.terminal-area { flex: 1; min-width: 0; min-height: 0; background: #1e1e1e; overflow: hidden; }
-.terminal-area { position: relative; }
+.term-cwd-icon { flex: 0 0 auto; }
+/* Show the TAIL of a long path (the last directory) and clip the left: direction
+   rtl puts the ellipsis on the left while an all-LTR path still reads in order.
+   text-align:left keeps short paths flush-left; the full path is in the title. */
+.term-cwd-path {
+  flex: 1 1 auto; min-width: 0;
+  direction: rtl; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.term-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.term-pane-wrap { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
 .term { padding: 6px; }
 .term .xterm { height: 100%; }
 /* Keep terminal scrolling, but hide the scrollbar. */
 .term .xterm-viewport { scrollbar-width: none; -ms-overflow-style: none; }
 .term .xterm-viewport::-webkit-scrollbar { display: none; }
-.term-toolbar {
-  position: absolute; top: 8px; right: 8px; z-index: 20;
-  display: flex; align-items: center; gap: 6px;
-}
 .term-restart {
   padding: 4px 10px; font-size: 12px; cursor: pointer;
   color: #ddd; background: rgba(40, 40, 40, 0.82);
@@ -88,7 +94,25 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .help-area { width: 340px; flex: 0 0 340px; border-left: 1px solid #ddd; padding: 12px; overflow-y: auto; }
 .placeholder { color: #999; padding: 16px; }
-.errors { position: fixed; bottom: 0; left: var(--sidebar-w, 180px); right: 0; background: #ffe0e0; color: #900; padding: 6px 12px; font-size: 12px; }
+.errors { display: none; }
+/* Transient scan-error toasts (auto-dismiss + manual close). */
+.notifs {
+  position: fixed; bottom: 12px; right: 12px; z-index: 200;
+  display: flex; flex-direction: column; gap: 8px; max-width: 380px;
+}
+.notif {
+  display: flex; align-items: flex-start; gap: 8px;
+  background: #fff0f0; color: #8a1500; border: 1px solid #f0b8b8;
+  padding: 8px 10px; border-radius: 7px; font-size: 12px; line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+.notif-msg { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+.notif-msg strong { color: #b00; }
+.notif-close {
+  flex: 0 0 auto; cursor: pointer; font-size: 12px; color: #8a1500;
+  background: transparent; border: 0; padding: 0 2px; line-height: 1.4;
+}
+.notif-close:hover { color: #500; }
 .help h1 { font-size: 1.2em; }
 .help pre { background: #f6f8fa; padding: 8px; border-radius: 6px; overflow: auto; }
 .help code { font-family: Menlo, monospace; }
@@ -112,7 +136,7 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .help-area { display: flex; flex-direction: column; }
 .help-toolbar {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   padding: 4px 0 8px; border-bottom: 1px solid #ececef; margin-bottom: 8px;
 }
 .help-toolbar button {
@@ -127,19 +151,18 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   margin-left: auto; background: #4a6cff; border-color: #4a6cff; color: #fff;
 }
 .help-toolbar button.primary:hover { background: #3a58f0; }
-.editor { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 8px; }
+.editor { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto; gap: 8px; padding-right: 4px; }
 .editor-header {
   flex: 0 0 auto;
   font-size: 13px; font-weight: 600; color: #333;
   padding-bottom: 6px; border-bottom: 1px solid #e3e3e6;
 }
-/* The form scrolls on its own when it can't fit; the markdown area below takes
-   all remaining space (bounded) so CodeMirror scrolls internally instead of the
-   whole pane. Header + actions stay pinned. */
+/* The whole editor is one scroll region: when the window is short the form AND
+   the markdown textarea scroll together. The textarea itself also scrolls
+   internally for long content. */
 .meta-form {
-  flex: 0 1 auto; min-height: 0; overflow-y: auto;
+  flex: 0 0 auto;
   display: flex; flex-direction: column; gap: 8px; font-size: 12px;
-  padding-right: 2px;
 }
 .form-section {
   border: 1px solid #e9e9ee; border-radius: 8px; padding: 4px 10px 10px; margin: 0;
@@ -180,20 +203,55 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .icon-cell:hover { background: #eef2ff; }
 .icon-cell.selected { border-color: #6b8cff; background: #dbe3ff; }
-/* Markdown editor: bounded (flex-basis 0) so CodeMirror gets a definite height
-   and scrolls internally; never crushes below the min-height. */
-.editor-md {
-  flex: 1 1 0; min-height: 120px; overflow: hidden;
-  display: flex; flex-direction: column;
+/* Tabbed sub-region: the 本地/远程 tabs live inside this bordered box and swap
+   only the markdown / URL content. The main form above stays always visible. */
+.md-subregion {
+  flex: 1 1 auto; min-height: 280px;
+  display: flex; flex-direction: column; overflow: hidden;
   border: 1px solid #e3e3e6; border-radius: 6px; background: #fff;
 }
-.editor-md-head {
-  flex: 0 0 auto; font-size: 11px; color: #666;
-  padding: 5px 8px; border-bottom: 1px solid #ececef; background: #fafafb;
+/* Local/remote tabs — header of the sub-region. */
+.editor-tabs {
+  flex: 0 0 auto; display: flex; gap: 0; border-bottom: 1px solid #e3e3e6; background: #fafafb;
 }
-.cm-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; }
-.cm-wrap .cm-editor { height: 100%; }
-.cm-wrap .cm-scroller { overflow: auto; }
+.editor-tabs button {
+  padding: 7px 16px; font-size: 12px; cursor: pointer;
+  background: transparent; border: 0; border-bottom: 2px solid transparent;
+  color: #888; margin-bottom: -1px;
+}
+.editor-tabs button:hover { color: #333; }
+.editor-tabs button.active { color: #4a6cff; border-bottom-color: #4a6cff; font-weight: 600; }
+/* ✓ marks the EFFECTIVE source tab (the one the tool's help will use). */
+.editor-tabs .tab-check { color: #2a9d4a; font-weight: 700; margin-right: 4px; }
+/* Local tab: the textarea is a direct child of the sub-region and fills it. */
+.md-subregion > .md-editor {
+  flex: 1 1 auto; min-height: 200px; border: 0; border-radius: 0;
+}
+/* Remote tab: URL fields + a read-only preview; scrolls if it doesn't fit. */
+.md-remote-pane {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px; padding: 8px;
+}
+.md-remote-pane .form-section { flex: 0 0 auto; }
+.md-remote-pane .md-head { flex: 0 0 auto; border-bottom: 0; background: transparent; padding: 2px 0; }
+.md-remote-pane .md-editor { flex: 1 1 auto; min-height: 120px; }
+/* Markdown area header (label, and on the remote tab a re-read button). */
+.md-head {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 5px 8px; border-bottom: 1px solid #ececef; background: #fafafb;
+  font-size: 11px; color: #666;
+}
+.md-head button {
+  padding: 3px 8px; font-size: 11px; cursor: pointer; color: #555;
+  border: 1px solid #cfd2da; border-radius: 5px; background: #fff;
+}
+.md-head button:hover { background: #f2f3f6; }
+.md-editor {
+  width: 100%; box-sizing: border-box;
+  border: 0; outline: none; resize: vertical; padding: 8px;
+  font-family: Menlo, monospace; font-size: 12px; line-height: 1.5; color: #222;
+}
+.md-editor:focus { box-shadow: inset 0 0 0 2px #dbe3ff; }
 .editor-actions { flex: 0 0 auto; display: flex; gap: 8px; }
 .editor-actions button {
   padding: 6px 14px; font-size: 12px; cursor: pointer; color: #222;
@@ -225,22 +283,18 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .io-btn:hover { background: #f2f3f6; color: #222; }
 
-/* Read-only / remote banners. */
-.readonly-banner {
+/* Pill showing which source is effective, shown above the help content. */
+.md-source-badge {
+  align-self: flex-start;
+  font-size: 11px; color: #555; background: #eef2ff;
+  border: 1px solid #c8d2ff; border-radius: 12px; padding: 2px 10px; margin-bottom: 8px;
+}
+.md-source-badge.remote { color: #665200; background: #fff7d6; border-color: #ecdd9a; }
+/* Hint shown on the remote tab before a URL is set. */
+.md-hint {
   font-size: 11px; color: #665200; background: #fff7d6;
-  border: 1px solid #ecdd9a; border-radius: 6px; padding: 5px 8px;
-  margin-bottom: 8px; word-break: break-all;
+  border: 1px solid #ecdd9a; border-radius: 6px; padding: 6px 8px; line-height: 1.4;
 }
-.editor-readonly-banner {
-  font-size: 11px; color: #555; background: #f6f8fa;
-  border: 1px solid #e3e3e6; border-radius: 6px; padding: 6px 8px;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.editor-readonly-banner .link-btn {
-  flex: 0 0 auto; cursor: pointer; font-size: 11px; color: #4a6cff;
-  background: transparent; border: 1px solid #c8d2ff; border-radius: 5px; padding: 3px 8px;
-}
-.editor-readonly-banner .link-btn:hover { background: #eef2ff; }
 
 /* New editor inputs: init-commands textarea + number input. */
 .meta-form textarea.init-commands {
@@ -249,3 +303,37 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .meta-form textarea.init-commands:focus { border-color: #6b8cff; box-shadow: 0 0 0 2px #dbe3ff; }
 .meta-form .num-input { width: 8em; }
+
+/* "编辑" button at the bottom of the quick-command dropdown. */
+.quick-cmd-edit {
+  margin-top: 4px; padding: 5px 8px; font-size: 11px; cursor: pointer;
+  color: #4a6cff; background: #fff; border: 1px solid #c8d2ff; border-radius: 6px;
+}
+.quick-cmd-edit:hover { background: #eef2ff; }
+
+/* Modal (quick-command editor). */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 300; background: rgba(0, 0, 0, 0.4);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.modal {
+  width: 560px; max-width: 100%; max-height: 80vh; display: flex; flex-direction: column;
+  background: #fff; border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); overflow: hidden;
+}
+.modal-header { flex: 0 0 auto; font-size: 14px; font-weight: 600; padding: 12px 16px; border-bottom: 1px solid #ececef; }
+.modal-hint { flex: 0 0 auto; font-size: 11px; color: #777; padding: 8px 16px 0; }
+.modal-hint code { font-family: Menlo, monospace; background: #f0f1f4; padding: 0 4px; border-radius: 3px; }
+.quick-editor-md {
+  flex: 1 1 auto; min-height: 220px; margin: 8px 16px; resize: none;
+  font-family: Menlo, monospace; font-size: 12px; line-height: 1.5; color: #222;
+  border: 1px solid #cfd2da; border-radius: 6px; padding: 8px; outline: none;
+}
+.quick-editor-md:focus { border-color: #6b8cff; box-shadow: 0 0 0 2px #dbe3ff; }
+.modal-actions { flex: 0 0 auto; display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #ececef; }
+.modal-actions button {
+  padding: 6px 14px; font-size: 12px; cursor: pointer; color: #222;
+  border: 1px solid #cfd2da; border-radius: 6px; background: #fff;
+}
+.modal-actions button.primary { background: #4a6cff; border-color: #4a6cff; color: #fff; }
+.modal-actions button.primary:hover { background: #3a58f0; }
+.modal-actions button:disabled { opacity: 0.6; cursor: default; }

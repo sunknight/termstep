@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { PtyService } from '../src/main/ptyService';
+import { liveCwd } from '../src/main/cwd';
 
 describe('PtyService', () => {
   let svc: PtyService;
@@ -159,4 +160,32 @@ describe('PtyService', () => {
     });
     expect(seen.join('')).toContain('init_marker_xyz789');
   }, 10000);
+
+  it('pidOf + liveCwd track the shell cwd after the user cd-s', async () => {
+    svc = new PtyService();
+    const target = path.join(os.homedir(), 'gui-cwd-track-tmp');
+    fs.mkdirSync(target, { recursive: true });
+    try {
+      svc.open('track', { cwd: os.homedir() });
+      await new Promise<void>((r) => setTimeout(r, 500)); // let the prompt settle
+      svc.write('track', `cd ${JSON.stringify(target)}\r`, {});
+      // Poll liveCwd until it reflects the new cwd (cd + OS accounting).
+      const pid = svc.pidOf('track');
+      expect(pid).toBeTruthy();
+      const resolved = await new Promise<string | null>((resolve) => {
+        const t = setTimeout(() => resolve(null), 8000);
+        const check = setInterval(async () => {
+          const c = await liveCwd(pid);
+          if (c === target) {
+            clearTimeout(t);
+            clearInterval(check);
+            resolve(c);
+          }
+        }, 200);
+      });
+      expect(resolved).toBe(target);
+    } finally {
+      fs.rmSync(target, { recursive: true, force: true });
+    }
+  }, 12000);
 });

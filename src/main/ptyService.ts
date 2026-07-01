@@ -94,6 +94,11 @@ export class PtyService {
     this.ptys.get(toolId)?.resize(cols, rows);
   }
 
+  // OS pid of the spawned shell (if alive). Used to look up its live cwd.
+  pidOf(toolId: string): number | undefined {
+    return this.ptys.get(toolId)?.pid;
+  }
+
   kill(toolId: string): void {
     const p = this.ptys.get(toolId);
     if (p) {

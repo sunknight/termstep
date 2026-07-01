@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import type { Tool, ToolMeta } from '../../shared/types';
 
 // A small, curated set of icons that read well at sidebar size. Shown in a
-// popup next to the icon input so it no longer eats vertical space in the form.
+// popup beside the icon input so it doesn't eat vertical space in the form.
 const COMMON_ICONS = [
   '★', '☆', '▶', '◆', '●', '◐',
   '🛠️', '⚙️', '🔧', '🧰', '🗄️', '🗃️',
@@ -14,9 +12,22 @@ const COMMON_ICONS = [
   '🔑', '🔒', '🧪', '🐛', '🎨', '⏱️',
 ];
 
+// Plain textarea markdown editor (no CodeMirror): a textarea always scrolls
+// vertically for long content and has no folding UI.
+//
+// Layout: the main form (基本 / 终端) is always visible. Below it, ONE sub-region
+// has a 本地/远程 tab that swaps only that sub-region's content:
+//   - 本地内容 : the editable LOCAL markdown (help.md)
+//   - 远程订阅 : the mdUrl / auto-refresh config + a read-only preview of the
+//                fetched remote copy, with a re-read button.
+// Local and remote stay independent; saving persists every field regardless of
+// which sub-tab is active.
+
 export function EditorPane(props: { tool: Tool; onDone: () => void }) {
   const { meta } = props.tool;
-  const isReadOnly = !!meta.readOnly;
+  // The open tab is also the source selection: the checked (✓) tab is the
+  // EFFECTIVE source — the one the tool's help will use.
+  const [tab, setTab] = useState<'local' | 'remote'>(meta.useRemote ? 'remote' : 'local');
   const [markdownText, setMarkdownText] = useState(props.tool.helpMarkdown);
   const [name, setName] = useState(meta.name);
   const [icon, setIcon] = useState(meta.icon);
@@ -28,7 +39,41 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
   const [iconOpen, setIconOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewMarkdown, setPreviewMarkdown] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const iconWrapRef = useRef<HTMLDivElement>(null);
+
+  // Discard the preview whenever the URL field changes, so a stale fetch from a
+  // previous URL is never shown as if it were current.
+  useEffect(() => {
+    setPreviewMarkdown(null);
+  }, [mdUrl]);
+
+  // Preview-fetch the DRAFT url (not yet saved) so the user can see what a new
+  // URL returns before committing. After save, the normal scan re-fetches the
+  // persisted URL and updates remoteMarkdown.
+  const readRemote = async () => {
+    const url = mdUrl.trim();
+    if (!url) return;
+    setPreviewLoading(true);
+    try {
+      const res = await window.api.fetchMdPreview(url);
+      if (res?.error) {
+        setError(`远程读取失败: ${res.error}`);
+      } else {
+        setError(null);
+        setPreviewMarkdown(res?.markdown ?? '');
+      }
+    } catch (e) {
+      setError(`远程读取失败: ${String((e as Error)?.message ?? e)}`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Remote can only be the effective source when a URL is set; otherwise local
+  // stays effective (✓ stays on 本地) even while the 远程 tab is open for setup.
+  const effective: 'local' | 'remote' = tab === 'remote' && mdUrl.trim() ? 'remote' : 'local';
 
   // Close the icon popup on outside-click / Escape.
   useEffect(() => {
@@ -54,14 +99,26 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
       .split('\n')
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
-    const meta: Partial<ToolMeta> = { name, icon, order: props.tool.meta.order };
-    if (cwd.trim()) meta.cwd = cwd.trim();
-    if (tmux.trim()) meta.tmux = tmux.trim();
-    if (initList.length > 0) meta.initCommands = initList;
-    if (mdUrl.trim()) meta.mdUrl = mdUrl.trim();
+    // Send CURRENT values for every managed optional field (empty when cleared)
+    // so TOOL_SAVE can prune them — clearing mdUrl must actually remove it.
+    const meta: Partial<ToolMeta> = {
+      name,
+      icon,
+      order: props.tool.meta.order,
+      cwd: cwd.trim(),
+      tmux: tmux.trim(),
+      mdUrl: mdUrl.trim(),
+      initCommands: initList,
+    };
     const mins = Number(autoUpdate);
-    if (autoUpdate.trim() !== '' && Number.isFinite(mins)) meta.autoUpdateMinutes = mins;
+    if (mdUrl.trim() && autoUpdate.trim() !== '' && Number.isFinite(mins)) {
+      meta.autoUpdateMinutes = mins;
+    }
+    // Persist which source is effective (the ✓ tab). Sent as a bool so a switch
+    // back to local clears a previously-true useRemote.
+    meta.useRemote = effective === 'remote';
     try {
+      // Always saves the LOCAL markdown; the remote copy is fetched, never written.
       await window.api.tool.save(props.tool.meta.id, markdownText, meta);
       props.onDone();
     } catch (e) {
@@ -73,10 +130,9 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
 
   return (
     <div className="editor">
-      <div className="editor-header">
-        编辑工具{meta.special ? '（特殊）' : ''}
-      </div>
+      <div className="editor-header">编辑工具</div>
 
+      {/* Always-visible main form */}
       <div className="meta-form">
         <fieldset className="form-section">
           <legend>基本</legend>
@@ -147,57 +203,92 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
             />
           </label>
         </fieldset>
-
-        <fieldset className="form-section">
-          <legend>远程内容（可选）</legend>
-          <label className="field">
-            <span className="field-label">
-              Markdown URL <em>设置后只读、自动更新；留空用本地</em>
-            </span>
-            <input
-              value={mdUrl}
-              onChange={(e) => setMdUrl(e.target.value)}
-              placeholder="https://example.com/help.md"
-            />
-          </label>
-          {mdUrl.trim() && (
-            <label className="field">
-              <span className="field-label">自动更新间隔（分钟，0 关闭）</span>
-              <input
-                className="num-input"
-                type="number"
-                min={0}
-                value={autoUpdate}
-                onChange={(e) => setAutoUpdate(e.target.value)}
-                placeholder="5"
-              />
-            </label>
-          )}
-        </fieldset>
       </div>
 
-      {isReadOnly && (
-        <div className="editor-readonly-banner">
-          📡 帮助内容来自远程 URL（只读）。清空 URL 则转回本地编辑。
-          <button className="link-btn" onClick={() => window.api.refreshMd()}>立即重新读取</button>
+      {/* Tabbed sub-region: switches only the markdown / URL area */}
+      <div className="md-subregion">
+        <div className="editor-tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={tab === 'local'}
+            className={tab === 'local' ? 'active' : ''}
+            onClick={() => setTab('local')}
+            title="使用本地内容（help.md）"
+          >
+            {effective === 'local' && <span className="tab-check" aria-hidden>✓</span>}
+            本地内容
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === 'remote'}
+            className={tab === 'remote' ? 'active' : ''}
+            onClick={() => setTab('remote')}
+            title="使用远程内容（需填写 URL）"
+          >
+            {effective === 'remote' && <span className="tab-check" aria-hidden>✓</span>}
+            远程订阅
+          </button>
         </div>
-      )}
 
-      <div className="editor-md">
-        <div className="editor-md-head">
-          📝 帮助文档 (Markdown){isReadOnly ? ' · 远程只读' : ''}
-        </div>
-        <div className="cm-wrap">
-          <CodeMirror
+        {tab === 'local' ? (
+          <textarea
+            className="md-editor"
             value={markdownText}
-            height="100%"
-            theme="light"
-            editable={!isReadOnly}
-            readOnly={isReadOnly}
-            extensions={[markdown({ base: markdownLanguage })]}
-            onChange={(v) => setMarkdownText(v)}
+            onChange={(e) => setMarkdownText(e.target.value)}
+            placeholder={'# 标题\n\n```buttons\nls\n```\n'}
           />
-        </div>
+        ) : (
+          <div className="md-remote-pane">
+            {!mdUrl.trim() && (
+              <div className="md-hint">
+                填写 URL 并保存后，「远程订阅」会被勾选（✓）并生效；届时本地内容将不再作为帮助显示。清空 URL 则自动回到本地。
+              </div>
+            )}
+            <fieldset className="form-section">
+              <legend>远程订阅</legend>
+              <label className="field">
+                <span className="field-label">
+                  Markdown URL <em>与本地独立；清空即恢复本地</em>
+                </span>
+                <input
+                  value={mdUrl}
+                  onChange={(e) => setMdUrl(e.target.value)}
+                  placeholder="https://example.com/help.md"
+                />
+              </label>
+              {mdUrl.trim() && (
+                <label className="field">
+                  <span className="field-label">自动更新间隔（分钟，0 = 不自动更新）</span>
+                  <input
+                    className="num-input"
+                    type="number"
+                    min={0}
+                    value={autoUpdate}
+                    onChange={(e) => setAutoUpdate(e.target.value)}
+                    placeholder="0"
+                  />
+                </label>
+              )}
+            </fieldset>
+            <div className="md-head">
+              <span>📡 远程内容（只读预览）</span>
+              <button
+                type="button"
+                onClick={readRemote}
+                disabled={!mdUrl.trim() || previewLoading}
+                title="按当前填写的 URL 拉取预览（保存前即可用）"
+              >
+                {previewLoading ? '读取中…' : '⟳ 重新读取'}
+              </button>
+            </div>
+            <textarea
+              className="md-editor"
+              readOnly
+              value={previewMarkdown ?? props.tool.remoteMarkdown ?? ''}
+              placeholder="(填写 URL 并点「重新读取」预览；保存后即生效)"
+            />
+          </div>
+        )}
       </div>
 
       <div className="editor-actions">

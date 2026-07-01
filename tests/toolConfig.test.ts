@@ -61,8 +61,8 @@ describe('parseToolMeta', () => {
     expect(m.autoUpdateMinutes).toBeUndefined();
   });
 
-  it('flags the reserved quick-command id as special', () => {
-    expect(parseToolMeta({ name: '快捷命令' }, '_quick').special).toBe(true);
-    expect(parseToolMeta({}, 'git').special).toBeUndefined();
+  it('reads useRemote when true', () => {
+    expect(parseToolMeta({ useRemote: true }, 'git').useRemote).toBe(true);
+    expect(parseToolMeta({ useRemote: false }, 'git').useRemote).toBeUndefined();
   });
 });

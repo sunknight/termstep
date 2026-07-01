@@ -8,6 +8,7 @@ export const IPC = {
   PTY_RESTART: 'pty:restart',
   PTY_RESIZE: 'pty:resize',
   PTY_KILL: 'pty:kill',
+  PTY_CWD: 'pty:cwd',
   TOOL_SAVE: 'tool:save',
   TOOL_CREATE: 'tool:create',
   TOOL_DELETE: 'tool:delete',
@@ -17,11 +18,10 @@ export const IPC = {
   TOOL_EXPORT_ONE: 'tool:exportOne',
   TOOLS_IMPORT: 'tools:import',
   TOOL_REFRESH_MD: 'tool:refreshMd',
+  MD_FETCH_PREVIEW: 'md:fetchPreview',
+  QUICK_GET: 'quick:get',
+  QUICK_SAVE: 'quick:save',
 } as const;
-
-// Reserved id of the built-in tool whose `buttons` blocks back the global
-// quick-command dropdown. Seeded at startup; editable like any tool.
-export const QUICK_TOOL_ID = '_quick';
 
 export interface ToolMeta {
   id: string;
@@ -42,14 +42,20 @@ export interface ToolMeta {
   // Auto-refresh cadence (minutes) for a mdUrl tool. 0 disables auto-refresh.
   // Omitted -> default applied at scan time.
   autoUpdateMinutes?: number;
-  // Derived flags (set by the scanner, never persisted to tool.json).
-  special?: boolean;
-  readOnly?: boolean;
+  // Which help source is "effective" (shown as the tool's help): true = the
+  // fetched remote copy (requires mdUrl), false/omitted = the local help.md.
+  // Set by the editor's 本地/远程 tab (the checked one is the effective source).
+  useRemote?: boolean;
 }
 
 export interface Tool {
   meta: ToolMeta;
+  // Local help.md content — always present, always editable.
   helpMarkdown: string;
+  // Remote markdown fetched from meta.mdUrl (read-only). Present only when a
+  // URL is configured. Kept separate from helpMarkdown so toggling the URL off
+  // restores the untouched local content.
+  remoteMarkdown?: string;
 }
 
 export interface ScanError {
