@@ -2,6 +2,7 @@ import * as pty from 'node-pty';
 import os from 'node:os';
 import path from 'node:path';
 import type { PtySpawnOpts } from '../shared/types';
+import { sanitizeTmuxName, tmuxArgv } from '../shared/tmux';
 
 function defaultShell(): string {
   return process.env['SHELL'] || '/bin/zsh';
@@ -32,8 +33,13 @@ export class PtyService {
     const shell = opts.shell || defaultShell();
     const cwd = expandHome(opts.cwd) ?? os.homedir();
     const env = { ...process.env, ...(opts.env ?? {}) } as Record<string, string>;
+    // tmux: when a sanitized session name is configured, exec into
+    // `tmux new -A -s NAME` (attach if it exists, else create). An invalid name
+    // is silently ignored so a bad tool.json never bricks spawning.
+    const tmuxName = opts.tmux ? sanitizeTmuxName(opts.tmux) : null;
+    const args = tmuxName ? tmuxArgv(tmuxName) : [];
     const d = this.desired.get(toolId);
-    const p = pty.spawn(shell, [], {
+    const p = pty.spawn(shell, args, {
       name: 'xterm-color',
       cols: d?.cols ?? 80,
       rows: d?.rows ?? 24,
@@ -52,6 +58,17 @@ export class PtyService {
       }
     });
     this.ptys.set(toolId, p);
+    // Inject startup init commands. The pty buffers input until the shell (or
+    // tmux, when used) is ready to read, so no delay is needed — they appear as
+    // if typed at the first prompt.
+    if (opts.initCommands && opts.initCommands.length > 0) {
+      const batch = opts.initCommands.map((c) => c + '\r').join('');
+      try {
+        p.write(batch);
+      } catch {
+        // pty closed before we could write — ignore; ensure already registered it.
+      }
+    }
     return p;
   }
 

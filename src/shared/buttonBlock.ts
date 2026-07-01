@@ -50,3 +50,19 @@ export function renderButtonsBlock(code: string): string {
     .join('');
   return `<div class="cmd-buttons">${items}</div>`;
 }
+
+// Collect every button declared across all `buttons` fenced blocks in a markdown
+// doc. Used by the global quick-command dropdown, which surfaces one tool's
+// buttons app-wide. Order is document order; duplicates across blocks kept.
+const FENCE_RE = /```buttons[^\n]*\n([\s\S]*?)\n?```/g;
+export function parseButtonsFromMarkdown(markdown: string): ParsedButton[] {
+  const out: ParsedButton[] = [];
+  for (const match of markdown.matchAll(FENCE_RE)) {
+    const body = match[1] ?? '';
+    for (const line of body.split('\n')) {
+      const b = parseButtonLine(line);
+      if (b) out.push(b);
+    }
+  }
+  return out;
+}

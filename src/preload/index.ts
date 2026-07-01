@@ -37,6 +37,16 @@ const api = {
     del: (toolId: string) => ipcRenderer.invoke(IPC.TOOL_DELETE, toolId),
     reorder: (orderedIds: string[]) => ipcRenderer.invoke(IPC.TOOL_REORDER, orderedIds),
   },
+  shell: {
+    // Open an external http(s)/mailto link in the default browser.
+    openExternal: (url: string) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
+  },
+  bundle: {
+    export: () => ipcRenderer.invoke(IPC.TOOLS_EXPORT),
+    exportOne: (toolId: string) => ipcRenderer.invoke(IPC.TOOL_EXPORT_ONE, toolId),
+    import: () => ipcRenderer.invoke(IPC.TOOLS_IMPORT),
+  },
+  refreshMd: () => ipcRenderer.invoke(IPC.TOOL_REFRESH_MD),
 };
 
 contextBridge.exposeInMainWorld('api', api);

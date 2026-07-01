@@ -55,6 +55,34 @@ export function TerminalView(props: {
     return () => cancelAnimationFrame(raf);
   }, [props.active]);
 
+  // Refit the terminal when its container resizes — window height changes, the
+  // sidebar being dragged, or tool switches all resize the visible pane. Without
+  // this the xterm keeps its old rows/cols: shrinking overflows (page scroll),
+  // growing leaves blank space. fit() propagates the new size to the pty via the
+  // term.onResize handler. Only the active (visible) terminal is refit — fit()
+  // on a display:none container breaks xterm's renderer.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      if (!props.active || !termRef.current || !fitRef.current) return;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        try {
+          fitRef.current?.fit();
+        } catch {
+          // container not measurable yet (e.g. mid-transition) — ignore
+        }
+      });
+    });
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [props.active]);
+
   // Dispose the terminal (and its global data listener) when the tool unmounts.
   useEffect(() => {
     return () => {

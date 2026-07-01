@@ -4,7 +4,7 @@ import path from 'node:path';
 import { PtyService } from './ptyService';
 import { ToolManager } from './toolManager';
 import { registerIpc } from './ipc';
-import { seedDefaultTools } from './seed';
+import { seedDefaultTools, ensureQuickTool } from './seed';
 import { IPC, type ScanResult } from '../shared/types';
 
 const TOOLS_DIR = path.join(app.getPath('userData'), 'tools');
@@ -47,6 +47,7 @@ async function createWindow(): Promise<BrowserWindow> {
 app.whenReady().then(async () => {
   migrateOldTools(TOOLS_DIR);
   await seedDefaultTools(TOOLS_DIR);
+  await ensureQuickTool(TOOLS_DIR);
 
   ptyService = new PtyService();
   const toolManager = new ToolManager(TOOLS_DIR);
@@ -59,7 +60,7 @@ app.whenReady().then(async () => {
   ptyService.onData((toolId, data) => send(IPC.PTY_DATA, { toolId, data }));
 
   registerIpc({ toolsDir: TOOLS_DIR, toolManager, ptyService });
-  toolManager.start();
+  await toolManager.start();
 
   await createWindow();
 

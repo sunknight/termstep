@@ -140,4 +140,23 @@ describe('PtyService', () => {
       fs.rmSync(target, { recursive: true, force: true });
     }
   }, 12000);
+
+  it('injects initCommands right after spawn (they run without a manual write)', async () => {
+    svc = new PtyService();
+    const seen: string[] = [];
+    svc.onData((_id, data) => seen.push(data));
+    // open() with initCommands — no subsequent write; the marker must appear on its own.
+    svc.open('init', { initCommands: ['echo init_marker_xyz789'] });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout: init command never ran')), 8000);
+      const check = setInterval(() => {
+        if (seen.join('').includes('init_marker_xyz789')) {
+          clearTimeout(t);
+          clearInterval(check);
+          resolve();
+        }
+      }, 100);
+    });
+    expect(seen.join('')).toContain('init_marker_xyz789');
+  }, 10000);
 });

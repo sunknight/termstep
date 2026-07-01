@@ -9,7 +9,13 @@ export function TerminalPane(props: { tools: Tool[]; activeId: string | null }) 
           key={t.meta.id}
           toolId={t.meta.id}
           active={t.meta.id === props.activeId}
-          spawnOpts={{ cwd: t.meta.cwd, shell: t.meta.shell, env: t.meta.env }}
+          spawnOpts={{
+            cwd: t.meta.cwd,
+            shell: t.meta.shell,
+            env: t.meta.env,
+            tmux: t.meta.tmux,
+            initCommands: t.meta.initCommands,
+          }}
         />
       ))}
     </>

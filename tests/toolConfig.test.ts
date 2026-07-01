@@ -32,4 +32,37 @@ describe('parseToolMeta', () => {
     const m = parseToolMeta(null, 'git');
     expect(m.name).toBe('git');
   });
+
+  it('parses tmux, initCommands (array), mdUrl, autoUpdateMinutes', () => {
+    const m = parseToolMeta(
+      {
+        tmux: 'dev',
+        initCommands: ['cd ~/proj', 'source venv/bin/activate'],
+        mdUrl: 'https://example.com/help.md',
+        autoUpdateMinutes: 10,
+      },
+      'git'
+    );
+    expect(m.tmux).toBe('dev');
+    expect(m.initCommands).toEqual(['cd ~/proj', 'source venv/bin/activate']);
+    expect(m.mdUrl).toBe('https://example.com/help.md');
+    expect(m.autoUpdateMinutes).toBe(10);
+  });
+
+  it('accepts initCommands as a newline/comma-separated string', () => {
+    const m = parseToolMeta({ initCommands: 'ls\npwd, echo hi\n  ' }, 'git');
+    expect(m.initCommands).toEqual(['ls', 'pwd', 'echo hi']);
+  });
+
+  it('drops empty/invalid optional fields and non-finite autoUpdateMinutes', () => {
+    const m = parseToolMeta({ tmux: '   ', initCommands: [], autoUpdateMinutes: NaN }, 'git');
+    expect(m.tmux).toBeUndefined();
+    expect(m.initCommands).toBeUndefined();
+    expect(m.autoUpdateMinutes).toBeUndefined();
+  });
+
+  it('flags the reserved quick-command id as special', () => {
+    expect(parseToolMeta({ name: '快捷命令' }, '_quick').special).toBe(true);
+    expect(parseToolMeta({}, 'git').special).toBeUndefined();
+  });
 });

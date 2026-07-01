@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseButtonLine, renderButtonsBlock, escapeHtml, escapeAttr } from '../src/shared/buttonBlock';
+import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr } from '../src/shared/buttonBlock';
 
 describe('parseButtonLine', () => {
   it('command only -> label is the command', () => {
@@ -66,5 +66,38 @@ describe('escapers', () => {
   });
   it('escapeAttr also covers quotes', () => {
     expect(escapeAttr('a"b')).toBe('a&quot;b');
+  });
+});
+
+describe('parseButtonsFromMarkdown', () => {
+  it('collects buttons across multiple fences in document order', () => {
+    const md = [
+      '# Title',
+      '',
+      '```buttons',
+      'git status # 状态',
+      'git pull',
+      '```',
+      '',
+      'some text',
+      '',
+      '```buttons',
+      'docker ps // edit',
+      '```',
+    ].join('\n');
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns.map((b) => b.command)).toEqual(['git status', 'git pull', 'docker ps']);
+    expect(btns[0].label).toBe('状态');
+    expect(btns[2].edit).toBe(true);
+  });
+
+  it('ignores non-buttons fences', () => {
+    const md = '```bash\ngit status\n```\n\n```buttons\nls\n```';
+    expect(parseButtonsFromMarkdown(md).map((b) => b.command)).toEqual(['ls']);
+  });
+
+  it('returns empty for markdown with no buttons blocks', () => {
+    expect(parseButtonsFromMarkdown('# nothing here')).toEqual([]);
+    expect(parseButtonsFromMarkdown('')).toEqual([]);
   });
 });

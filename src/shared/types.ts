@@ -12,7 +12,16 @@ export const IPC = {
   TOOL_CREATE: 'tool:create',
   TOOL_DELETE: 'tool:delete',
   TOOL_REORDER: 'tool:reorder',
+  OPEN_EXTERNAL: 'shell:openExternal',
+  TOOLS_EXPORT: 'tools:export',
+  TOOL_EXPORT_ONE: 'tool:exportOne',
+  TOOLS_IMPORT: 'tools:import',
+  TOOL_REFRESH_MD: 'tool:refreshMd',
 } as const;
+
+// Reserved id of the built-in tool whose `buttons` blocks back the global
+// quick-command dropdown. Seeded at startup; editable like any tool.
+export const QUICK_TOOL_ID = '_quick';
 
 export interface ToolMeta {
   id: string;
@@ -22,6 +31,20 @@ export interface ToolMeta {
   cwd?: string;
   shell?: string;
   env?: Record<string, string>;
+  // tmux session name — when set, the shell execs `tmux new -A -s <name>`
+  // (attach to an existing session, else create+attach).
+  tmux?: string;
+  // Commands injected into the terminal right after spawn, one per line.
+  initCommands?: string[];
+  // Remote markdown URL — when set, help.md is fetched from here (read-only)
+  // instead of read from disk; takes priority over a local help.md.
+  mdUrl?: string;
+  // Auto-refresh cadence (minutes) for a mdUrl tool. 0 disables auto-refresh.
+  // Omitted -> default applied at scan time.
+  autoUpdateMinutes?: number;
+  // Derived flags (set by the scanner, never persisted to tool.json).
+  special?: boolean;
+  readOnly?: boolean;
 }
 
 export interface Tool {
@@ -43,4 +66,6 @@ export interface PtySpawnOpts {
   cwd?: string;
   shell?: string;
   env?: Record<string, string>;
+  tmux?: string;
+  initCommands?: string[];
 }

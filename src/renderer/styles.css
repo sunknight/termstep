@@ -25,20 +25,67 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   border: 1px dashed #b8c0d6; background: #fff; color: #555; border-radius: 6px;
 }
 .new-tool:hover { background: #eef2ff; border-color: #6b8cff; color: #4a6cff; }
-.terminal-area { flex: 1; min-width: 0; background: #1e1e1e; }
+/* Special tools (e.g. the quick-command source) sit in their own divider-topped
+   section above "新建工具", kept apart from the normal tool list. */
+.sidebar-special {
+  margin-top: 6px; padding-top: 6px; border-top: 1px solid #d8d8de;
+  display: flex; flex-direction: column; gap: 2px; flex: 0 0 auto;
+}
+.sidebar-special-item {
+  padding: 8px; border-radius: 6px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  background: #fff8e6; font-size: 12px;
+}
+.sidebar-special-item:hover { background: #fff1cc; }
+.sidebar-special-item.active { background: #ffe6a8; }
+.sidebar-special-item .icon { width: 1.2em; flex: 0 0 auto; }
+.sidebar-special-item .name {
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.terminal-area { flex: 1; min-width: 0; min-height: 0; background: #1e1e1e; overflow: hidden; }
 .terminal-area { position: relative; }
 .term { padding: 6px; }
 .term .xterm { height: 100%; }
 /* Keep terminal scrolling, but hide the scrollbar. */
 .term .xterm-viewport { scrollbar-width: none; -ms-overflow-style: none; }
 .term .xterm-viewport::-webkit-scrollbar { display: none; }
-.term-restart {
+.term-toolbar {
   position: absolute; top: 8px; right: 8px; z-index: 20;
+  display: flex; align-items: center; gap: 6px;
+}
+.term-restart {
   padding: 4px 10px; font-size: 12px; cursor: pointer;
   color: #ddd; background: rgba(40, 40, 40, 0.82);
   border: 1px solid #555; border-radius: 6px;
 }
 .term-restart:hover { background: rgba(70, 70, 70, 0.95); color: #fff; }
+/* Global quick-command dropdown (backed by the _quick tool). */
+.quick-cmd { position: relative; }
+.quick-cmd-toggle {
+  padding: 4px 10px; font-size: 12px; cursor: pointer;
+  color: #1e1e1e; background: rgba(255, 215, 110, 0.92);
+  border: 1px solid #d9a900; border-radius: 6px;
+}
+.quick-cmd-toggle:hover { background: rgba(255, 205, 80, 0.95); }
+.quick-cmd-toggle:disabled { opacity: 0.45; cursor: default; }
+.quick-cmd-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  min-width: 200px; max-width: 320px; max-height: 60vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px; background: #fff; border: 1px solid #c8d2ff; border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.quick-cmd-empty { font-size: 11px; color: #888; padding: 6px 8px; }
+.cmd-btn.compact {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 12px; padding: 5px 8px; margin: 0;
+}
+.cmd-btn.compact .cmd-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-btn.compact .cmd-edit-tag {
+  flex: 0 0 auto; font-size: 10px; color: #888; border: 1px dashed #bbb;
+  border-radius: 4px; padding: 0 4px;
+}
 .help-area { width: 340px; flex: 0 0 340px; border-left: 1px solid #ddd; padding: 12px; overflow-y: auto; }
 .placeholder { color: #999; padding: 16px; }
 .errors { position: fixed; bottom: 0; left: var(--sidebar-w, 180px); right: 0; background: #ffe0e0; color: #900; padding: 6px 12px; font-size: 12px; }
@@ -80,39 +127,74 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   margin-left: auto; background: #4a6cff; border-color: #4a6cff; color: #fff;
 }
 .help-toolbar button.primary:hover { background: #3a58f0; }
-.editor { display: flex; flex-direction: column; height: 100%; gap: 10px; }
+.editor { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 8px; }
 .editor-header {
+  flex: 0 0 auto;
   font-size: 13px; font-weight: 600; color: #333;
   padding-bottom: 6px; border-bottom: 1px solid #e3e3e6;
 }
-.meta-form { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+/* The form scrolls on its own when it can't fit; the markdown area below takes
+   all remaining space (bounded) so CodeMirror scrolls internally instead of the
+   whole pane. Header + actions stay pinned. */
+.meta-form {
+  flex: 0 1 auto; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px; font-size: 12px;
+  padding-right: 2px;
+}
+.form-section {
+  border: 1px solid #e9e9ee; border-radius: 8px; padding: 4px 10px 10px; margin: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.form-section legend {
+  font-size: 10px; font-weight: 700; color: #6b8cff; padding: 0 4px; letter-spacing: 0.5px;
+}
 .field { display: flex; flex-direction: column; gap: 3px; }
-.field-label { color: #666; font-size: 11px; }
-.meta-form input {
+.field-label { color: #555; font-size: 11px; }
+.field-label em { color: #aaa; font-style: normal; font-weight: 400; }
+.meta-form input, .meta-form textarea {
   padding: 5px 7px; font-size: 12px; color: #222;
   border: 1px solid #cfd2da; border-radius: 5px; background: #fff; outline: none;
+  font-family: inherit;
 }
-.meta-form input:focus { border-color: #6b8cff; box-shadow: 0 0 0 2px #dbe3ff; }
-.icon-input { width: 6em; }
-.icon-picker {
+.meta-form input:focus, .meta-form textarea:focus {
+  border-color: #6b8cff; box-shadow: 0 0 0 2px #dbe3ff;
+}
+.icon-input { width: 5em; }
+/* Icon picker is now a popup beside the input, not a full-width grid. */
+.icon-control { position: relative; display: flex; align-items: center; gap: 4px; }
+.icon-popup-toggle {
+  padding: 5px 9px; font-size: 11px; cursor: pointer; color: #555;
+  border: 1px solid #cfd2da; border-radius: 5px; background: #fff;
+}
+.icon-popup-toggle:hover { background: #f2f3f6; }
+.icon-popup {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
   display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
-  padding: 6px; border: 1px solid #e3e3e6; border-radius: 6px; background: #fafafb;
-  max-height: 132px; overflow-y: auto;
+  padding: 8px; width: 224px; background: #fff;
+  border: 1px solid #d4d4dc; border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
 }
 .icon-cell {
   font-size: 16px; line-height: 1; padding: 5px 0; text-align: center;
-  border: 1px solid transparent; border-radius: 5px; background: transparent;
-  cursor: pointer;
+  border: 1px solid transparent; border-radius: 5px; background: transparent; cursor: pointer;
 }
 .icon-cell:hover { background: #eef2ff; }
 .icon-cell.selected { border-color: #6b8cff; background: #dbe3ff; }
+/* Markdown editor: bounded (flex-basis 0) so CodeMirror gets a definite height
+   and scrolls internally; never crushes below the min-height. */
 .editor-md {
-  flex: 1; min-height: 0; overflow: hidden;
-  border: 1px solid #e3e3e6; border-radius: 6px;
+  flex: 1 1 0; min-height: 120px; overflow: hidden;
+  display: flex; flex-direction: column;
+  border: 1px solid #e3e3e6; border-radius: 6px; background: #fff;
 }
-.editor-md .cm-editor { height: 100%; }
-.editor-md .cm-scroller { overflow: auto; }
-.editor-actions { display: flex; gap: 8px; }
+.editor-md-head {
+  flex: 0 0 auto; font-size: 11px; color: #666;
+  padding: 5px 8px; border-bottom: 1px solid #ececef; background: #fafafb;
+}
+.cm-wrap { flex: 1 1 0; min-height: 0; overflow: hidden; }
+.cm-wrap .cm-editor { height: 100%; }
+.cm-wrap .cm-scroller { overflow: auto; }
+.editor-actions { flex: 0 0 auto; display: flex; gap: 8px; }
 .editor-actions button {
   padding: 6px 14px; font-size: 12px; cursor: pointer; color: #222;
   border: 1px solid #cfd2da; border-radius: 6px; background: #fff;
@@ -130,3 +212,40 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   cursor: col-resize; z-index: 10;
 }
 .sidebar-resizer:hover, .sidebar-resizer:active { background: rgba(74, 108, 255, 0.25); }
+
+/* Markdown links open in the system browser (clicks routed via openExternal). */
+.help a { color: #2a60d6; text-decoration: underline; cursor: pointer; }
+.help a:hover { color: #1a40b0; }
+
+/* Import / export buttons at the bottom of the sidebar. */
+.sidebar-io { display: flex; gap: 6px; margin-top: 6px; }
+.io-btn {
+  flex: 1; padding: 6px; font-size: 12px; cursor: pointer;
+  border: 1px solid #cfd2da; background: #fff; color: #555; border-radius: 6px;
+}
+.io-btn:hover { background: #f2f3f6; color: #222; }
+
+/* Read-only / remote banners. */
+.readonly-banner {
+  font-size: 11px; color: #665200; background: #fff7d6;
+  border: 1px solid #ecdd9a; border-radius: 6px; padding: 5px 8px;
+  margin-bottom: 8px; word-break: break-all;
+}
+.editor-readonly-banner {
+  font-size: 11px; color: #555; background: #f6f8fa;
+  border: 1px solid #e3e3e6; border-radius: 6px; padding: 6px 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.editor-readonly-banner .link-btn {
+  flex: 0 0 auto; cursor: pointer; font-size: 11px; color: #4a6cff;
+  background: transparent; border: 1px solid #c8d2ff; border-radius: 5px; padding: 3px 8px;
+}
+.editor-readonly-banner .link-btn:hover { background: #eef2ff; }
+
+/* New editor inputs: init-commands textarea + number input. */
+.meta-form textarea.init-commands {
+  resize: vertical; padding: 5px 7px; font-size: 12px; font-family: Menlo, monospace;
+  color: #222; border: 1px solid #cfd2da; border-radius: 5px; background: #fff; outline: none;
+}
+.meta-form textarea.init-commands:focus { border-color: #6b8cff; box-shadow: 0 0 0 2px #dbe3ff; }
+.meta-form .num-input { width: 8em; }

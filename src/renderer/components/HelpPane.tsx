@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Tool } from '../../shared/types';
 import { md } from '../lib/markdown';
-import { runCommand } from '../lib/termRegistry';
+import { runCommandChecked } from '../lib/runCommandChecked';
 
 interface TipState {
   text: string;
@@ -27,16 +27,31 @@ export function HelpPane(props: { tool: Tool; activeToolId: string }) {
     if (!el) return;
 
     const onClick = (e: MouseEvent) => {
+      // Command buttons: inject into the terminal (with a danger confirm).
       const btn = (e.target as HTMLElement).closest('.cmd-btn') as HTMLButtonElement | null;
-      if (!btn) return;
-      const command = btn.dataset['cmd'] ?? '';
-      const edit = btn.dataset['edit'] === '1';
-      const opts = {
-        cwd: props.tool.meta.cwd,
-        shell: props.tool.meta.shell,
-        env: props.tool.meta.env,
-      };
-      runCommand(props.activeToolId, command, edit, opts);
+      if (btn) {
+        const command = btn.dataset['cmd'] ?? '';
+        const edit = btn.dataset['edit'] === '1';
+        const opts = {
+          cwd: props.tool.meta.cwd,
+          shell: props.tool.meta.shell,
+          env: props.tool.meta.env,
+          tmux: props.tool.meta.tmux,
+          initCommands: props.tool.meta.initCommands,
+        };
+        runCommandChecked(props.activeToolId, command, edit, opts);
+        return;
+      }
+      // Markdown links: open http(s)/mailto in the system browser instead of
+      // trying to navigate the renderer.
+      const anchor = (e.target as HTMLElement).closest('a') as HTMLAnchorElement | null;
+      if (anchor) {
+        const href = anchor.getAttribute('href') ?? '';
+        if (/^(https?:|mailto:)/i.test(href)) {
+          e.preventDefault();
+          void window.api.shell.openExternal(href);
+        }
+      }
     };
 
     // Delegated hover: show a fixed-position tooltip with the full command for any
