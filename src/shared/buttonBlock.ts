@@ -1,7 +1,16 @@
+export interface ButtonParam {
+  name: string;
+  hint?: string;
+  options?: string[];
+  default?: string;
+  required?: boolean;
+}
+
 export interface ParsedButton {
   command: string;
   label: string;
   edit: boolean;
+  params?: ButtonParam[];
 }
 
 export function escapeHtml(s: string): string {
@@ -65,4 +74,15 @@ export function parseButtonsFromMarkdown(markdown: string): ParsedButton[] {
     }
   }
   return out;
+}
+
+// Substitute {{name}} placeholders in a command template with collected form
+// values. A placeholder whose name is not a key in `values` is left untouched
+// (so undeclared {{x}} shows up literally and is easy to spot). The result is
+// trimmed of leading/trailing whitespace; interior whitespace is preserved.
+export function substituteParams(template: string, values: Record<string, string>): string {
+  const out = template.replace(/\{\{([^{}]+)\}\}/g, (m, name) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? values[name] : m
+  );
+  return out.trim();
 }

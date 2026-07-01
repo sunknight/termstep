@@ -101,3 +101,26 @@ describe('parseButtonsFromMarkdown', () => {
     expect(parseButtonsFromMarkdown('')).toEqual([]);
   });
 });
+
+import { substituteParams } from '../src/shared/buttonBlock';
+
+describe('substituteParams', () => {
+  it('replaces a single placeholder', () => {
+    expect(substituteParams('echo {{msg}}', { msg: 'hi' })).toBe('echo hi');
+  });
+  it('replaces multiple placeholders', () => {
+    expect(substituteParams('{{a}} {{b}}', { a: '1', b: '2' })).toBe('1 2');
+  });
+  it('replaces every occurrence of the same name', () => {
+    expect(substituteParams('{{a}}-{{a}}', { a: 'x' })).toBe('x-x');
+  });
+  it('empty value replaces with empty string', () => {
+    expect(substituteParams('git push {{flags}}', { flags: '' })).toBe('git push');
+  });
+  it('undeclared placeholder left as-is', () => {
+    expect(substituteParams('echo {{x}}', {})).toBe('echo {{x}}');
+  });
+  it('trims leading/trailing whitespace', () => {
+    expect(substituteParams('   hi   ', {})).toBe('hi');
+  });
+});
