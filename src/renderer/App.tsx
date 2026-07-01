@@ -144,9 +144,6 @@ export default function App() {
               )}
               <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
             </div>
-            <div className={'md-source-badge' + (active.meta.useRemote ? ' remote' : '')}>
-              {active.meta.useRemote ? '📡 远程内容' : '📄 本地内容'}
-            </div>
             <HelpPane
               tool={active}
               activeToolId={active.meta.id}

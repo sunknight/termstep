@@ -288,13 +288,6 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .io-btn:hover { background: #f2f3f6; color: #222; }
 
-/* Pill showing which source is effective, shown above the help content. */
-.md-source-badge {
-  align-self: flex-start;
-  font-size: 11px; color: #555; background: #eef2ff;
-  border: 1px solid #c8d2ff; border-radius: 12px; padding: 2px 10px; margin-bottom: 8px;
-}
-.md-source-badge.remote { color: #665200; background: #fff7d6; border-color: #ecdd9a; }
 /* Hint shown on the remote tab before a URL is set. */
 .md-hint {
   font-size: 11px; color: #665200; background: #fff7d6;
