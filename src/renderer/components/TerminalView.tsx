@@ -31,8 +31,18 @@ export function TerminalView(props: {
       fitRef.current = fit;
       termRegistry.set(props.toolId, term);
 
+      // xterm v5 sometimes skips its first paint after open()+fit() until the next
+      // user interaction, leaving the startup prompt invisible ("blank terminal
+      // until Enter"). The first bytes have landed in the buffer by now, so force a
+      // full repaint on the next frame to make the prompt show immediately.
+      let firstData = true;
       offDataRef.current = window.api.pty.onData((tid, data) => {
-        if (tid === props.toolId) term.write(data);
+        if (tid !== props.toolId) return;
+        term.write(data);
+        if (firstData) {
+          firstData = false;
+          requestAnimationFrame(() => term.refresh(0, term.rows - 1));
+        }
       });
       term.onData((data) => window.api.pty.write(props.toolId, data, props.spawnOpts));
       term.onResize(({ cols, rows }) => window.api.pty.resize(props.toolId, cols, rows));
