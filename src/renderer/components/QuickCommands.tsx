@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { parseButtonsFromMarkdown } from '../../shared/buttonBlock';
+import { parseButtonsFromMarkdown, substituteParams, type ButtonParam } from '../../shared/buttonBlock';
 import type { Tool, PtySpawnOpts } from '../../shared/types';
 import { runCommandChecked } from '../lib/runCommandChecked';
+import { useParamPrompt } from '../lib/paramPrompt';
 
 // Global quick-command dropdown. The command list lives in a single markdown
 // file (read/written via api.quick) — NOT a tool. Its `buttons` blocks are
@@ -42,7 +43,9 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
 
   const buttons = parseButtonsFromMarkdown(md);
 
-  const run = (command: string, edit: boolean) => {
+  const prompt = useParamPrompt();
+
+  const run = (command: string, edit: boolean, params?: ButtonParam[]) => {
     const a = props.activeTool;
     if (!a) return;
     const opts: PtySpawnOpts = {
@@ -52,8 +55,15 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
       tmux: a.meta.tmux,
       initCommands: a.meta.initCommands,
     };
-    runCommandChecked(a.meta.id, command, edit, opts);
     setOpen(false);
+    if (params && params.length > 0) {
+      prompt.open({ command, edit, params }, (values) => {
+        if (!values) return;
+        runCommandChecked(a.meta.id, substituteParams(command, values), edit, opts);
+      });
+      return;
+    }
+    runCommandChecked(a.meta.id, command, edit, opts);
   };
 
   const openEditor = () => {
@@ -76,6 +86,7 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
 
   return (
     <>
+      {prompt.node}
       <div className="quick-cmd" ref={wrapRef}>
         <button
           className="quick-cmd-toggle"
@@ -95,7 +106,7 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
                   key={`${b.command}-${i}`}
                   className={'cmd-btn compact' + (b.edit ? ' edit' : '')}
                   title={b.command}
-                  onClick={() => run(b.command, b.edit)}
+                  onClick={() => run(b.command, b.edit, b.params)}
                 >
                   <span className="cmd-label">{b.label}</span>
                   {b.edit && <span className="cmd-edit-tag">编辑</span>}
