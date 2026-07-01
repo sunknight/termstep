@@ -86,3 +86,55 @@ export function substituteParams(template: string, values: Record<string, string
   );
   return out.trim();
 }
+
+// Parse the body of a ```buttons-json fence. Accepts a single object or an
+// array. Entries missing `command` (or params missing `name`) are dropped.
+// edit/required are true only on strict === true so that strings like "false"
+// or numbers don't sneak in as truthy. Returns {error} on JSON syntax failure
+// so the renderer can surface it instead of silently dropping the block.
+export function parseButtonsJson(
+  code: string
+): { buttons: ParsedButton[] } | { error: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(code);
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  const arr: unknown[] = Array.isArray(parsed) ? parsed : [parsed];
+  const buttons: ParsedButton[] = [];
+  for (const raw of arr) {
+    if (!raw || typeof raw !== 'object') continue;
+    const obj = raw as Record<string, unknown>;
+    const command = typeof obj.command === 'string' ? obj.command.trim() : '';
+    if (!command) continue;
+    const label =
+      typeof obj.label === 'string' && obj.label.trim() ? obj.label.trim() : command;
+    const edit = obj.edit === true;
+    const params = Array.isArray(obj.params) ? coerceParams(obj.params) : [];
+    const btn: ParsedButton = { command, label, edit };
+    if (params.length > 0) btn.params = params;
+    buttons.push(btn);
+  }
+  return { buttons };
+}
+
+function coerceParams(raw: unknown[]): ButtonParam[] {
+  const out: ButtonParam[] = [];
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue;
+    const o = p as Record<string, unknown>;
+    const name = typeof o.name === 'string' ? o.name.trim() : '';
+    if (!name) continue;
+    const param: ButtonParam = { name };
+    if (typeof o.hint === 'string') param.hint = o.hint;
+    if (Array.isArray(o.options)) {
+      const opts = o.options.filter((x): x is string => typeof x === 'string');
+      if (opts.length > 0) param.options = opts;
+    }
+    if (typeof o.default === 'string') param.default = o.default;
+    if (o.required === true) param.required = true;
+    out.push(param);
+  }
+  return out;
+}

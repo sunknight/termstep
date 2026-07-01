@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr } from '../src/shared/buttonBlock';
+import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson } from '../src/shared/buttonBlock';
 
 describe('parseButtonLine', () => {
   it('command only -> label is the command', () => {
@@ -122,5 +122,56 @@ describe('substituteParams', () => {
   });
   it('trims leading/trailing whitespace', () => {
     expect(substituteParams('   hi   ', {})).toBe('hi');
+  });
+});
+
+describe('parseButtonsJson', () => {
+  it('accepts a single object', () => {
+    const r = parseButtonsJson(JSON.stringify({ command: 'echo hi' }));
+    expect('buttons' in r).toBe(true);
+    expect((r as { buttons: any[] }).buttons)
+      .toEqual([{ command: 'echo hi', label: 'echo hi', edit: false }]);
+  });
+  it('accepts an array', () => {
+    const r = parseButtonsJson(JSON.stringify([{ command: 'a' }, { command: 'b' }]));
+    expect((r as { buttons: any[] }).buttons.map((b) => b.command)).toEqual(['a', 'b']);
+  });
+  it('drops entries without command', () => {
+    const r = parseButtonsJson(JSON.stringify([{ command: 'a' }, { label: 'no cmd' }]));
+    expect((r as { buttons: any[] }).buttons.length).toBe(1);
+  });
+  it('drops params without name', () => {
+    const r = parseButtonsJson(JSON.stringify({
+      command: 'x', params: [{ hint: 'h' }, { name: 'ok' }],
+    }));
+    expect((r as { buttons: any[] }).buttons[0].params).toEqual([{ name: 'ok' }]);
+  });
+  it('coerces strictly: only === true is truthy; options filtered to strings', () => {
+    const r = parseButtonsJson(JSON.stringify({
+      command: 'x',
+      edit: 'true',
+      params: [{ name: 'p', required: 1, options: ['a', 2, 'b'], default: 'd' }],
+    }));
+    const btn = (r as { buttons: any[] }).buttons[0];
+    expect(btn.edit).toBe(false);
+    expect(btn.params[0].required).toBeUndefined();
+    expect(btn.params[0].options).toEqual(['a', 'b']);
+    expect(btn.params[0].default).toBe('d');
+  });
+  it('returns error on malformed JSON', () => {
+    const r = parseButtonsJson('{ not json');
+    expect('error' in r).toBe(true);
+  });
+  it('label defaults to command when omitted', () => {
+    const r = parseButtonsJson(JSON.stringify({ command: 'git status' }));
+    expect((r as { buttons: any[] }).buttons[0].label).toBe('git status');
+  });
+  it('keeps explicit label', () => {
+    const r = parseButtonsJson(JSON.stringify({ command: 'git status', label: '状态' }));
+    expect((r as { buttons: any[] }).buttons[0].label).toBe('状态');
+  });
+  it('omits params key when params is empty', () => {
+    const r = parseButtonsJson(JSON.stringify({ command: 'x', params: [] }));
+    expect((r as { buttons: any[] }).buttons[0].params).toBeUndefined();
   });
 });
