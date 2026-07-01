@@ -33,6 +33,11 @@ export class PtyService {
     const shell = opts.shell || defaultShell();
     const cwd = expandHome(opts.cwd) ?? os.homedir();
     const env = { ...process.env, ...(opts.env ?? {}) } as Record<string, string>;
+    // GUI-launched (packaged) apps inherit no UTF-8 locale, so BSD `ls` prints '?'
+    // for non-ASCII filenames (e.g. Chinese). Fall back to a UTF-8 locale when
+    // unset (only when unset, so a user-set locale in dev/tool env is preserved).
+    if (!env['LANG']) env['LANG'] = 'en_US.UTF-8';
+    if (!env['LC_CTYPE']) env['LC_CTYPE'] = 'en_US.UTF-8';
     // tmux: when a sanitized session name is configured, exec into
     // `tmux new -A -s NAME` (attach if it exists, else create). An invalid name
     // is silently ignored so a bad tool.json never bricks spawning.
