@@ -32,7 +32,7 @@ export async function seedDefaultTools(toolsDir: string): Promise<void> {
       '[',
       '  {',
       '    "label": "提交（填信息）",',
-      '    "command": "git commit -m \\"{{message}}\\"",',
+      '    "command": "git commit -m {{message}}",',
       '    "edit": true,',
       '    "params": [',
       '      { "name": "message", "hint": "提交信息", "required": true }',

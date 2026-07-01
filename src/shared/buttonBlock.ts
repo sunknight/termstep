@@ -86,13 +86,28 @@ export function parseButtonsFromMarkdown(markdown: string): ParsedButton[] {
   return out;
 }
 
+// POSIX single-quote wrap a value so it is safe to splice into a shell command
+// (handles spaces, quotes, $, ;, etc.). Empty string stays empty so optional
+// params vanish from the command instead of producing an empty '' argument.
+// Embedded single quotes are escaped with the standard '\'' sequence.
+export function shellQuote(s: string): string {
+  if (s === '') return '';
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
 // Substitute {{name}} placeholders in a command template with collected form
-// values. A placeholder whose name is not a key in `values` is left untouched
-// (so undeclared {{x}} shows up literally and is easy to spot). The result is
-// trimmed of leading/trailing whitespace; interior whitespace is preserved.
+// values. Each value is POSIX shell-quoted (see shellQuote) so authors write
+// BARE placeholders — e.g. `git commit -m {{message}}`, NOT `"...{{message}}..."`:
+// the system supplies the quoting, so a message containing a quote or space is
+// still passed as one safe argument. A placeholder whose name is not a key in
+// `values` is left untouched (so undeclared {{x}} shows up literally and is
+// easy to spot). The result is trimmed of leading/trailing whitespace; interior
+// whitespace is preserved.
 export function substituteParams(template: string, values: Record<string, string>): string {
+  const quoted: Record<string, string> = {};
+  for (const k of Object.keys(values)) quoted[k] = shellQuote(values[k]);
   const out = template.replace(/\{\{([^{}]+)\}\}/g, (m, name) =>
-    Object.prototype.hasOwnProperty.call(values, name) ? values[name] : m
+    Object.prototype.hasOwnProperty.call(quoted, name) ? quoted[name] : m
   );
   return out.trim();
 }

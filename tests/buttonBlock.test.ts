@@ -128,14 +128,17 @@ describe('parseButtonsFromMarkdown', () => {
 import { substituteParams } from '../src/shared/buttonBlock';
 
 describe('substituteParams', () => {
-  it('replaces a single placeholder', () => {
-    expect(substituteParams('echo {{msg}}', { msg: 'hi' })).toBe('echo hi');
+  // Each value is POSIX single-quote wrapped so special chars (spaces, quotes,
+  // ;, $, etc.) are safe in the shell. Empty values stay empty so optional
+  // params vanish. Undeclared placeholders are left as-is.
+  it('single-quotes a value', () => {
+    expect(substituteParams('echo {{msg}}', { msg: 'hi' })).toBe("echo 'hi'");
   });
-  it('replaces multiple placeholders', () => {
-    expect(substituteParams('{{a}} {{b}}', { a: '1', b: '2' })).toBe('1 2');
+  it('quotes each of multiple placeholders', () => {
+    expect(substituteParams('{{a}} {{b}}', { a: '1', b: '2' })).toBe("'1' '2'");
   });
-  it('replaces every occurrence of the same name', () => {
-    expect(substituteParams('{{a}}-{{a}}', { a: 'x' })).toBe('x-x');
+  it('quotes every occurrence of the same name', () => {
+    expect(substituteParams('{{a}}-{{a}}', { a: 'x' })).toBe("'x'-'x'");
   });
   it('empty value replaces with empty string', () => {
     expect(substituteParams('git push {{flags}}', { flags: '' })).toBe('git push');
@@ -145,6 +148,19 @@ describe('substituteParams', () => {
   });
   it('trims leading/trailing whitespace', () => {
     expect(substituteParams('   hi   ', {})).toBe('hi');
+  });
+  it('value with a double quote is safely quoted', () => {
+    expect(substituteParams('git commit -m {{message}}', { message: '1"' })).toBe(
+      "git commit -m '1\"'"
+    );
+  });
+  it('value with spaces is quoted as one argument', () => {
+    expect(substituteParams('git commit -m {{message}}', { message: 'hello world' })).toBe(
+      "git commit -m 'hello world'"
+    );
+  });
+  it("value with a single quote is escaped via '\\''", () => {
+    expect(substituteParams('echo {{x}}', { x: "it's" })).toBe("echo 'it'\\''s'");
   });
 });
 

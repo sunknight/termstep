@@ -54,8 +54,11 @@
 
 - 语法 `{{name}}`（双花括号）—— 不与 shell 的 `$VAR` / `${VAR}` 冲突。
 - 替换模板里**所有**出现的 `{{name}}`（同名可多次出现，全部替换）。
-- 每个想填值的参数都必须在 `command` 里放一个 `{{name}}`；这是唯一的填值入口。
+- 每个想填值的参数都必须在 `command` 里放一个**裸占位符** `{{name}}`；这是唯一的填值入口。
+- **值会被 POSIX 单引号包裹后替换**（`shellQuote`：`1"` → `'1"'`、`hello world` → `'hello world'`、`it's` → `'it'\''s'`），所以即使值里含空格/引号/`$`/`;` 等，也是一条安全的 shell 参数。**因此作者不要在占位符外面包自己的引号**——写 `git commit -m {{message}}`，不要写 `git commit -m "{{message}}"`（否则会出现双重引号）。
+- 空值替换为空串（可选参数留空即消失，不会产生空的 `''` 参数）；最后对整条命令做首尾 `trim()`。
 - 模板里出现 `{{x}}` 但 `params` 没定义 `x` → 该占位符**原样保留**（用户在终端 / 确认框里会看到 `{{x}}`，便于发现配置错误），不静默吞掉。
+- 取舍说明：默认转义意味着「一个参数 = 一条 shell 参数」；若作者需要「一个参数展开成多个参数」（如 `{{args}}` = `--foo --bar`），默认转义会把它引成一个整体——这是有意的安全默认，多参数场景目前需拆成多个占位符。
 
 ### 示例（git 工具 help.md 片段）
 
@@ -69,7 +72,7 @@ git log --oneline -20
 [
   {
     "label": "提交",
-    "command": "git commit -m \"{{message}}\" {{flags}}",
+    "command": "git commit -m {{message}} {{flags}}",
     "edit": true,
     "params": [
       { "name": "message", "hint": "提交信息", "required": true },
@@ -179,7 +182,7 @@ runCommandChecked(toolId, command, edit, opts);             // 普通按钮，�
 
 ### `substituteParams(template, values)`
 
-- 对每个有值的参数，替换模板里所有 `{{name}}`。
+- 对每个参数值先经 `shellQuote`（POSIX 单引号包裹，空值保持空串），再替换模板里所有 `{{name}}`。
 - 可选参数留空 → 替换成空串；最后对整条命令做一次首尾 `trim()`（去掉如 `git push ` 的尾随空格）。
 - 模板内部空白**不**做折叠（避免破坏引号里有意的空格，如多词 commit message）。
 - 约定：把可能为空的参数放在命令末尾，避免中间出现多余空格。
@@ -204,7 +207,7 @@ runCommandChecked(toolId, command, edit, opts);             // 普通按钮，�
 
 ### 边界决定
 
-- **参数值原样替换、不做转义**：值是用户自填、跑在自己终端，转义会破坏合法值。有意为之。
+- **参数值默认做 POSIX shell 转义**（`shellQuote` 单引号包裹），所以值里的空格/引号/`$`/`;` 都安全。代价：「一个占位符 = 一条 shell 参数」；需要展开成多个参数的场景要拆成多个占位符。作者写裸占位符，不要在外面包引号。
 - JSON 按钮省略 `label` → label 回退为命令模板（带 `{{}}`，较丑）；建议总是写 `label`。
 - JSON 按钮无 `params`（或空数组）→ 当普通按钮，不输出 `data-params`，走直接执行路径；两条路径在渲染层合并。
 - 参数化按钮的 `data-tip`（hover 提示）显示模板（如 `git commit -m "{{message}}"`），让用户看到命令形状。
