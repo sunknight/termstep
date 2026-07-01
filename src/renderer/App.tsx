@@ -7,6 +7,7 @@ import { EditorPane } from './components/EditorPane';
 import { QuickCommands } from './components/QuickCommands';
 import { Notifications } from './components/Notifications';
 import { HoverTip } from './components/HoverTip';
+import { PanelToggle } from './components/PanelToggle';
 import { termRegistry } from './lib/termRegistry';
 
 export default function App() {
@@ -15,6 +16,19 @@ export default function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
   const [liveCwd, setLiveCwd] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    () => localStorage.getItem('gui-anything:sidebar-collapsed') === '1',
+  );
+  const [helpCollapsed, setHelpCollapsed] = useState<boolean>(
+    () => localStorage.getItem('gui-anything:help-collapsed') === '1',
+  );
+
+  useEffect(() => {
+    localStorage.setItem('gui-anything:sidebar-collapsed', sidebarCollapsed ? '1' : '0');
+  }, [sidebarCollapsed]);
+  useEffect(() => {
+    localStorage.setItem('gui-anything:help-collapsed', helpCollapsed ? '1' : '0');
+  }, [helpCollapsed]);
 
   useEffect(() => {
     if (!activeId && tools.length > 0) setActiveId(tools[0].meta.id);
@@ -82,19 +96,63 @@ export default function App() {
     else window.alert(`已导入 ${res.count} 个工具。`);
   };
 
+  // Each panel's element is built once and used in exactly one place: docked
+  // when expanded, or floated inside the Peek when collapsed. Same component =>
+  // one source of truth for the tool list and the docs.
+  const sidebarContent = (
+    <Sidebar
+      tools={tools}
+      activeId={activeId}
+      onSelect={setActiveId}
+      onReorder={reorderTools}
+      onNew={createTool}
+      onExport={exportTools}
+      onImport={importTools}
+      floating={sidebarCollapsed}
+    />
+  );
+  const helpContent = (
+    <div className="help-area">
+      {active && editingId === active.meta.id ? (
+        <EditorPane tool={active} onDone={() => setEditingId(null)} />
+      ) : active ? (
+        <>
+          <div className="help-toolbar">
+            <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
+            <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>⤓ 导出</button>
+            {active.meta.useRemote && (
+              <button title="重新读取远程内容" onClick={() => window.api.refreshMd()}>⟳ 重新读取</button>
+            )}
+            <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
+          </div>
+          <HelpPane
+            tool={active}
+            activeToolId={active.meta.id}
+            markdown={
+              active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
+            }
+          />
+        </>
+      ) : (
+        <div className="placeholder">无选中工具</div>
+      )}
+    </div>
+  );
+
   return (
     <div className="app">
-      <Sidebar
-        tools={tools}
-        activeId={activeId}
-        onSelect={setActiveId}
-        onReorder={reorderTools}
-        onNew={createTool}
-        onExport={exportTools}
-        onImport={importTools}
-      />
+      {!sidebarCollapsed && sidebarContent}
       <section className="terminal-area">
         <div className="term-header">
+          <PanelToggle
+            side="left"
+            collapsed={sidebarCollapsed}
+            icon="☰"
+            title="工具列表"
+            onToggle={() => setSidebarCollapsed((v) => !v)}
+            peekContent={sidebarContent}
+            closePeekOnClick
+          />
           <span className="term-cwd">
             <span className="term-cwd-icon">📂</span>
             <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
@@ -122,6 +180,14 @@ export default function App() {
               </button>
             )}
           </div>
+          <PanelToggle
+            side="right"
+            collapsed={helpCollapsed}
+            icon="📖"
+            title="工具文档"
+            onToggle={() => setHelpCollapsed((v) => !v)}
+            peekContent={helpContent}
+          />
         </div>
         <div className="term-pane-wrap">
           {activeId ? (
@@ -131,31 +197,7 @@ export default function App() {
           )}
         </div>
       </section>
-      <section className="help-area">
-        {active && editingId === active.meta.id ? (
-          <EditorPane tool={active} onDone={() => setEditingId(null)} />
-        ) : active ? (
-          <>
-            <div className="help-toolbar">
-              <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
-              <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>⤓ 导出</button>
-              {active.meta.useRemote && (
-                <button title="重新读取远程内容" onClick={() => window.api.refreshMd()}>⟳ 重新读取</button>
-              )}
-              <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
-            </div>
-            <HelpPane
-              tool={active}
-              activeToolId={active.meta.id}
-              markdown={
-                active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
-              }
-            />
-          </>
-        ) : (
-          <div className="placeholder">无选中工具</div>
-        )}
-      </section>
+      {!helpCollapsed && helpContent}
       {errors.length > 0 && <Notifications errors={errors} />}
     </div>
   );

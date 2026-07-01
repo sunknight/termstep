@@ -14,6 +14,7 @@ export function Sidebar(props: {
   onNew: () => void;
   onExport: () => void;
   onImport: () => void;
+  floating?: boolean;
 }) {
   const [width, setWidth] = useState<number>(() => {
     const v = Number(localStorage.getItem(STORAGE_KEY));
@@ -108,7 +109,7 @@ export function Sidebar(props: {
         <button className="io-btn" onClick={props.onExport} title="导出全部工具为 JSON">⤓ 导出</button>
         <button className="io-btn" onClick={props.onImport} title="从 JSON 导入工具">⤒ 导入</button>
       </div>
-      <div className="sidebar-resizer" onMouseDown={startDrag} title="拖动调整宽度" />
+      {!props.floating && <div className="sidebar-resizer" onMouseDown={startDrag} title="拖动调整宽度" />}
     </nav>
   );
 }

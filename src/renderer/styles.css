@@ -352,3 +352,25 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .param-field input:focus { border-color: #6b8aff; box-shadow: 0 0 0 2px #dbe3ff; }
 .param-hint { font-size: 11px; color: #888; margin-top: 2px; }
 .param-error { flex: 0 0 auto; font-size: 12px; color: #b00; padding: 0 16px 4px; }
+/* Floating "peek" overlay for a collapsed side panel. Portalled to body,
+   position: fixed; width is dictated by the child (.sidebar / .help-area). */
+.peek {
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+.peek.peek-left { background: #f4f4f6; border-right: 1px solid #ddd; }
+.peek.peek-right { background: #fff; border-left: 1px solid #ddd; }
+/* The docked panels are stretched by the flex row; inside the fixed peek they
+   need an explicit height so their own overflow-y scrolling works. */
+.peek > * { height: 100%; }
+/* Collapse/expand + hover-peek toggle, one at each end of the term-header. */
+.panel-toggle {
+  flex: 0 0 auto;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; line-height: 1; padding: 0;
+  color: #ccc; background: transparent;
+  border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+}
+.panel-toggle:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
