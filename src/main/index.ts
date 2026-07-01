@@ -52,6 +52,19 @@ async function createWindow(): Promise<BrowserWindow> {
 }
 
 app.whenReady().then(async () => {
+  // In dev the bare electron binary shows the default Electron Dock icon; the
+  // packaged .app gets its icon from the bundle (electron-builder mac.icon).
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    const devIcon = path.join(__dirname, '..', '..', 'build', 'icon.png');
+    if (fs.existsSync(devIcon)) {
+      try {
+        app.dock?.setIcon(devIcon);
+      } catch {
+        // ignore — non-fatal
+      }
+    }
+  }
+
   migrateOldTools(TOOLS_DIR);
   await seedDefaultTools(TOOLS_DIR);
 

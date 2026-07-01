@@ -7,6 +7,7 @@ asarUnpack:
   - '**/node-pty/**'   # native module must be unpacked from the asar
 mac:
   target: dmg
+  icon: build/icon.png
   category: public.app-category.developer-tools
 # No `files` override: electron-builder includes production deps (node-pty,
 # chokidar, etc.) from node_modules by default. Setting files to only out/**

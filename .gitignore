@@ -5,6 +5,10 @@ node_modules/
 dist/
 out/
 build/
+# ...but the app icon source assets live in build/ (electron-builder convention);
+# keep them tracked so dev Dock + packaging work out of the box.
+!build/icon.svg
+!build/icon.png
 
 # electron-builder
 release/
