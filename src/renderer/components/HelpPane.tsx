@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Tool } from '../../shared/types';
 import { md } from '../lib/markdown';
 import { runCommandChecked } from '../lib/runCommandChecked';
+import { useParamPrompt } from '../lib/paramPrompt';
+import { substituteParams } from '../../shared/buttonBlock';
 
 interface TipState {
   text: string;
@@ -15,6 +17,7 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
   const ref = useRef<HTMLDivElement>(null);
   const lastBtn = useRef<HTMLElement | null>(null);
   const [tip, setTip] = useState<TipState | null>(null);
+  const prompt = useParamPrompt();
   const html = useMemo(() => md.render(props.markdown), [props.markdown]);
 
   useEffect(() => {
@@ -32,6 +35,7 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
       if (btn) {
         const command = btn.dataset['cmd'] ?? '';
         const edit = btn.dataset['edit'] === '1';
+        const paramsRaw = btn.dataset['params'];
         const opts = {
           cwd: props.tool.meta.cwd,
           shell: props.tool.meta.shell,
@@ -39,6 +43,20 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
           tmux: props.tool.meta.tmux,
           initCommands: props.tool.meta.initCommands,
         };
+        if (paramsRaw) {
+          // Parametrized button: open the form, then run the substituted command.
+          let params;
+          try {
+            params = JSON.parse(paramsRaw);
+          } catch {
+            params = [];
+          }
+          prompt.open({ command, edit, params }, (values) => {
+            if (!values) return;
+            runCommandChecked(props.activeToolId, substituteParams(command, values), edit, opts);
+          });
+          return;
+        }
         runCommandChecked(props.activeToolId, command, edit, opts);
         return;
       }
@@ -86,6 +104,7 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
 
   return (
     <>
+      {prompt.node}
       <div className="help" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
       {tip && (
         <div

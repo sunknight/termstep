@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr } from '../src/shared/buttonBlock';
+import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock } from '../src/shared/buttonBlock';
 
 describe('parseButtonLine', () => {
   it('command only -> label is the command', () => {
@@ -99,5 +99,144 @@ describe('parseButtonsFromMarkdown', () => {
   it('returns empty for markdown with no buttons blocks', () => {
     expect(parseButtonsFromMarkdown('# nothing here')).toEqual([]);
     expect(parseButtonsFromMarkdown('')).toEqual([]);
+  });
+
+  it('merges buttons and buttons-json in document order', () => {
+    const md = [
+      '```buttons',
+      'git status',
+      '```',
+      '```buttons-json',
+      '[{"command":"git push","label":"推送"}]',
+      '```',
+    ].join('\n');
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns.map((b) => b.command)).toEqual(['git status', 'git push']);
+    expect(btns[1].label).toBe('推送');
+  });
+
+  it('carries params from buttons-json', () => {
+    const md =
+      '```buttons-json\n' +
+      '{"command":"git commit -m \\"{{message}}\\"","params":[{"name":"message","required":true}]}\n' +
+      '```';
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns[0].params?.[0]).toEqual({ name: 'message', required: true });
+  });
+});
+
+import { substituteParams } from '../src/shared/buttonBlock';
+
+describe('substituteParams', () => {
+  // Each value is POSIX single-quote wrapped so special chars (spaces, quotes,
+  // ;, $, etc.) are safe in the shell. Empty values stay empty so optional
+  // params vanish. Undeclared placeholders are left as-is.
+  it('single-quotes a value', () => {
+    expect(substituteParams('echo {{msg}}', { msg: 'hi' })).toBe("echo 'hi'");
+  });
+  it('quotes each of multiple placeholders', () => {
+    expect(substituteParams('{{a}} {{b}}', { a: '1', b: '2' })).toBe("'1' '2'");
+  });
+  it('quotes every occurrence of the same name', () => {
+    expect(substituteParams('{{a}}-{{a}}', { a: 'x' })).toBe("'x'-'x'");
+  });
+  it('empty value replaces with empty string', () => {
+    expect(substituteParams('git push {{flags}}', { flags: '' })).toBe('git push');
+  });
+  it('undeclared placeholder left as-is', () => {
+    expect(substituteParams('echo {{x}}', {})).toBe('echo {{x}}');
+  });
+  it('trims leading/trailing whitespace', () => {
+    expect(substituteParams('   hi   ', {})).toBe('hi');
+  });
+  it('value with a double quote is safely quoted', () => {
+    expect(substituteParams('git commit -m {{message}}', { message: '1"' })).toBe(
+      "git commit -m '1\"'"
+    );
+  });
+  it('value with spaces is quoted as one argument', () => {
+    expect(substituteParams('git commit -m {{message}}', { message: 'hello world' })).toBe(
+      "git commit -m 'hello world'"
+    );
+  });
+  it("value with a single quote is escaped via '\\''", () => {
+    expect(substituteParams('echo {{x}}', { x: "it's" })).toBe("echo 'it'\\''s'");
+  });
+});
+
+describe('parseButtonsJson', () => {
+  it('accepts a single object', () => {
+    const r = parseButtonsJson(JSON.stringify({ command: 'echo hi' }));
+    expect('buttons' in r).toBe(true);
+    expect((r as { buttons: any[] }).buttons)
+      .toEqual([{ command: 'echo hi', label: 'echo hi', edit: false }]);
+  });
+  it('accepts an array', () => {
+    const r = parseButtonsJson(JSON.stringify([{ command: 'a' }, { command: 'b' }]));
+    expect((r as { buttons: any[] }).buttons.map((b) => b.command)).toEqual(['a', 'b']);
+  });
+  it('drops entries without command', () => {
+    const r = parseButtonsJson(JSON.stringify([{ command: 'a' }, { label: 'no cmd' }]));
+    expect((r as { buttons: any[] }).buttons.length).toBe(1);
+  });
+  it('drops params without name', () => {
+    const r = parseButtonsJson(JSON.stringify({
+      command: 'x', params: [{ hint: 'h' }, { name: 'ok' }],
+    }));
+    expect((r as { buttons: any[] }).buttons[0].params).toEqual([{ name: 'ok' }]);
+  });
+  it('coerces strictly: only === true is truthy; options filtered to strings', () => {
+    const r = parseButtonsJson(JSON.stringify({
+      command: 'x',
+      edit: 'true',
+      params: [{ name: 'p', required: 1, options: ['a', 2, 'b'], default: 'd' }],
+    }));
+    const btn = (r as { buttons: any[] }).buttons[0];
+    expect(btn.edit).toBe(false);
+    expect(btn.params[0].required).toBeUndefined();
+    expect(btn.params[0].options).toEqual(['a', 'b']);
+    expect(btn.params[0].default).toBe('d');
+  });
+  it('returns error on malformed JSON', () => {
+    const r = parseButtonsJson('{ not json');
+    expect('error' in r).toBe(true);
+  });
+  it('label defaults to command when omitted', () => {
+    const r = parseButtonsJson(JSON.stringify({ command: 'git status' }));
+    expect((r as { buttons: any[] }).buttons[0].label).toBe('git status');
+  });
+  it('keeps explicit label', () => {
+    const r = parseButtonsJson(JSON.stringify({ command: 'git status', label: '状态' }));
+    expect((r as { buttons: any[] }).buttons[0].label).toBe('状态');
+  });
+  it('omits params key when params is empty', () => {
+    const r = parseButtonsJson(JSON.stringify({ command: 'x', params: [] }));
+    expect((r as { buttons: any[] }).buttons[0].params).toBeUndefined();
+  });
+});
+
+describe('renderButtonsJsonBlock', () => {
+  it('renders a button with the template in data-cmd', () => {
+    const html = renderButtonsJsonBlock(JSON.stringify({ command: 'echo {{msg}}', label: 'say' }));
+    expect(html).toContain('data-cmd="echo {{msg}}"');
+    expect(html).toContain('>say<');
+  });
+  it('omits data-params when the button has no params', () => {
+    const html = renderButtonsJsonBlock(JSON.stringify({ command: 'ls' }));
+    expect(html).not.toContain('data-params');
+  });
+  it('serializes params into data-params (attribute-escaped JSON)', () => {
+    const html = renderButtonsJsonBlock(
+      JSON.stringify({ command: 'x {{p}}', params: [{ name: 'p', required: true }] })
+    );
+    expect(html).toContain('data-params=');
+    expect(html).toContain('&quot;name&quot;');
+  });
+  it('renders an error block on malformed JSON', () => {
+    const html = renderButtonsJsonBlock('{ bad');
+    expect(html).toContain('class="cmd-error"');
+  });
+  it('empty array -> empty string', () => {
+    expect(renderButtonsJsonBlock('[]')).toBe('');
   });
 });
