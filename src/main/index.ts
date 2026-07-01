@@ -7,6 +7,12 @@ import { registerIpc } from './ipc';
 import { seedDefaultTools } from './seed';
 import { IPC, type ScanResult } from '../shared/types';
 
+// In dev we run the bare `electron` binary, so macOS's menu bar and Dock default
+// to "Electron". Force the app name so the app-menu title, About box, and
+// userData path all read gui_anything. (The packaged .app already gets its name
+// from electron-builder's productName; this is what fixes dev.)
+app.setName('gui_anything');
+
 const TOOLS_DIR = path.join(app.getPath('userData'), 'tools');
 let ptyService: PtyService | null = null;
 
@@ -33,6 +39,7 @@ async function createWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    title: 'gui_anything',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
