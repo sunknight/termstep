@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`gui_anything` (formerly `cmd_gui`) — a local macOS Electron app that turns CLI commands into clickable menus/buttons. Users define "tools"; each tool has its own persistent terminal and a markdown help page whose ` ```buttons ` fenced blocks render as one-click command buttons. Shells run via node-pty in real xterm.js terminals.
+`TermStep` (formerly `cmd_gui` / `gui_anything`) — a local macOS Electron app that turns CLI commands into clickable menus/buttons. Users define "tools"; each tool has its own persistent terminal and a markdown help page whose ` ```buttons ` fenced blocks render as one-click command buttons. Shells run via node-pty in real xterm.js terminals.
 
 ## Commands
 
@@ -48,7 +48,7 @@ Tool meta `cwd`/`shell`/`env` flow as `PtySpawnOpts` into `PtyService.ensure` (t
 `renderer/lib/markdown.ts` overrides the `fence` rule: a ` ```buttons ` fence is parsed by `shared/buttonBlock.ts` into `<button class="cmd-btn">` elements (one per line). A trailing ` // edit` on a line makes it paste-without-Enter (edit mode); otherwise the command is pasted and Enter is sent. `HelpPane` delegates clicks on `.cmd-btn` to `runCommand`.
 
 ### Storage location & rename migration
-Tools live under `app.getPath('userData')/tools`. Because userData is derived from the app name, `index.ts: migrateOldTools()` does a one-time carry-forward of tools created under previous app names (`cmd-gui`, `cmd_gui`) so a rename doesn't orphan user data. If you rename the app again, extend that list.
+Tools live under `app.getPath('userData')/tools`. Because userData is derived from the app name, `index.ts: migrateOldUserData()` does a one-time carry-forward of the `tools/` directory and `quick-commands.md` created under previous app names (`cmd-gui`, `cmd_gui`, `gui_anything`) so a rename doesn't orphan user data. If you rename the app again, extend that list (and any new userData files).
 
 ## Gotchas (non-obvious, learned the hard way)
 
@@ -56,5 +56,5 @@ Tools live under `app.getPath('userData')/tools`. Because userData is derived fr
 - **Never open xterm in a `display:none` container** — its renderer won't paint the prompt. Create the `Terminal` only once the tab is visible, and call `fit()` inside a `requestAnimationFrame` after showing.
 - **node-pty is a native module**: rebuild for Electron's Node ABI (`npm run rebuild`) before packaging, keep it out of asar (`asarUnpack: '**/node-pty/**'`), and its `spawn-helper` binary must be executable (`postinstall`/`rebuild` chmod it). A packaged app that silently fails to spawn shells usually means a missing rebuild.
 - **pty lifecycle race**: a killed shell's `onExit` fires asynchronously. `PtyService` guards eviction by identity (`this.ptys.get(id) === p`) so restarting a terminal doesn't let the old shell's late exit evict the new one or reset its size. Do **not** drop `desired` on exit — terminal size outlives any single shell.
-- **Packaging is unsigned and host-arch by default** — recipients hit macOS Gatekeeper ("damaged / can't verify developer"); they must right-click→Open or run `xattr -cr "/Applications/gui_anything.app"`. To support Intel Macs, set `mac.target` arch to `[arm64, x64]` (or `universal`). Signing + notarization need an Apple Developer ID.
+- **Packaging is unsigned and host-arch by default** — recipients hit macOS Gatekeeper ("damaged / can't verify developer"); they must right-click→Open or run `xattr -cr "/Applications/TermStep.app"`. To support Intel Macs, set `mac.target` arch to `[arm64, x64]` (or `universal`). Signing + notarization need an Apple Developer ID.
 - **ptyService tests are live and timing-based**: they spawn real shells and poll streamed output with `setInterval`, so they need a real `$SHELL` and can be slow (~1s each).

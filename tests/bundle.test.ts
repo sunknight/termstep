@@ -29,7 +29,7 @@ describe('serializeTools / parseToolsBundle round-trip', () => {
   it('marks the bundle with the current version and app name', () => {
     const b = serializeTools([tool('a', 'A')], 'now');
     expect(b.version).toBe(BUNDLE_VERSION);
-    expect(b.app).toBe('gui_anything');
+    expect(b.app).toBe('TermStep');
   });
 
   it('round-trips useRemote', () => {

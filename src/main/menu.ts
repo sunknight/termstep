@@ -4,9 +4,9 @@ import { app, Menu, type MenuItemConstructorOptions } from 'electron';
 // label is what shows in bold in the menu bar — so it must be the app name, not
 // "Electron" (the default when running the bare electron binary in dev). This is
 // the one dev-visible "Electron" we CAN override; the Dock label unfortunately
-// follows the bundle name and only becomes gui_anything once packaged.
+// follows the bundle name and only becomes TermStep once packaged.
 export function setAppMenu(): void {
-  const name = app.getName(); // 'gui_anything'
+  const name = app.getName(); // 'TermStep'
   const template: MenuItemConstructorOptions[] = [
     {
       label: name,

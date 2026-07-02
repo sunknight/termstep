@@ -17,17 +17,17 @@ export default function App() {
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
   const [liveCwd, setLiveCwd] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
-    () => localStorage.getItem('gui-anything:sidebar-collapsed') === '1',
+    () => localStorage.getItem('termstep:sidebar-collapsed') === '1',
   );
   const [helpCollapsed, setHelpCollapsed] = useState<boolean>(
-    () => localStorage.getItem('gui-anything:help-collapsed') === '1',
+    () => localStorage.getItem('termstep:help-collapsed') === '1',
   );
 
   useEffect(() => {
-    localStorage.setItem('gui-anything:sidebar-collapsed', sidebarCollapsed ? '1' : '0');
+    localStorage.setItem('termstep:sidebar-collapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
   useEffect(() => {
-    localStorage.setItem('gui-anything:help-collapsed', helpCollapsed ? '1' : '0');
+    localStorage.setItem('termstep:help-collapsed', helpCollapsed ? '1' : '0');
   }, [helpCollapsed]);
 
   useEffect(() => {

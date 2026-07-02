@@ -10,29 +10,38 @@ import { IPC, type ScanResult } from '../shared/types';
 
 // In dev we run the bare `electron` binary, so macOS's menu bar and Dock default
 // to "Electron". Force the app name so the app-menu title, About box, and
-// userData path all read gui_anything. (The packaged .app already gets its name
+// userData path all read TermStep. (The packaged .app already gets its name
 // from electron-builder's productName; this is what fixes dev.)
-app.setName('gui_anything');
+app.setName('TermStep');
 
 const TOOLS_DIR = path.join(app.getPath('userData'), 'tools');
 let ptyService: PtyService | null = null;
 
-// The app was renamed (cmd_gui/cmd-gui -> gui_anything); userData is derived from
-// the app name, so storage moved. One-time: carry forward tools created under the
-// old name so they aren't silently lost.
-function migrateOldTools(toolsDir: string): void {
-  const hasCurrent = fs.existsSync(toolsDir) && fs.readdirSync(toolsDir).length > 0;
-  if (hasCurrent) return;
+// The app was renamed (cmd_gui/cmd-gui/gui_anything -> TermStep); userData is
+// derived from the app name, so storage moved. One-time: carry forward the
+// tools/ directory and the quick-commands.md file created under any previous
+// name so they aren't silently lost.
+function migrateOldUserData(userDataDir: string, toolsDir: string): void {
+  const hasTools = fs.existsSync(toolsDir) && fs.readdirSync(toolsDir).length > 0;
+  if (hasTools) return; // already initialized — don't clobber
   const appData = app.getPath('appData');
-  for (const oldName of ['cmd-gui', 'cmd_gui']) {
-    const oldTools = path.join(appData, oldName, 'tools');
-    if (fs.existsSync(oldTools) && fs.readdirSync(oldTools).length > 0) {
+  for (const oldName of ['cmd-gui', 'cmd_gui', 'gui_anything']) {
+    const oldDir = path.join(appData, oldName);
+    const oldTools = path.join(oldDir, 'tools');
+    const oldQuick = path.join(oldDir, 'quick-commands.md');
+    const hasOldTools = fs.existsSync(oldTools) && fs.readdirSync(oldTools).length > 0;
+    const hasOldQuick = fs.existsSync(oldQuick);
+    if (!hasOldTools && !hasOldQuick) continue;
+    if (hasOldTools) {
       fs.mkdirSync(toolsDir, { recursive: true });
       for (const entry of fs.readdirSync(oldTools)) {
         fs.cpSync(path.join(oldTools, entry), path.join(toolsDir, entry), { recursive: true });
       }
-      return;
     }
+    if (hasOldQuick) {
+      fs.cpSync(oldQuick, path.join(userDataDir, 'quick-commands.md'));
+    }
+    return;
   }
 }
 
@@ -40,7 +49,7 @@ async function createWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
-    title: 'gui_anything',
+    title: 'TermStep',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -66,17 +75,17 @@ app.whenReady().then(async () => {
     }
   }
 
-  migrateOldTools(TOOLS_DIR);
+  migrateOldUserData(app.getPath('userData'), TOOLS_DIR);
   await seedDefaultTools(TOOLS_DIR);
 
   // Native app menu (first item's label = the bold menu-bar name on macOS) and a
   // correct About panel — both replace Electron's defaults.
   setAppMenu();
   app.setAboutPanelOptions({
-    applicationName: 'gui_anything',
+    applicationName: 'TermStep',
     applicationVersion: app.getVersion(),
     version: app.getVersion(),
-    credits: 'gui_anything',
+    credits: 'TermStep',
   });
 
   ptyService = new PtyService();

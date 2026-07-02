@@ -14,18 +14,18 @@ describe('PtyService', () => {
     svc = new PtyService();
     const seen: string[] = [];
     svc.onData((_id, data) => seen.push(data));
-    svc.write('t1', 'echo hello_guianything\r\n', {});
+    svc.write('t1', 'echo hello_termstep\r\n', {});
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('timeout')), 8000);
       const check = setInterval(() => {
-        if (seen.join('').includes('hello_guianything')) {
+        if (seen.join('').includes('hello_termstep')) {
           clearTimeout(t);
           clearInterval(check);
           resolve();
         }
       }, 100);
     });
-    expect(seen.join('').includes('hello_guianything')).toBe(true);
+    expect(seen.join('').includes('hello_termstep')).toBe(true);
   }, 10000);
 
   it('kill removes the pty', () => {

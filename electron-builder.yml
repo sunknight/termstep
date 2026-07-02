@@ -1,5 +1,5 @@
-appId: local.guianything
-productName: gui_anything
+appId: local.termstep
+productName: TermStep
 directories:
   output: release
 asar: true

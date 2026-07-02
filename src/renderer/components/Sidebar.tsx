@@ -4,7 +4,7 @@ import type { Tool } from '../../shared/types';
 const MIN_WIDTH = 140;
 const MAX_WIDTH = 380;
 const DEFAULT_WIDTH = 180;
-const STORAGE_KEY = 'gui-anything:sidebar-width';
+const STORAGE_KEY = 'termstep:sidebar-width';
 
 export function Sidebar(props: {
   tools: Tool[];

@@ -1,6 +1,6 @@
 {
-  "name": "gui_anything",
-  "version": "0.1.0",
+  "name": "termstep",
+  "version": "0.2.0",
   "description": "Local macOS app to run CLI commands via menus and buttons",
   "main": "./out/main/index.js",
   "scripts": {

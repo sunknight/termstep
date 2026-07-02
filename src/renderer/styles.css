@@ -113,9 +113,56 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   background: transparent; border: 0; padding: 0 2px; line-height: 1.4;
 }
 .notif-close:hover { color: #500; }
-.help h1 { font-size: 1.2em; }
-.help pre { background: #f6f8fa; padding: 8px; border-radius: 6px; overflow: auto; }
-.help code { font-family: Menlo, monospace; }
+/* Markdown body (.help). Conventional, hierarchical typography — heading
+   sizes descend strictly. The old single ".help h1 { 1.2em }" rule left
+   h2..h6 at browser defaults, so h2 (default ~1.5em) rendered LARGER than
+   h1. Em-based so the scale tracks the inherited base font-size. */
+.help { line-height: 1.6; color: #24292f; overflow-wrap: break-word; }
+.help > *:first-child { margin-top: 0; }
+.help > *:last-child { margin-bottom: 0; }
+/* Headings: descending scale, semibold, with a bottom rule on h1/h2. */
+.help h1, .help h2, .help h3, .help h4, .help h5, .help h6 {
+  margin: 1.4em 0 0.6em; font-weight: 600; line-height: 1.25;
+}
+.help h1 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid #eaecef; }
+.help h2 { font-size: 1.3em; padding-bottom: 0.25em; border-bottom: 1px solid #eaecef; }
+.help h3 { font-size: 1.15em; }
+.help h4 { font-size: 1em; }
+.help h5 { font-size: 0.92em; }
+.help h6 { font-size: 0.85em; color: #6a737d; }
+.help p { margin: 0 0 0.8em; }
+/* Lists. */
+.help ul, .help ol { margin: 0 0 0.8em; padding-left: 1.6em; }
+.help li { margin: 0.2em 0; }
+.help li > ul, .help li > ol { margin: 0.2em 0; }
+/* Code: inline gets a pill; <pre> keeps its block background (pre>code resets). */
+.help code { font-family: Menlo, monospace; font-size: 0.9em; }
+.help :not(pre) > code {
+  background: #f0f1f4; padding: 0.15em 0.4em; border-radius: 4px;
+}
+.help pre {
+  margin: 0 0 0.8em; padding: 10px;
+  background: #f6f8fa; border-radius: 6px; overflow: auto;
+}
+.help pre code { background: none; padding: 0; }
+/* Blockquote. */
+.help blockquote {
+  margin: 0 0 0.8em; padding: 0.4em 1em;
+  color: #6a737d; background: #f6f8fa; border-left: 0.25em solid #d0d7de;
+}
+/* Tables scroll horizontally if wider than the 340px panel. */
+.help table { border-collapse: collapse; margin: 0 0 0.8em; display: block; width: max-content; max-width: 100%; overflow: auto; }
+.help th, .help td { border: 1px solid #d0d7de; padding: 6px 12px; }
+.help th { background: #f6f8fa; font-weight: 600; text-align: left; }
+.help tbody tr:nth-child(2n) td { background: #f6f8fa; }
+/* Misc block + inline elements. */
+.help hr { border: 0; border-top: 1px solid #eaecef; margin: 1.2em 0; }
+.help img { max-width: 100%; }
+.help kbd {
+  font-family: Menlo, monospace; font-size: 0.85em;
+  background: #f6f8fa; border: 1px solid #d0d7de; border-bottom-width: 2px;
+  border-radius: 4px; padding: 1px 5px;
+}
 .cmd-buttons { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 8px 0; }
 .cmd-error {
   margin: 8px 0; padding: 6px 10px;

@@ -192,8 +192,8 @@ export function registerIpc(deps: {
     const stamp = new Date().toISOString().slice(0, 10);
     const res = await saveDialog({
       title: '导出工具',
-      defaultPath: `gui-anything-tools-${stamp}.json`,
-      filters: [{ name: 'gui_anything 工具包', extensions: ['json'] }],
+      defaultPath: `termstep-tools-${stamp}.json`,
+      filters: [{ name: 'TermStep 工具包', extensions: ['json'] }],
     });
     if (res.canceled || !res.filePath) return { canceled: true as const };
     await fs.writeFile(res.filePath, JSON.stringify(bundle, null, 2) + '\n');
@@ -208,8 +208,8 @@ export function registerIpc(deps: {
     const name = slugify(tool.meta.name) || tool.meta.id;
     const res = await saveDialog({
       title: '导出工具',
-      defaultPath: `gui-anything-${name}.json`,
-      filters: [{ name: 'gui_anything 工具包', extensions: ['json'] }],
+      defaultPath: `termstep-${name}.json`,
+      filters: [{ name: 'TermStep 工具包', extensions: ['json'] }],
     });
     if (res.canceled || !res.filePath) return { canceled: true as const };
     await fs.writeFile(res.filePath, JSON.stringify(bundle, null, 2) + '\n');
@@ -219,7 +219,7 @@ export function registerIpc(deps: {
   ipcMain.handle(IPC.TOOLS_IMPORT, async () => {
     const res = await openDialog({
       title: '导入工具',
-      filters: [{ name: 'gui_anything 工具包', extensions: ['json'] }],
+      filters: [{ name: 'TermStep 工具包', extensions: ['json'] }],
       properties: ['openFile'],
     });
     if (res.canceled || res.filePaths.length === 0) return { canceled: true as const };

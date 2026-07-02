@@ -1,4 +1,4 @@
-# gui_anything
+# TermStep
 
 > 把任意 CLI 命令变成可点击的菜单按钮 —— 一个本地 macOS Electron 应用。
 
@@ -114,7 +114,7 @@ npm run dev        # 启动开发模式（electron-vite dev，带 HMR）
 
 - 打包**默认未签名、仅主机架构**。分发给别人时，接收方会撞到 macOS Gatekeeper（「已损坏 / 无法验证开发者」），需右键→打开，或执行：
   ```bash
-  xattr -cr "/Applications/gui_anything.app"
+  xattr -cr "/Applications/TermStep.app"
   ```
 - 要支持 Intel Mac，把 `electron-builder.yml` 里 `mac.target` 的 arch 改为 `[arm64, x64]`（或 `universal`）。
 - 正式签名 + 公证需要 Apple Developer ID。
@@ -153,7 +153,7 @@ npm run dev        # 启动开发模式（electron-vite dev，带 HMR）
 
 **`help.md`** —— 帮助页 markdown，其中 ```` ```buttons ```` / ```` ```buttons-json ```` 围栏渲染为命令按钮。
 
-> 数据目录随应用名派生。应用曾改名（`cmd_gui` / `cmd-gui` → `gui_anything`）；`index.ts` 会一次性把旧名下的工具迁移过来，改名不会丢数据。若再次改名，扩展那个迁移列表即可。
+> 数据目录随应用名派生。应用曾改名（`cmd_gui` / `cmd-gui` / `gui_anything` → `TermStep`）；`index.ts` 会一次性把旧名下的工具迁移过来，改名不会丢数据。若再次改名，扩展那个迁移列表即可。
 
 ---
 

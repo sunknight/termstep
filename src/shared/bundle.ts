@@ -29,7 +29,7 @@ function stripDerived(meta: ToolMeta): SerializableMeta {
 export function serializeTools(tools: Tool[], exportedAt: string): ToolsBundle {
   return {
     version: BUNDLE_VERSION,
-    app: 'gui_anything',
+    app: 'TermStep',
     tools: tools.map((t) => ({ meta: stripDerived(t.meta), helpMarkdown: t.helpMarkdown })),
     // included for human-readability; not consulted on import
     exportedAt,
