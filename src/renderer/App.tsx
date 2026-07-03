@@ -111,20 +111,24 @@ export default function App() {
       floating={sidebarCollapsed}
     />
   );
-  const helpContent = (
+  // `floating` = rendered inside the collapsed peek: hide the delete/export/edit
+  // toolbar there (the peek is for reading docs / running commands, not editing).
+  const renderHelp = (floating: boolean) => (
     <div className="help-area">
       {active && editingId === active.meta.id ? (
         <EditorPane tool={active} onDone={() => setEditingId(null)} />
       ) : active ? (
         <>
-          <div className="help-toolbar">
-            <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
-            <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>⤓ 导出</button>
-            {active.meta.useRemote && (
-              <button title="重新读取远程内容" onClick={() => window.api.refreshMd()}>⟳ 重新读取</button>
-            )}
-            <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
-          </div>
+          {!floating && (
+            <div className="help-toolbar">
+              <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
+              <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>⤓ 导出</button>
+              {active.meta.useRemote && (
+                <button title="重新读取远程内容" onClick={() => window.api.refreshMd()}>⟳ 重新读取</button>
+              )}
+              <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
+            </div>
+          )}
           <HelpPane
             tool={active}
             activeToolId={active.meta.id}
@@ -153,6 +157,12 @@ export default function App() {
             peekContent={sidebarContent}
             closePeekOnClick
           />
+          {sidebarCollapsed && active && (
+            <span className="term-active-tool" title={active.meta.name}>
+              {active.meta.icon && <span className="term-active-tool-icon">{active.meta.icon}</span>}
+              <span className="term-active-tool-name">{active.meta.name}</span>
+            </span>
+          )}
           <span className="term-cwd">
             <span className="term-cwd-icon">📂</span>
             <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
@@ -186,7 +196,7 @@ export default function App() {
             icon="📖"
             title="工具文档"
             onToggle={() => setHelpCollapsed((v) => !v)}
-            peekContent={helpContent}
+            peekContent={renderHelp(true)}
           />
         </div>
         <div className="term-pane-wrap">
@@ -197,7 +207,7 @@ export default function App() {
           )}
         </div>
       </section>
-      {!helpCollapsed && helpContent}
+      {!helpCollapsed && renderHelp(false)}
       {errors.length > 0 && <Notifications errors={errors} />}
     </div>
   );

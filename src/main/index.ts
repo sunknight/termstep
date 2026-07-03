@@ -25,7 +25,10 @@ function migrateOldUserData(userDataDir: string, toolsDir: string): void {
   const hasTools = fs.existsSync(toolsDir) && fs.readdirSync(toolsDir).length > 0;
   if (hasTools) return; // already initialized — don't clobber
   const appData = app.getPath('appData');
-  for (const oldName of ['cmd-gui', 'cmd_gui', 'gui_anything']) {
+  // Most-recent prior name FIRST: take the latest dataset, not stale older ones
+  // (checking cmd-gui before gui_anything once copied ancient cmd-gui tools and
+  // returned, skipping the user's actual current data under gui_anything).
+  for (const oldName of ['gui_anything', 'cmd_gui', 'cmd-gui']) {
     const oldDir = path.join(appData, oldName);
     const oldTools = path.join(oldDir, 'tools');
     const oldQuick = path.join(oldDir, 'quick-commands.md');

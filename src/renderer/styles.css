@@ -421,3 +421,20 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   border: 1px solid transparent; border-radius: 6px; cursor: pointer;
 }
 .panel-toggle:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+
+/* Active-tool badge shown in the term-header when the sidebar is collapsed
+   (the highlighted list entry is no longer visible). Sits right after the path. */
+.term-active-tool {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 5px;
+  max-width: 160px;
+  padding: 2px 8px;
+  color: #2a2a2a; font-size: 12px;        /* dark text on the lavender selected-item bg */
+  background: #d9e3ff;                     /* matches .sidebar li.active (selected tool) */
+  border-radius: 6px;
+}
+.term-active-tool-icon { flex: 0 0 auto; }
+.term-active-tool-name {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
