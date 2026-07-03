@@ -26,6 +26,16 @@ describe('parseButtonLine', () => {
     expect(parseButtonLine('   ')).toBeNull();
     expect(parseButtonLine('')).toBeNull();
   });
+
+  it('"//" prefix line is null (text, not a button)', () => {
+    expect(parseButtonLine('// note')).toBeNull();
+    expect(parseButtonLine('//note')).toBeNull();
+    expect(parseButtonLine('   // indented')).toBeNull();
+  });
+
+  it('"//" prefix wins over trailing " // edit" (text is not a button)', () => {
+    expect(parseButtonLine('// note // edit')).toBeNull();
+  });
 });
 
 describe('renderButtonsBlock', () => {
@@ -57,6 +67,33 @@ describe('renderButtonsBlock', () => {
   it('empty input -> empty string', () => {
     expect(renderButtonsBlock('')).toBe('');
     expect(renderButtonsBlock('\n\n')).toBe('');
+  });
+
+  it('"//" lines render as non-clickable text interleaved with buttons', () => {
+    const html = renderButtonsBlock('// 检查\ngit status\n// 提交\ngit push # 推送');
+    expect(html).toContain('<div class="cmd-text">检查</div>');
+    expect(html).toContain('<div class="cmd-text">提交</div>');
+    expect(html.match(/<button/g)!.length).toBe(2);
+    // text rows carry no command data
+    const textRow = html.match(/<div class="cmd-text">检查<\/div>/)![0];
+    expect(textRow).not.toContain('data-cmd');
+  });
+
+  it('escapes text line content', () => {
+    expect(renderButtonsBlock('// a < b & c')).toContain('a &lt; b &amp; c');
+  });
+
+  it('strips the leading "//" and one following space, keeps the rest', () => {
+    expect(renderButtonsBlock('//   keep inner   spacing')).toContain(
+      'keep inner   spacing'
+    );
+  });
+
+  it('renders a block with only text lines', () => {
+    const html = renderButtonsBlock('// only text\n// more text');
+    expect(html).toContain('<div class="cmd-text">only text</div>');
+    expect(html).toContain('<div class="cmd-text">more text</div>');
+    expect(html).not.toContain('<button');
   });
 });
 
@@ -99,6 +136,14 @@ describe('parseButtonsFromMarkdown', () => {
   it('returns empty for markdown with no buttons blocks', () => {
     expect(parseButtonsFromMarkdown('# nothing here')).toEqual([]);
     expect(parseButtonsFromMarkdown('')).toEqual([]);
+  });
+
+  it('skips "//" text lines — only real buttons are collected', () => {
+    const md = ['```buttons', '// 检查', 'git status', '// 提交', 'git push', '```'].join('\n');
+    expect(parseButtonsFromMarkdown(md).map((b) => b.command)).toEqual([
+      'git status',
+      'git push',
+    ]);
   });
 
   it('merges buttons and buttons-json in document order', () => {

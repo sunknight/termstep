@@ -176,6 +176,12 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .cmd-btn:hover { background: #dbe3ff; }
 .cmd-btn[data-edit="1"] { border-style: dashed; }
+/* Plain-text row inside a `buttons` block (a `//`-prefixed line). It deliberately
+   inherits the surrounding `.help` body-text style (family / size / color / weight /
+   line-height) so it looks identical to a normal paragraph such as "常用命令："
+   written outside the block — no special "label" look. No horizontal padding, so the
+   text aligns with body text at the container's left edge. */
+.cmd-text { padding: 0; }
 /* Custom instant tooltip for labeled command buttons (shows the full command). */
 .cmd-tip {
   position: fixed; z-index: 100;

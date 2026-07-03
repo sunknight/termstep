@@ -22,10 +22,16 @@ export function escapeAttr(s: string): string {
 }
 
 const EDIT_SUFFIX = ' // edit';
+// A line whose trimmed content starts with this is rendered as plain text (a
+// note/label between buttons), not a button. `//` is positional: at the START
+// of a line it means text; the ` // edit` SUFFIX still means edit mode. `//` is
+// not a POSIX shell token, so a `//`-leading line is never a real command.
+const TEXT_PREFIX = '//';
 
 export function parseButtonLine(raw: string): ParsedButton | null {
   let line = raw.replace(/\s+$/, '');
   if (line.trim() === '') return null;
+  if (line.trim().startsWith(TEXT_PREFIX)) return null; // text line, not a button
   let edit = false;
   if (line.endsWith(EDIT_SUFFIX)) {
     edit = true;
@@ -43,21 +49,28 @@ export function parseButtonLine(raw: string): ParsedButton | null {
 }
 
 export function renderButtonsBlock(code: string): string {
-  const buttons: ParsedButton[] = [];
-  for (const line of code.split('\n')) {
-    const b = parseButtonLine(line);
-    if (b) buttons.push(b);
+  const items: string[] = [];
+  for (const raw of code.split('\n')) {
+    const trimmed = raw.trim();
+    if (trimmed === '') continue;
+    if (trimmed.startsWith(TEXT_PREFIX)) {
+      // Text line: strip the leading "//" and any whitespace right after it.
+      const text = trimmed.replace(/^\/\/\s*/, '');
+      if (text === '') continue;
+      items.push(`<div class="cmd-text">${escapeHtml(text)}</div>`);
+      continue;
+    }
+    const b = parseButtonLine(raw);
+    if (!b) continue;
+    // Only labeled buttons (command # label) get a tooltip — for them the visible
+    // text differs from the command, so hovering reveals the full command.
+    const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
+    items.push(
+      `<button class="cmd-btn"${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`
+    );
   }
-  if (buttons.length === 0) return '';
-  const items = buttons
-    .map((b) => {
-      // Only labeled buttons (command # label) get a tooltip — for them the visible
-      // text differs from the command, so hovering reveals the full command.
-      const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
-      return `<button class="cmd-btn"${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`;
-    })
-    .join('');
-  return `<div class="cmd-buttons">${items}</div>`;
+  if (items.length === 0) return '';
+  return `<div class="cmd-buttons">${items.join('')}</div>`;
 }
 
 // Collect every button declared across all `buttons` and `buttons-json` fenced
