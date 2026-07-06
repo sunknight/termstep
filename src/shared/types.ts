@@ -24,6 +24,8 @@ export const IPC = {
   MD_FETCH_PREVIEW: 'md:fetchPreview',
   QUICK_GET: 'quick:get',
   QUICK_SAVE: 'quick:save',
+  UPDATE_STATE: 'update:state',
+  UPDATE_CHECK: 'update:check',
 } as const;
 
 export interface ToolMeta {
@@ -78,3 +80,15 @@ export interface PtySpawnOpts {
   tmux?: string;
   initCommands?: string[];
 }
+
+// Auto-update check state. The main process fetches a self-hosted JSON manifest
+// and compares its version to app.getVersion(); this discriminated union is the
+// state broadcast to the renderer over IPC.UPDATE_STATE. Only `available`
+// renders the sidebar badge; `upToDate`/`error` produce a transient popover
+// right after a MANUAL check (auto checks fail silently).
+export type UpdateState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'upToDate' }
+  | { status: 'available'; version: string; url: string; notes: string }
+  | { status: 'error'; error: string };
