@@ -6,6 +6,7 @@ import { ToolManager } from './toolManager';
 import { registerIpc } from './ipc';
 import { seedDefaultTools } from './seed';
 import { setAppMenu } from './menu';
+import * as updater from './updater';
 import { IPC, type ScanResult } from '../shared/types';
 
 // In dev we run the bare `electron` binary, so macOS's menu bar and Dock default
@@ -105,6 +106,25 @@ app.whenReady().then(async () => {
   await toolManager.start();
 
   await createWindow();
+
+  // Auto-update: broadcast every updater state change to all renderer windows
+  // (sidebar badge subscribes via api.update.onState). Then kick a silent check
+  // ~5s after startup (delayed so window/pty/tools scan settle first; auto
+  // checks fail silently when offline — no UI noise).
+  updater.onUpdateState((s) => {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send(IPC.UPDATE_STATE, s);
+  });
+  // Re-broadcast current state to any newly opened window after it finishes
+  // loading (so a freshly created window shows the right badge immediately,
+  // not just idle until the next state change).
+  app.on('browser-window-created', (_e, w) => {
+    w.webContents.once('did-finish-load', () =>
+      w.webContents.send(IPC.UPDATE_STATE, updater.getUpdateState())
+    );
+  });
+  setTimeout(() => {
+    void updater.checkForUpdates({ manual: false });
+  }, 5000);
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) await createWindow();

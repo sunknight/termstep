@@ -37,6 +37,16 @@ export function setAppMenu(): void {
     {
       label: '视图',
       submenu: [
+        {
+          label: '检查更新…',
+          click: () => {
+            // Dynamic import keeps menu.ts free of an updater import at module
+            // load (updater pulls in electron's `net`, which is fine here but
+            // the lazy form also avoids any menu/updater load-order coupling).
+            void import('./updater').then((m) => m.checkForUpdates({ manual: true }));
+          },
+        },
+        { type: 'separator' },
         { role: 'reload', label: '重新加载' },
         { role: 'toggleDevTools', label: '开发者工具' },
         { type: 'separator' },

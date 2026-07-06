@@ -10,6 +10,7 @@ import { mergeToolJson } from '../shared/toolJson';
 import { buildButtonsAppend } from '../shared/buttonBlock';
 import { fetchRemoteMarkdown } from './toolsScanner';
 import { liveCwd } from './cwd';
+import * as updater from './updater';
 import { IPC, type ToolMeta, type PtySpawnOpts } from '../shared/types';
 
 function slugify(name: string): string {
@@ -317,5 +318,12 @@ export function registerIpc(deps: {
   });
   ipcMain.handle(IPC.QUICK_SAVE, async (_e, md: string) => {
     await fs.writeFile(quickFile, typeof md === 'string' ? md : '');
+  });
+
+  // Manual update check (from the sidebar badge "再检查一次" button). Returns the
+  // resulting UpdateState; the renderer's hook picks it up via the UPDATE_STATE
+  // broadcast wired in index.ts.
+  ipcMain.handle(IPC.UPDATE_CHECK, async () => {
+    return updater.checkForUpdates({ manual: true });
   });
 }
