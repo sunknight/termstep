@@ -27,6 +27,34 @@ export function compareVersions(remote: string, current: string): number | null 
   return 0;
 }
 
+// Validated manifest shape. `parseManifest` returns this or null.
+export interface ParsedManifest {
+  version: string;
+  url: string;
+  notes: string;
+}
+
+// Parse and validate the remote manifest JSON. Returns null for any malformed
+// payload (non-JSON, missing version/url, wrong types, empty version/url).
+// notes defaults to "". We deliberately accept ONLY these three fields and
+// ignore extras.
+export function parseManifest(raw: string): ParsedManifest | null {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== 'object') return null;
+  const o = obj as Record<string, unknown>;
+  const version = o['version'];
+  const url = o['url'];
+  const notes = o['notes'];
+  if (typeof version !== 'string' || typeof url !== 'string') return null;
+  if (version.length === 0 || url.length === 0) return null;
+  return { version, url, notes: typeof notes === 'string' ? notes : '' };
+}
+
 // Parse "X.Y.Z" into [major, minor, patch] numbers, or null if malformed.
 // Rejects: non-numeric, negative, missing segments, extra segments, leading
 // zeros are allowed (0.03.0 == 0.3.0 numerically).
