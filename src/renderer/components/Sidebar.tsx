@@ -105,13 +105,17 @@ export function Sidebar(props: {
           );
         })}
       </ul>
-      <button className="new-tool" onClick={props.onNew}>+ 新建工具</button>
-      <div className="sidebar-io">
-        <button className="io-btn" onClick={props.onExport} title="导出全部工具为 JSON">⤓ 导出</button>
-        <button className="io-btn" onClick={props.onImport} title="从 JSON 导入工具">⤒ 导入</button>
-      </div>
-      <UpdateChecker />
-      {!props.floating && <div className="sidebar-resizer" onMouseDown={startDrag} title="拖动调整宽度" />}
+      {!props.floating && (
+        <>
+          <button className="new-tool" onClick={props.onNew}>+ 新建工具</button>
+          <div className="sidebar-io">
+            <button className="io-btn" onClick={props.onExport} title="导出全部工具为 JSON">⤓ 导出</button>
+            <button className="io-btn" onClick={props.onImport} title="从 JSON 导入工具">⤒ 导入</button>
+          </div>
+          <UpdateChecker />
+          <div className="sidebar-resizer" onMouseDown={startDrag} title="拖动调整宽度" />
+        </>
+      )}
     </nav>
   );
 }
