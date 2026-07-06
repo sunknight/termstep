@@ -11,8 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { app, net } from 'electron';
 
-const MANIFEST_URL =
-  process.env['TERMSTEP_UPDATE_URL'] ?? 'https://example.com/termstep/update.json';
+const MANIFEST_URL = process.env['TERMSTEP_UPDATE_URL'] ?? 'https://plainraw.com/raw/87c5a6f119b5';
 const FETCH_TIMEOUT_MS = 10_000;
 
 // Compare two `X.Y.Z` version strings. Returns >0 if `remote > current`, 0 if
