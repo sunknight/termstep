@@ -23,13 +23,87 @@ export function TerminalView(props: {
     if (!props.active) return;
 
     if (!termRef.current && containerRef.current) {
-      const term = new Terminal({ fontFamily: 'Menlo, monospace', fontSize: 13, scrollback: 5000 });
+      // macOptionClickForcesSelection: when an app captures the mouse (e.g. tmux
+      // `set -g mouse on`), xterm disables its selection service. On macOS the
+      // only way to force a native drag-selection through that capture is to hold
+      // Option (⌥) — but only if this option is on. Without it, Option+drag is
+      // reported to the app and the xterm selection never sticks, so users can't
+      // select-and-copy inside tmux. (The mouse-event dispatcher also honors this
+      // and skips reporting to the pty while Option is held.)
+      const term = new Terminal({
+        fontFamily: 'Menlo, monospace',
+        fontSize: 13,
+        scrollback: 5000,
+        macOptionClickForcesSelection: true,
+      });
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(containerRef.current); // container is visible (active => display:block)
       termRef.current = term;
       fitRef.current = fit;
       termRegistry.set(props.toolId, term);
+
+      // Copy-on-select (iTerm2-style): whenever the user makes (or extends) an
+      // xterm selection — including an Option-forced selection under tmux mouse
+      // capture — push it to the system clipboard. tmux's own mouse-mode
+      // selections never trigger this (they don't fire onSelectionChange), so
+      // only real xterm selections are copied.
+      term.onSelectionChange(() => {
+        const text = term.getSelection();
+        if (text) void window.api.clipboard.writeText(text);
+      });
+
+      // ⌘C copies the current selection; ⌘V pastes the clipboard into the pty.
+      // Returning false tells xterm not to also process the keystroke.
+      term.attachCustomKeyEventHandler((ev) => {
+        if (ev.type !== 'keydown') return true;
+        const key = ev.key.toLowerCase();
+        if (ev.metaKey && key === 'c') {
+          if (term.hasSelection()) {
+            void window.api.clipboard.writeText(term.getSelection());
+            return false;
+          }
+          return true; // nothing selected — let it pass (no-op)
+        }
+        if (ev.metaKey && key === 'v') {
+          // preventDefault is essential: returning false only stops xterm's
+          // *key* handling — it does NOT stop the browser's default Cmd+V.
+          // xterm also registers a `paste` event listener on the textarea
+          // (Terminal.ts -> Clipboard.ts handlePasteEvent) that would read
+          // event.clipboardData and paste again, duplicating the text
+          // ("tmux" -> "tmuxtmux"). Without this the native paste fires too.
+          ev.preventDefault();
+          window.api.clipboard.readText().then((text) => {
+            if (text) term.paste(text);
+          });
+          return false;
+        }
+        return true;
+      });
+
+      // OSC 52 clipboard passthrough: when a program in the terminal copies text
+      // (e.g. a remote tmux with `set -g set-clipboard on`, where a plain drag
+      // selects inside tmux), it emits `ESC ] 52 ; <target> ; <base64> ST`.
+      // Decode it onto the local system clipboard so those copies reach the Mac
+      // even over SSH. We implement only the SET direction; read queries ('?')
+      // and clear requests (empty) are ignored (don't expose the clipboard to
+      // remote programs, don't clobber it on a clear).
+      term.parser.registerOscHandler(52, (data) => {
+        // data = "<target>;<base64>"  (target may be empty or "c,p,..." — we
+        // write to the clipboard regardless, macOS has a single clipboard).
+        const sep = data.indexOf(';');
+        if (sep < 0) return true;
+        const b64 = data.slice(sep + 1);
+        if (!b64 || b64 === '?') return true;
+        try {
+          const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          const text = new TextDecoder('utf-8').decode(bytes);
+          void window.api.clipboard.writeText(text);
+        } catch {
+          // malformed base64 — ignore
+        }
+        return true;
+      });
 
       // xterm v5 sometimes skips its first paint after open()+fit() until the next
       // user interaction, leaving the startup prompt invisible ("blank terminal

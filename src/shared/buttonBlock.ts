@@ -32,6 +32,13 @@ export function parseButtonLine(raw: string): ParsedButton | null {
   let line = raw.replace(/\s+$/, '');
   if (line.trim() === '') return null;
   if (line.trim().startsWith(TEXT_PREFIX)) return null; // text line, not a button
+  // Line comment: a trimmed line starting with `#` is a shell-style comment —
+  // lives in the md source only, never rendered or collected. Disambiguated
+  // from the ` # ` label separator by position: `#` at line START = comment;
+  // ` # ` mid-line = label. (No real command starts with `#` — it's a comment
+  // in shells too.) Checked before the label split so `# foo` isn't parsed as a
+  // (weird) button.
+  if (line.trim().startsWith('#')) return null; // line comment, not rendered
   let edit = false;
   if (line.endsWith(EDIT_SUFFIX)) {
     edit = true;
@@ -71,6 +78,23 @@ export function renderButtonsBlock(code: string): string {
   }
   if (items.length === 0) return '';
   return `<div class="cmd-buttons">${items.join('')}</div>`;
+}
+
+// Build the result of appending `body` as a NEW ```buttons fence to the end of
+// `currentMd`. Used by the quick-add "+" flow (append mode): the user dumps one
+// or more commands (one per line) and they get wrapped and appended to help.md
+// for later editing. An empty/whitespace body is a no-op (returns currentMd
+// unchanged so the caller can skip writing). Trailing whitespace on currentMd is
+// normalized to a single blank-line separator; an empty doc gets no leading
+// blank line. Interior blank lines in body are preserved (renderButtonsBlock
+// ignores them at render time).
+export function buildButtonsAppend(currentMd: string, body: string): string {
+  const trimmedBody = body.trim();
+  if (trimmedBody === '') return currentMd;
+  const trimmedMd = currentMd.replace(/\s+$/, '');
+  const fence = '```buttons\n' + trimmedBody + '\n```';
+  if (trimmedMd === '') return fence + '\n';
+  return trimmedMd + '\n\n' + fence + '\n';
 }
 
 // Collect every button declared across all `buttons` and `buttons-json` fenced

@@ -1,4 +1,4 @@
-import { ipcMain, shell, dialog, BrowserWindow } from 'electron';
+import { ipcMain, shell, dialog, BrowserWindow, clipboard } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -7,6 +7,7 @@ import { ToolManager } from './toolManager';
 import { parseToolMeta } from '../shared/toolConfig';
 import { serializeTools, parseToolsBundle } from '../shared/bundle';
 import { mergeToolJson } from '../shared/toolJson';
+import { buildButtonsAppend } from '../shared/buttonBlock';
 import { fetchRemoteMarkdown } from './toolsScanner';
 import { liveCwd } from './cwd';
 import { IPC, type ToolMeta, type PtySpawnOpts } from '../shared/types';
@@ -121,6 +122,24 @@ export function registerIpc(deps: {
     }
   );
 
+  // Quick-add "+" (local mode): append `body` as a new ```buttons fence to the
+  // end of help.md. Reads help.md fresh (no stale renderer copy), normalizes via
+  // buildButtonsAppend, writes back only when something actually changed. Never
+  // touches tool.json — meta stays intact.
+  ipcMain.handle(IPC.TOOL_APPEND_BUTTONS, async (_e, toolId: string, body: string) => {
+    const file = path.join(toolsDir, toolId, 'help.md');
+    let cur = '';
+    try {
+      cur = await fs.readFile(file, 'utf8');
+    } catch {
+      // missing help.md -> treat as empty (equivalent to a first write)
+    }
+    const next = buildButtonsAppend(cur, typeof body === 'string' ? body : '');
+    if (next === cur) return; // empty body -> no-op, skip the write + rescan
+    await fs.writeFile(file, next);
+    // chokidar picks up the change -> tools:changed
+  });
+
   ipcMain.handle(IPC.TOOL_CREATE, async (_e, name: string): Promise<string> => {
     const base = slugify(name);
     let id = base;
@@ -140,9 +159,39 @@ export function registerIpc(deps: {
       path.join(dir, 'tool.json'),
       JSON.stringify({ name: meta.name, icon: meta.icon, order: 999 }, null, 2) + '\n'
     );
+    // Starter help.md: a single working `ls` button plus a full buttons /
+    // buttons-json syntax reference written as `#` line comments inside the
+    // fence. Comments don't render, so the help page stays clean — the user
+    // discovers the reference by clicking 编辑. (No literal ``` inside comment
+    // lines, to keep the fence parser unambiguous.)
     await fs.writeFile(
       path.join(dir, 'help.md'),
-      `# ${meta.name}\n\n点击按钮运行：\n\n\`\`\`buttons\nls\n\`\`\`\n`
+      [
+        `# ${meta.name}`,
+        '',
+        '点击按钮运行命令。buttons / buttons-json 的完整语法写在下面这个 buttons 块的注释里（点「编辑」即可看到）。',
+        '',
+        '```buttons',
+        '# ── buttons 语法（每行一条命令）──',
+        '# 命令                 → 生成一个按钮，按钮文字 = 命令本身',
+        'ls',
+        '# 命令 # 标签          → 按钮显示「标签」，运行时执行「命令」',
+        '# 命令 // edit         → 只粘贴到终端、不自动回车（编辑模式）',
+        '# 命令 # 标签 // edit  → 带标签的编辑模式',
+        '# // 文字              → 行首以 // 开头：渲染为一段可见纯文本',
+        '# # 文字               → 行首以 # 开头：注释，只留在源码、不渲染（这些行就是）',
+        '# 空行                 → 跳过',
+        '',
+        '# ── buttons-json 语法（带参数的按钮）──',
+        '# 把围栏名 buttons 改成 buttons-json，内容是 JSON 对象或数组，每项可用字段：',
+        '#   command（必填）   label   edit   params',
+        '# params 每项：name（必填）   required   default   hint   options',
+        '# command 里写 {{参数名}} 占位；点按钮时弹表单收集，值做 POSIX shell 转义后代入',
+        '# 示例（去掉下面这行开头的 #，放进 buttons-json 围栏即可用）：',
+        '# {"command":"git commit -m {{msg}}","label":"提交","params":[{"name":"msg","required":true}]}',
+        '```',
+        '',
+      ].join('\n')
     );
     return id;
   });
@@ -167,6 +216,15 @@ export function registerIpc(deps: {
     if (typeof url === 'string' && /^(https?:|mailto:)/i.test(url)) {
       await shell.openExternal(url);
     }
+  });
+
+  // Clipboard lives in the MAIN process: the renderer's preload is sandboxed
+  // (Electron 20+ default), where require('electron') omits `clipboard`. So the
+  // renderer asks the main process to read/write the system clipboard over IPC.
+  // Used by terminal copy/paste, copy-on-select, OSC 52, and quick-add prefill.
+  ipcMain.handle(IPC.CLIPBOARD_READ, () => clipboard.readText());
+  ipcMain.handle(IPC.CLIPBOARD_WRITE, (_e, text: string) => {
+    clipboard.writeText(typeof text === 'string' ? text : '');
   });
 
   // Force a fresh scan (re-fetches all mdUrl tools). Backs the per-tool "重新读取"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock } from '../src/shared/buttonBlock';
+import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock, buildButtonsAppend } from '../src/shared/buttonBlock';
 
 describe('parseButtonLine', () => {
   it('command only -> label is the command', () => {
@@ -283,5 +283,75 @@ describe('renderButtonsJsonBlock', () => {
   });
   it('empty array -> empty string', () => {
     expect(renderButtonsJsonBlock('[]')).toBe('');
+  });
+});
+
+describe('buildButtonsAppend', () => {
+  it('empty / whitespace-only body -> returns currentMd unchanged', () => {
+    expect(buildButtonsAppend('# Title\n', '')).toBe('# Title\n');
+    // whitespace-only body is treated as empty
+    expect(buildButtonsAppend('# Title\n', '   \n  \n')).toBe('# Title\n');
+  });
+
+  it('appends a new buttons fence wrapping the body at the end', () => {
+    const out = buildButtonsAppend('# Title\n\n```buttons\nls\n```', 'pwd');
+    expect(out).toBe('# Title\n\n```buttons\nls\n```\n\n```buttons\npwd\n```\n');
+  });
+
+  it('normalizes trailing whitespace on currentMd to a single blank line separator', () => {
+    const out = buildButtonsAppend('# Title\n\n\n\n', 'pwd');
+    expect(out).toBe('# Title\n\n```buttons\npwd\n```\n');
+  });
+
+  it('first append to an empty doc has no leading blank line', () => {
+    const out = buildButtonsAppend('', 'pwd');
+    expect(out).toBe('```buttons\npwd\n```\n');
+  });
+
+  it('trims surrounding whitespace off the body but keeps interior blank lines', () => {
+    const out = buildButtonsAppend('# Title', 'pwd\n\nls');
+    expect(out).toBe('# Title\n\n```buttons\npwd\n\nls\n```\n');
+  });
+});
+
+describe('buttons comment lines (# at line start)', () => {
+  it('parseButtonLine: "# ..." is null (comment, not a button)', () => {
+    expect(parseButtonLine('# todo: refactor this')).toBeNull();
+    expect(parseButtonLine('#')).toBeNull();
+    expect(parseButtonLine('#label-no-space')).toBeNull();
+  });
+
+  it('parseButtonLine: leading whitespace before # is still a comment', () => {
+    expect(parseButtonLine('  # indented comment')).toBeNull();
+  });
+
+  it('renderButtonsBlock: comment lines produce no output (not text, not button)', () => {
+    const html = renderButtonsBlock('# hidden note\nls\n# another note');
+    expect(html).toBe(
+      '<div class="cmd-buttons"><button class="cmd-btn" data-cmd="ls" data-edit="0">ls</button></div>'
+    );
+    expect(html).not.toContain('hidden');
+    expect(html).not.toContain('another');
+  });
+
+  it('parseButtonsFromMarkdown: comments excluded from collected buttons', () => {
+    const md = '```buttons\n# comment\npwd\n# another\n```';
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns).toHaveLength(1);
+    expect(btns[0].command).toBe('pwd');
+  });
+
+  it('regression: "cmd # label" is NOT a comment (label only when # is mid-line)', () => {
+    expect(parseButtonLine('git status # 查看状态')).toEqual({
+      command: 'git status',
+      label: '查看状态',
+      edit: false,
+    });
+  });
+
+  it('regression: "// text" still renders as visible text, not ignored', () => {
+    const html = renderButtonsBlock('// a visible note\nls');
+    expect(html).toContain('class="cmd-text"');
+    expect(html).toContain('a visible note');
   });
 });

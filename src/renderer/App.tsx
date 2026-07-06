@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
 import { EditorPane } from './components/EditorPane';
+import { QuickAddModal } from './components/QuickAddModal';
 import { QuickCommands } from './components/QuickCommands';
 import { Notifications } from './components/Notifications';
 import { HoverTip } from './components/HoverTip';
@@ -14,6 +15,7 @@ export default function App() {
   const { tools, errors } = useTools();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
   const [liveCwd, setLiveCwd] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
@@ -126,6 +128,9 @@ export default function App() {
               {active.meta.useRemote && (
                 <button title="重新读取远程内容" onClick={() => window.api.refreshMd()}>⟳ 重新读取</button>
               )}
+              {!active.meta.useRemote && (
+                <button title="快速添加命令（追加到末尾）" onClick={() => setQuickAddOpen(true)}>+</button>
+              )}
               <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
             </div>
           )}
@@ -209,6 +214,12 @@ export default function App() {
       </section>
       {!helpCollapsed && renderHelp(false)}
       {errors.length > 0 && <Notifications errors={errors} />}
+      {quickAddOpen && active && (
+        <QuickAddModal
+          onSubmit={(body) => window.api.tool.appendButtons(active.meta.id, body)}
+          onClose={() => setQuickAddOpen(false)}
+        />
+      )}
     </div>
   );
 }

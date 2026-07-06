@@ -35,6 +35,10 @@ const api = {
   tool: {
     save: (toolId: string, markdown: string, meta: Partial<ToolMeta>) =>
       ipcRenderer.invoke(IPC.TOOL_SAVE, toolId, markdown, meta),
+    // Append `body` as a new ```buttons fence to the end of the tool's help.md
+    // (local mode quick-add). Reads/writes help.md only; tool.json untouched.
+    appendButtons: (toolId: string, body: string) =>
+      ipcRenderer.invoke(IPC.TOOL_APPEND_BUTTONS, toolId, body),
     create: (name: string) => ipcRenderer.invoke(IPC.TOOL_CREATE, name) as Promise<string>,
     del: (toolId: string) => ipcRenderer.invoke(IPC.TOOL_DELETE, toolId),
     reorder: (orderedIds: string[]) => ipcRenderer.invoke(IPC.TOOL_REORDER, orderedIds),
@@ -42,6 +46,14 @@ const api = {
   shell: {
     // Open an external http(s)/mailto link in the default browser.
     openExternal: (url: string) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
+  },
+  clipboard: {
+    // System clipboard via the MAIN process over IPC. The preload is sandboxed
+    // (Electron 20+ default), where `clipboard` is NOT in the sandboxed
+    // `electron` subset — so we forward to ipcMain, which has full access.
+    // Async (invoke returns a Promise); callers fire-and-forget or .then().
+    readText: () => ipcRenderer.invoke(IPC.CLIPBOARD_READ) as Promise<string>,
+    writeText: (text: string) => ipcRenderer.invoke(IPC.CLIPBOARD_WRITE, text),
   },
   bundle: {
     export: () => ipcRenderer.invoke(IPC.TOOLS_EXPORT),
