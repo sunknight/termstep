@@ -445,14 +445,11 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Update checker (sidebar bottom): a "检查更新" button + a result line. */
-.update-checker {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+/* Update checker (sidebar bottom): a single state-driven button. */
+.update-checker { margin-top: 6px; }
 .uc-check-btn {
+  display: block;
+  width: 100%;
   padding: 6px 8px;
   font-size: 12px;
   cursor: pointer;
@@ -463,31 +460,13 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .uc-check-btn:hover:not(:disabled) { background: #f2f3f6; color: #222; }
 .uc-check-btn:disabled { cursor: default; color: #999; }
-
-.uc-badge {
-  padding: 6px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  border: 1px solid #f0b8b8;
+/* New-version variant: red, signals "click to see what's new". */
+.uc-check-btn.uc-has-update {
+  border-color: #f0b8b8;
   background: #fff0f0;
   color: #b00;
-  border-radius: 6px;
-  text-align: center;
 }
-.uc-badge:hover { background: #ffe0e0; }
-.uc-uptodate {
-  font-size: 11px;
-  color: #888;
-  text-align: center;
-  padding: 2px 0;
-}
-.uc-error {
-  font-size: 11px;
-  color: #b00;
-  text-align: center;
-  padding: 2px 0;
-  cursor: help;
-}
+.uc-check-btn.uc-has-update:hover { background: #ffe0e0; }
 
 .update-popover {
   position: fixed;
