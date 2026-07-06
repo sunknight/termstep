@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC, type ScanResult, type ToolMeta, type PtySpawnOpts } from '../shared/types';
+import { IPC, type ScanResult, type ToolMeta, type PtySpawnOpts, type UpdateState } from '../shared/types';
 
 const api = {
   tools: {
@@ -54,6 +54,19 @@ const api = {
     // Async (invoke returns a Promise); callers fire-and-forget or .then().
     readText: () => ipcRenderer.invoke(IPC.CLIPBOARD_READ) as Promise<string>,
     writeText: (text: string) => ipcRenderer.invoke(IPC.CLIPBOARD_WRITE, text),
+  },
+  update: {
+    // Main pushes UpdateState whenever the check result changes. The renderer's
+    // useUpdateState hook subscribes; initial state arrives via the first push
+    // (main broadcasts on window ready).
+    onState: (cb: (s: UpdateState) => void) => {
+      const h = (_e: unknown, s: UpdateState) => cb(s);
+      ipcRenderer.on(IPC.UPDATE_STATE, h);
+      return () => {
+        ipcRenderer.off(IPC.UPDATE_STATE, h);
+      };
+    },
+    check: () => ipcRenderer.invoke(IPC.UPDATE_CHECK),
   },
   bundle: {
     export: () => ipcRenderer.invoke(IPC.TOOLS_EXPORT),
