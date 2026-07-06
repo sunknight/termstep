@@ -11,6 +11,12 @@ import { HoverTip } from './components/HoverTip';
 import { PanelToggle } from './components/PanelToggle';
 import { termRegistry } from './lib/termRegistry';
 
+// Right panel width bounds. Match the sidebar's range so the two sides feel
+// symmetric; the default keeps the old hardcoded 340px.
+const HELP_MIN_WIDTH = 200;
+const HELP_MAX_WIDTH = 560;
+const HELP_DEFAULT_WIDTH = 340;
+
 export default function App() {
   const { tools, errors } = useTools();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -24,6 +30,32 @@ export default function App() {
   const [helpCollapsed, setHelpCollapsed] = useState<boolean>(
     () => localStorage.getItem('termstep:help-collapsed') === '1',
   );
+  // Right panel width, persisted like the sidebar's. Drag direction is mirrored:
+  // on the right edge, moving the cursor LEFT widens the panel.
+  const [helpWidth, setHelpWidth] = useState<number>(() => {
+    const v = Number(localStorage.getItem('termstep:help-width'));
+    return v >= HELP_MIN_WIDTH && v <= HELP_MAX_WIDTH ? v : HELP_DEFAULT_WIDTH;
+  });
+  const startHelpDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = helpWidth;
+    const onMove = (ev: MouseEvent) => {
+      // Cursor moves left (ev.clientX < startX) -> panel grows.
+      const w = Math.min(HELP_MAX_WIDTH, Math.max(HELP_MIN_WIDTH, startW + (startX - ev.clientX)));
+      setHelpWidth(w);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
 
   useEffect(() => {
     localStorage.setItem('termstep:sidebar-collapsed', sidebarCollapsed ? '1' : '0');
@@ -31,6 +63,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('termstep:help-collapsed', helpCollapsed ? '1' : '0');
   }, [helpCollapsed]);
+  useEffect(() => {
+    localStorage.setItem('termstep:help-width', String(helpWidth));
+  }, [helpWidth]);
 
   useEffect(() => {
     if (!activeId && tools.length > 0) setActiveId(tools[0].meta.id);
@@ -116,7 +151,10 @@ export default function App() {
   // `floating` = rendered inside the collapsed peek: hide the delete/export/edit
   // toolbar there (the peek is for reading docs / running commands, not editing).
   const renderHelp = (floating: boolean) => (
-    <div className="help-area">
+    <div
+      className="help-area"
+      {...(!floating && { style: { width: `${helpWidth}px`, flex: `0 0 ${helpWidth}px` } })}
+    >
       {active && editingId === active.meta.id ? (
         <EditorPane tool={active} onDone={() => setEditingId(null)} />
       ) : active ? (
@@ -145,6 +183,7 @@ export default function App() {
       ) : (
         <div className="placeholder">无选中工具</div>
       )}
+      {!floating && <div className="help-resizer" onMouseDown={startHelpDrag} title="拖动调整宽度" />}
     </div>
   );
 

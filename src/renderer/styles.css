@@ -92,7 +92,9 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   flex: 0 0 auto; font-size: 10px; color: #888; border: 1px dashed #bbb;
   border-radius: 4px; padding: 0 4px;
 }
-.help-area { width: 340px; flex: 0 0 340px; border-left: 1px solid #ddd; padding: 12px; overflow-y: auto; }
+/* Width set inline by the docked panel (see startHelpDrag in App.tsx); when
+   floated inside the collapsed peek, no width is set and the Peek sizes itself. */
+.help-area { border-left: 1px solid #ddd; padding: 12px; overflow-y: auto; }
 .placeholder { color: #999; padding: 16px; }
 .errors { display: none; }
 /* Transient scan-error toasts (auto-dismiss + manual close). */
@@ -192,7 +194,7 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   pointer-events: none;
 }
-.help-area { display: flex; flex-direction: column; }
+.help-area { position: relative; display: flex; flex-direction: column; }
 .help-toolbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   padding: 4px 0 8px; border-bottom: 1px solid #ececef; margin-bottom: 8px;
@@ -248,6 +250,15 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   border: 1px solid #cfd2da; border-radius: 5px; background: #fff;
 }
 .icon-popup-toggle:hover { background: #f2f3f6; }
+
+/* mdUrl field: input + an inline "pick local file" button. Mirrors icon-control. */
+.mdurl-control { display: flex; align-items: center; gap: 4px; }
+.mdurl-control input { flex: 1; }
+.mdurl-pick {
+  padding: 5px 9px; font-size: 13px; line-height: 1; cursor: pointer; color: #555;
+  border: 1px solid #cfd2da; border-radius: 5px; background: #fff;
+}
+.mdurl-pick:hover { background: #f2f3f6; }
 .icon-popup {
   position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
   display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
@@ -328,6 +339,14 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   cursor: col-resize; z-index: 10;
 }
 .sidebar-resizer:hover, .sidebar-resizer:active { background: rgba(74, 108, 255, 0.25); }
+
+/* Right panel resizer — mirror of .sidebar-resizer, anchored to the LEFT edge
+   (the panel's border side). Dragging it left widens the panel. */
+.help-resizer {
+  position: absolute; top: 0; left: -3px; bottom: 0; width: 6px;
+  cursor: col-resize; z-index: 10;
+}
+.help-resizer:hover, .help-resizer:active { background: rgba(74, 108, 255, 0.25); }
 
 /* Markdown links open in the system browser (clicks routed via openExternal). */
 .help a { color: #2a60d6; text-decoration: underline; cursor: pointer; }

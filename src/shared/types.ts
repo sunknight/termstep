@@ -22,6 +22,7 @@ export const IPC = {
   TOOLS_IMPORT: 'tools:import',
   TOOL_REFRESH_MD: 'tool:refreshMd',
   MD_FETCH_PREVIEW: 'md:fetchPreview',
+  MD_PICK_FILE: 'md:pickFile',
   QUICK_GET: 'quick:get',
   QUICK_SAVE: 'quick:save',
   UPDATE_STATE: 'update:state',

@@ -241,20 +241,33 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
           <div className="md-remote-pane">
             {!mdUrl.trim() && (
               <div className="md-hint">
-                填写 URL 并保存后，「远程订阅」会被勾选（✓）并生效；届时本地内容将不再作为帮助显示。清空 URL 则自动回到本地。
+                填写 URL 或选择本地文件并保存后，「远程订阅」会被勾选（✓）并生效；届时本地内容将不再作为帮助显示。清空则自动回到本地。
               </div>
             )}
             <fieldset className="form-section">
               <legend>远程订阅</legend>
               <label className="field">
                 <span className="field-label">
-                  Markdown URL <em>与本地独立；清空即恢复本地</em>
+                  Markdown URL / 本地文件 <em>与本地独立；清空即恢复本地</em>
                 </span>
-                <input
-                  value={mdUrl}
-                  onChange={(e) => setMdUrl(e.target.value)}
-                  placeholder="https://example.com/help.md"
-                />
+                <div className="mdurl-control">
+                  <input
+                    value={mdUrl}
+                    onChange={(e) => setMdUrl(e.target.value)}
+                    placeholder="https://example.com/help.md 或 /Users/me/help.md"
+                  />
+                  <button
+                    type="button"
+                    className="mdurl-pick"
+                    title="在 Finder 中选择本地 Markdown 文件（仅记录路径）"
+                    onClick={async () => {
+                      const res = await window.api.pickMdFile();
+                      if (!res.canceled) setMdUrl(res.path);
+                    }}
+                  >
+                    📂
+                  </button>
+                </div>
               </label>
               {mdUrl.trim() && (
                 <label className="field">

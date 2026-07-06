@@ -74,12 +74,18 @@ const api = {
     import: () => ipcRenderer.invoke(IPC.TOOLS_IMPORT),
   },
   refreshMd: () => ipcRenderer.invoke(IPC.TOOL_REFRESH_MD),
-  // Preview-fetch a URL (no save). Returns {markdown, error}.
+  // Preview-fetch a URL or local file path (no save). Returns {markdown, error}.
   fetchMdPreview: (url: string) =>
     ipcRenderer.invoke(IPC.MD_FETCH_PREVIEW, url) as Promise<{
       markdown: string;
       error: string | null;
     }>,
+  // Native file picker for the mdUrl field. Returns the absolute path only
+  // (content is fetched separately via fetchMdPreview). Canceled -> null.
+  pickMdFile: () =>
+    ipcRenderer.invoke(IPC.MD_PICK_FILE) as Promise<
+      { canceled: true } | { canceled: false; path: string }
+    >,
   quick: {
     get: () => ipcRenderer.invoke(IPC.QUICK_GET) as Promise<string>,
     save: (md: string) => ipcRenderer.invoke(IPC.QUICK_SAVE, md),

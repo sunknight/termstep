@@ -245,6 +245,22 @@ export function registerIpc(deps: {
     return { markdown: r.markdown, error: r.error ?? null };
   });
 
+  // Native file picker for the "远程订阅" URL field. Returns only the absolute
+  // path (no content read) — the path is stored in mdUrl and fetched on demand
+  // by fetchRemoteMarkdown, which now reads local files too. Canceled -> null.
+  ipcMain.handle(IPC.MD_PICK_FILE, async () => {
+    const res = await openDialog({
+      title: '选择 Markdown 文件',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Markdown', extensions: ['md', 'markdown', 'txt'] },
+        { name: '所有文件', extensions: ['*'] },
+      ],
+    });
+    if (res.canceled || !res.filePaths.length) return { canceled: true as const };
+    return { canceled: false as const, path: res.filePaths[0] };
+  });
+
   ipcMain.handle(IPC.TOOLS_EXPORT, async () => {
     const scan = await toolManager.scan();
     const bundle = serializeTools(scan.tools, new Date().toISOString());
