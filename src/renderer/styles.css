@@ -445,10 +445,26 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Update badge + popover (sidebar bottom). */
-.update-badge {
-  display: block;
+/* Update checker (sidebar bottom): a "检查更新" button + a result line. */
+.update-checker {
   margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.uc-check-btn {
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid #cfd2da;
+  background: #fff;
+  color: #555;
+  border-radius: 6px;
+}
+.uc-check-btn:hover:not(:disabled) { background: #f2f3f6; color: #222; }
+.uc-check-btn:disabled { cursor: default; color: #999; }
+
+.uc-badge {
   padding: 6px 8px;
   font-size: 12px;
   cursor: pointer;
@@ -458,7 +474,20 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   border-radius: 6px;
   text-align: center;
 }
-.update-badge:hover { background: #ffe0e0; }
+.uc-badge:hover { background: #ffe0e0; }
+.uc-uptodate {
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  padding: 2px 0;
+}
+.uc-error {
+  font-size: 11px;
+  color: #b00;
+  text-align: center;
+  padding: 2px 0;
+  cursor: help;
+}
 
 .update-popover {
   position: fixed;
