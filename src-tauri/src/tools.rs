@@ -352,6 +352,15 @@ pub async fn scan_tools(tools_dir: &Path) -> ScanResult {
             remote_markdown,
         });
     }
+    // 排序来源是单一的 tools/order.json 索引（id 数组）。每个工具的 order =
+    // 它在索引里的位置；不在索引里的兜底 usize::MAX（排末尾，彼此再按 id 稳定排序，
+    // 让新工具/导入工具以可预测的顺序追加）。meta.order 字段同步设为该位置，供
+    // 前端/导出携带，但前端实际顺序由这里 sort 后的数组决定。
+    let order_index = crate::tool_io::read_order_index(tools_dir);
+    let position_of = |id: &str| order_index.iter().position(|x| x == id);
+    for t in result.tools.iter_mut() {
+        t.meta.order = position_of(&t.meta.id).map(|p| p as i64).unwrap_or(i64::MAX);
+    }
     result.tools.sort_by(|a, b| {
         a.meta
             .order
@@ -414,6 +423,37 @@ mod tests {
         assert_eq!(ids, vec!["a", "b"]);
         std::fs::remove_dir_all(&dir).ok();
         // _dir (TempDir) drops here, auto-cleaning.
+    }
+
+    #[tokio::test]
+    async fn scan_orders_by_index_file_ignoring_tool_json_order() {
+        // 排序来源是 tools/order.json（id 数组），与各 tool.json 的 order 字段无关。
+        let _dir = tmp();
+        let dir = _dir.path();
+        write_tool(&dir, "a", Some(r#"{"name":"A","order":0}"#), "").await;
+        write_tool(&dir, "b", Some(r#"{"name":"B","order":0}"#), "").await;
+        // 索指定 b 在前；尽管 tool.json 里两者 order 都是 0
+        tokio::fs::write(dir.join("order.json"), r#"{"order":["b","a"]}"#).await.unwrap();
+        let r = scan_tools(&dir).await;
+        let ids: Vec<_> = r.tools.iter().map(|t| t.meta.id.clone()).collect();
+        assert_eq!(ids, vec!["b", "a"], "order.json wins over per-tool order");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn scan_appends_unknown_ids_after_indexed_sorted_by_id() {
+        // 不在索引里的 id 兜底排末尾，彼此按 id 升序稳定。
+        let _dir = tmp();
+        let dir = _dir.path();
+        write_tool(&dir, "z", None, "").await; // 不在索引里
+        write_tool(&dir, "a", None, "").await; // 在索引里，排第 2
+        write_tool(&dir, "m", None, "").await; // 不在索引里
+        tokio::fs::write(dir.join("order.json"), r#"{"order":["a"]}"#).await.unwrap();
+        let r = scan_tools(&dir).await;
+        let ids: Vec<_> = r.tools.iter().map(|t| t.meta.id.clone()).collect();
+        // a（索引）在前；m、z 不在索引，按 id 升序
+        assert_eq!(ids, vec!["a", "m", "z"]);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]

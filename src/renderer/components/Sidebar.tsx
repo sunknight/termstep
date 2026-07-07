@@ -83,7 +83,13 @@ export function Sidebar(props: {
               key={id}
               className={cls}
               draggable
-              onDragStart={() => setDragId(id)}
+              onDragStart={(e) => {
+                // WebKit/WKWebView 必需：dragstart 期间不设置 dataTransfer 数据会
+                // 取消整个拖拽，导致 onDrop 永不触发 → reorder 失效。
+                e.dataTransfer.setData('text/plain', id);
+                e.dataTransfer.effectAllowed = 'move';
+                setDragId(id);
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
                 if (overId !== id) setOverId(id);

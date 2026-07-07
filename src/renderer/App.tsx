@@ -11,6 +11,7 @@ import { HoverTip } from './components/HoverTip';
 import { PanelToggle } from './components/PanelToggle';
 import { termRegistry } from './lib/termRegistry';
 import { api } from './lib/api';
+import { confirmDialog, alertDialog } from './lib/dialog';
 
 // Right panel width bounds. Match the sidebar's range so the two sides feel
 // symmetric; the default keeps the old hardcoded 340px.
@@ -106,7 +107,7 @@ export default function App() {
     setEditingId(id);
   };
   const deleteTool = async (id: string) => {
-    if (!window.confirm('删除该工具？')) return;
+    if (!(await confirmDialog('删除该工具？', '删除工具'))) return;
     await api.tool.del(id);
     if (activeId === id) setActiveId(null);
   };
@@ -118,20 +119,20 @@ export default function App() {
   const exportTools = async () => {
     const res = await api.bundle.export();
     if (!res || res.canceled) return;
-    if ('error' in res && res.error) window.alert(`导出失败: ${res.error}`);
-    else window.alert(`已导出 ${res.count} 个工具到:\n${res.path}`);
+    if ('error' in res && res.error) await alertDialog(`导出失败: ${res.error}`);
+    else await alertDialog(`已导出 ${res.count} 个工具到:\n${res.path}`);
   };
   const exportOne = async (id: string) => {
     const res = await api.bundle.exportOne(id);
     if (!res || res.canceled) return;
-    if ('error' in res && res.error) window.alert(`导出失败: ${res.error}`);
-    else if ('path' in res) window.alert(`已导出工具到:\n${res.path}`);
+    if ('error' in res && res.error) await alertDialog(`导出失败: ${res.error}`);
+    else if ('path' in res) await alertDialog(`已导出工具到:\n${res.path}`);
   };
   const importTools = async () => {
     const res = await api.bundle.import();
     if (!res || res.canceled) return;
-    if ('error' in res && res.error) window.alert(`导入失败: ${res.error}`);
-    else window.alert(`已导入 ${res.count} 个工具。`);
+    if ('error' in res && res.error) await alertDialog(`导入失败: ${res.error}`);
+    else await alertDialog(`已导入 ${res.count} 个工具。`);
   };
 
   // Each panel's element is built once and used in exactly one place: docked
@@ -154,7 +155,14 @@ export default function App() {
   const renderHelp = (floating: boolean) => (
     <div
       className="help-area"
-      {...(!floating && { style: { width: `${helpWidth}px`, flex: `0 0 ${helpWidth}px` } })}
+      // Width applies in both docked and floating states so the collapsed
+      // hover-peek has a real width (it has none from CSS, and without one it
+      // collapses / escapes the window). Only the flex shorthand is dock-only
+      // (the floating peek is position:fixed, not in the flex row).
+      style={{
+        width: `${helpWidth}px`,
+        ...(floating ? {} : { flex: `0 0 ${helpWidth}px` }),
+      }}
     >
       {active && editingId === active.meta.id ? (
         <EditorPane tool={active} onDone={() => setEditingId(null)} />

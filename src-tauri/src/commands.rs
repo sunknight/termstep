@@ -108,18 +108,42 @@ pub async fn tool_create(tools_dir: State<'_, ToolsDir>, name: String) -> Result
 }
 
 #[tauri::command]
-pub async fn tool_delete(tools_dir: State<'_, ToolsDir>, tool_id: String) -> Result<(), String> {
+pub async fn tool_delete(
+    handle: AppHandle,
+    tools_dir: State<'_, ToolsDir>,
+    watcher_state: State<'_, WatcherArc>,
+    tool_id: String,
+) -> Result<(), String> {
     validate_tool_id(&tool_id)?;
     let td = lock_or_recover!(&tools_dir.0).clone();
     // pty kill 留到阶段 3（现在 stub）
     tool_io::tool_delete(&td, &tool_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // 从排序索引移除该 id（保持索引干净；失败不阻断删除）
+    let mut order = tool_io::read_order_index(&td);
+    let before_len = order.len();
+    order.retain(|x| x != &tool_id);
+    if order.len() != before_len {
+        let _ = tool_io::write_order_index(&td, &order).await;
+    }
+    // 立即生效：从 watcher 缓存剔除该工具并 emit，不等全量重扫（同 reorder）。
+    {
+        let mut s = lock_or_recover!(watcher_state);
+        s.last_tools.retain(|t| t.meta.id != tool_id);
+        let _ = handle.emit("tools:changed", &crate::types::ScanResult {
+            tools: s.last_tools.clone(),
+            errors: vec![],
+        });
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn tool_reorder(
+    handle: AppHandle,
     tools_dir: State<'_, ToolsDir>,
+    watcher_state: State<'_, WatcherArc>,
     ordered_ids: Vec<String>,
 ) -> Result<(), String> {
     for id in &ordered_ids {
@@ -128,7 +152,55 @@ pub async fn tool_reorder(
     let td = lock_or_recover!(&tools_dir.0).clone();
     tool_io::tool_reorder(&td, &ordered_ids)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // 立即生效：从 watcher 缓存取当前工具，按新顺序原地重排并 emit，
+    // 不等 watcher 的全量重扫（那次会重抓所有 mdUrl 的远程 md → 几秒延迟）。
+    // watcher 仍会因 order.json 变化触发一次后台 scan，但前端早已拿到新顺序；
+    // 后台 scan 到达时顺序一致，只是刷新了远程 md 内容，无可见回退。
+    emit_reordered(&handle, &watcher_state, &ordered_ids);
+    Ok(())
+}
+
+/// 把 watcher 缓存的工具按 ordered_ids 重排（重算各 meta.order）并立即 emit。
+/// 不读盘、不抓远程——纯内存重排，前端零延迟收到新顺序。
+fn emit_reordered(
+    handle: &AppHandle,
+    watcher_state: &State<'_, WatcherArc>,
+    ordered_ids: &[String],
+) {
+    let mut tools = {
+        let s = lock_or_recover!(watcher_state);
+        s.last_tools.clone()
+    };
+    if tools.is_empty() {
+        return;
+    }
+    // 用 ordered_ids 的位置建立 id→order 映射，重算每个工具的 order。
+    let pos: std::collections::HashMap<&String, i64> = ordered_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id, i as i64))
+        .collect();
+    for t in tools.iter_mut() {
+        t.meta.order = pos.get(&t.meta.id).copied().unwrap_or(i64::MAX);
+    }
+    // 稳定排序：按 order，再按 id（与 scan_tools 的兜底一致）。
+    tools.sort_by(|a, b| {
+        a.meta
+            .order
+            .cmp(&b.meta.order)
+            .then_with(|| a.meta.id.cmp(&b.meta.id))
+    });
+    // 同步更新缓存，避免下一次后台 scan 到达前其它读 last_tools 的路径返回旧顺序。
+    {
+        let mut s = lock_or_recover!(watcher_state);
+        s.last_tools = tools.clone();
+    }
+    let result = crate::types::ScanResult {
+        tools,
+        errors: vec![],
+    };
+    let _ = handle.emit("tools:changed", &result);
 }
 
 // ── md ──────────────────────────────────────────────────────────────────────
@@ -195,17 +267,10 @@ pub async fn export_one(
         .find(|t| t.meta.id == tool_id)
         .ok_or("未找到该工具")?;
     let bundle = crate::pure::serialize_tools(&[tool.clone()], &chrono::Utc::now().to_rfc3339());
-    let name = {
-        let s = crate::pure::slugify(&tool.meta.name);
-        if s.is_empty() {
-            tool.meta.id.clone()
-        } else {
-            s
-        }
-    };
+    // 文件名用工具的 UUID（目录名 = id），既唯一又与磁盘一一对应，避免 slug 重名。
     let file = rfd::AsyncFileDialog::new()
         .set_title("导出工具")
-        .set_file_name(format!("termstep-{}.json", name))
+        .set_file_name(format!("termstep-{}.json", tool.meta.id))
         .add_filter("TermStep 工具包", &["json"])
         .save_file()
         .await;
@@ -242,6 +307,7 @@ pub async fn tools_import(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::
     }
     let td = lock_or_recover!(&tools_dir.0).clone();
     let mut count = 0;
+    let mut new_ids: Vec<String> = vec![];
     for t in parsed.tools {
         let id = tool_io::new_tool_id();
         let dir = td.join(&id);
@@ -249,6 +315,7 @@ pub async fn tools_import(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::
         let mut meta = serde_json::to_value(&t.meta).map_err(|e| e.to_string())?;
         if let Some(o) = meta.as_object_mut() {
             o.remove("id"); // id 在目录名，不存进 json
+            o.remove("order"); // 排序由 order.json 索引管理，不存进各 tool.json
         }
         let pretty = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
         tokio::fs::write(dir.join("tool.json"), format!("{}\n", pretty))
@@ -257,7 +324,14 @@ pub async fn tools_import(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::
         tokio::fs::write(dir.join("help.md"), &t.help_markdown)
             .await
             .map_err(|e| e.to_string())?;
+        new_ids.push(id);
         count += 1;
+    }
+    // 把导入的新 id 追加到排序索引末尾（新工具排最后，符合预期）
+    if !new_ids.is_empty() {
+        let mut order = tool_io::read_order_index(&td);
+        order.extend(new_ids);
+        let _ = tool_io::write_order_index(&td, &order).await;
     }
     Ok(serde_json::json!({"canceled": false, "count": count}))
 }

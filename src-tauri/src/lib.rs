@@ -19,6 +19,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // 用户数据路径：~/Library/Application Support/TermStep
             // 故意用 productName（"TermStep"）而非 Tauri 默认的 identifier
@@ -37,9 +38,11 @@ pub fn run() {
 
             // seed 默认 git 工具（仅当 toolsDir 空）—— 对偶 seed.ts
             {
-                // 先迁移旧 slug 目录名 → UUID（同步，在任何 scan/seed/pty 之前），
-                // 确保随后 spawn 的 seed 判空与 watcher 初始 scan 看到的都是迁移后的状态。
+                // 先迁移旧 slug 目录名 → UUID，再把旧 per-tool order 字段迁到 order.json
+                // 索引（同步，在任何 scan/seed/pty 之前）。顺序：UUID 先、order 后
+                // （索引存的是迁移后的 UUID 目录名）。
                 let _ = tool_io::migrate_to_uuid_ids_blocking(&tools_dir);
+                let _ = tool_io::migrate_order_to_index_blocking(&tools_dir);
                 let td = tools_dir.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Ok(mut entries) = tokio::fs::read_dir(&td).await {

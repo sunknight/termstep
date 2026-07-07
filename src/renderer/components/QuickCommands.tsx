@@ -60,11 +60,11 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
     if (params && params.length > 0) {
       prompt.open({ command, edit, params }, (values) => {
         if (!values) return;
-        runCommandChecked(a.meta.id, substituteParams(command, values), edit, opts);
+        void runCommandChecked(a.meta.id, substituteParams(command, values), edit, opts);
       });
       return;
     }
-    runCommandChecked(a.meta.id, command, edit, opts);
+    void runCommandChecked(a.meta.id, command, edit, opts);
   };
 
   const openEditor = () => {

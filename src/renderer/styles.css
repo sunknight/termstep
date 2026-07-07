@@ -10,6 +10,7 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .sidebar ul { list-style: none; padding: 0; margin: 0; flex: 1; }
 .sidebar li {
+  position: relative; /* for the drag-over ::before drop indicator */
   padding: 8px; border-radius: 6px; cursor: pointer;
   display: flex; align-items: center; gap: 8px; min-width: 0;
 }
@@ -25,10 +26,25 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   border: 1px dashed #b8c0d6; background: #fff; color: #555; border-radius: 6px;
 }
 .new-tool:hover { background: #eef2ff; border-color: #6b8cff; color: #4a6cff; }
-/* Drag-to-reorder feedback for tool list items. */
-.sidebar li[draggable] { cursor: grab; }
+/* Drag-to-reorder feedback for tool list items.
+   No cursor:grab here — it shows an open-hand over every item and overrides
+   the pointer finger from .sidebar li. The pointer finger reads as "clickable"
+   which is what the list is; macOS shows its own drag cursor once you press. */
 .sidebar li.dragging { opacity: 0.4; }
-.sidebar li.drag-over { box-shadow: inset 0 3px 0 #6b8cff; }
+/* Drop indicator: a flat straight bar across the top of the target item.
+   Uses an absolutely-positioned ::before (not box-shadow / border-top) because
+   both of those follow the item's border-radius and render as a rounded arc;
+   the pseudo-element has its own border-radius:0 so the line stays flat, and
+   being out-of-flow it never shifts the item's layout. */
+.sidebar li.drag-over::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: #6b8cff;
+  border-radius: 0;
+  pointer-events: none;
+}
 .terminal-area {
   flex: 1; min-width: 0; min-height: 0; background: #1e1e1e;
   display: flex; flex-direction: column; overflow: hidden;

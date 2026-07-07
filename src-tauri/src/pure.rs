@@ -223,36 +223,6 @@ fn parse_init_commands(raw: Option<&Value>) -> Option<Vec<String>> {
     }
 }
 
-/// 对偶 src/main/ipc.ts slugify。小写、非字母数字转 '-'、折叠连续 '-'、去首尾、空兜底 'tool'。
-pub fn slugify(name: &str) -> String {
-    let s: String = name
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    let mut out = String::new();
-    let mut prev_dash = true; // 开头视为 dash，避免前导 '-'
-    for c in s.chars() {
-        if c == '-' {
-            if !prev_dash {
-                out.push('-');
-                prev_dash = true;
-            }
-        } else {
-            out.push(c);
-            prev_dash = false;
-        }
-    }
-    while out.ends_with('-') {
-        out.pop();
-    }
-    if out.is_empty() {
-        "tool".into()
-    } else {
-        out
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,19 +310,4 @@ mod tests {
         assert_eq!(m.init_commands, None);
     }
 
-    // ── slugify（对偶 ipc.ts 行为）────────────────────────────────────────────
-    #[test]
-    fn slugify_lowercases_and_dashes() {
-        assert_eq!(slugify("My Tool"), "my-tool");
-    }
-
-    #[test]
-    fn slugify_collapses_runs_and_trims() {
-        assert_eq!(slugify("  a  b!!c  "), "a-b-c");
-    }
-
-    #[test]
-    fn slugify_empty_becomes_tool() {
-        assert_eq!(slugify("!!!"), "tool");
-    }
 }

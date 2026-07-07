@@ -54,11 +54,11 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
           }
           prompt.open({ command, edit, params }, (values) => {
             if (!values) return;
-            runCommandChecked(props.activeToolId, substituteParams(command, values), edit, opts);
+            void runCommandChecked(props.activeToolId, substituteParams(command, values), edit, opts);
           });
           return;
         }
-        runCommandChecked(props.activeToolId, command, edit, opts);
+        void runCommandChecked(props.activeToolId, command, edit, opts);
         return;
       }
       // Markdown links: open http(s)/mailto in the system browser instead of

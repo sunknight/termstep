@@ -1,6 +1,6 @@
 {
   "name": "termstep",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Local macOS app to run CLI commands via menus and buttons",
   "private": true,
   "type": "module",
@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "icon": "tauri icon assets/icon.png",
+    "version:set": "node scripts/set-version.mjs",
     "package": "tauri build",
     "release": "tauri build --target universal-apple-darwin && mkdir -p release && cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg release/"
   },
@@ -31,6 +32,7 @@
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.0",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "@uiw/react-codemirror": "^4.23.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",

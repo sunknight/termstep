@@ -105,7 +105,6 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
     const meta: Partial<ToolMeta> = {
       name,
       icon,
-      order: props.tool.meta.order,
       cwd: cwd.trim(),
       tmux: tmux.trim(),
       mdUrl: mdUrl.trim(),
