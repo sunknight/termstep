@@ -17,7 +17,7 @@ TermStep 当前是 macOS Electron 应用（安装包 94MB），把 CLI 命令变
 | 迁移策略 | **全量替换**——最终形态无 Electron 残留；中间态不在 Electron 下可运行，但靠分模块 + 每模块独立测试渐进验证 |
 | PTY 方案 | **portable-pty**（wezterm 出品） |
 | 自动更新 | **保持现状**——reqwest 拉清单 + 浏览器打开 DMG，不引入签名/公证 |
-| userData | **一次性迁移脚本**——兼容旧应用名（gui_anything/cmd_gui/cmd-gui）的 carry-forward |
+| userData | **无需迁移**——Tauri v2 `app_data_dir()` 与 Electron userData 在 macOS 同路径（`~/Library/Application Support/TermStep`，派生自 bundle id `local.termstep`），现有用户数据天然连续。不再兼容 gui_anything/cmd_gui/cmd-gui 等旧名 |
 
 ## 非目标（YAGNI）
 
@@ -51,7 +51,7 @@ termstep/
 │       ├── updater.rs            # reqwest 拉清单（对应 updater.ts）
 │       ├── cwd.rs                # lsof（macOS）/ readlink /proc（对应 cwd.ts）
 │       ├── menu.rs               # tauri::menu 原生菜单（对应 menu.ts）
-│       ├── migrate.rs            # userData 一次性迁移（对应 index.ts migrateOldUserData）
+│       ├── (无 migrate.rs)       # userData 路径天然相同，无需迁移模块
 │       └── commands.rs           # #[tauri::command] 注册（薄封装，连前端与上述模块）
 ├── src/                          # 保留：renderer + shared
 │   ├── renderer/                 # React 18，UI 组件/hooks/lib 非 IPC 逻辑零改动
@@ -324,7 +324,9 @@ export function useTauriEvent<T>(name: string, handler: (payload: T) => void) {
 
 ---
 
-## 五、低风险模块移植（updater / tools / tool_io / cwd / watcher / migrate）
+## 五、低风险模块移植（updater / tools / tool_io / cwd / watcher）
+
+> userData 无需迁移：Tauri v2 `app_data_dir()` 与 Electron userData 在 macOS 同路径，现有用户数据天然连续。原 `migrateOldUserData` 的旧名兼容逻辑一并删除。
 
 ### updater.rs（对应 updater.ts，191 行）
 
@@ -364,12 +366,6 @@ export function useTauriEvent<T>(name: string, handler: (payload: T) => void) {
 - 启动时做一次初始 scan（与现有一致）
 - auto-refresh 定时器：`tokio::spawn` + `interval(30s)`，检查各 mdUrl 工具的 autoUpdateMinutes 是否到期
 - 状态：lastTools / lastFetched 用 `Mutex` 持有
-
-### migrate.rs（对应 index.ts migrateOldUserData，+ 新）
-
-- **关键发现**：Tauri v2 `app.path().app_data_dir()` 在 macOS = `~/Library/Application Support/TermStep`（由 bundle identifier `local.termstep` + productName 派生），**与 Electron 的 userData 路径恰好相同**。所以新旧 TermStep 数据天然连续。
-- 迁移逻辑：目标 toolsDir 非空则跳过；否则按 `['gui_anything', 'cmd_gui', 'cmd-gui']` 顺序（最新名优先）检查 `~/Library/Application Support/<oldName>/tools` 和 `quick-commands.md`，有则 `fs::copy` 递归
-- 纯 Rust fs 实现，在 `setup()` 里 seed 之前调用
 
 ---
 
@@ -524,7 +520,6 @@ Gotchas 段更新：
 - tool_io.rs（CRUD + bundle + quick，对偶 shared/ 纯逻辑）
 - cwd.rs（lsof）
 - watcher.rs（notify，替代 chokidar）
-- migrate.rs（userData 兼容旧名）
 - commands.rs 注册上述命令
 - renderer 适配层 `lib/api.ts` + `useTauriEvent`，改造 31 处 invoke 调用点（tools/shell/clipboard/update/bundle/quick/refreshMd/fetchMdPreview/pickMdFile）+ 2 处事件（tools:changed / update:state）
 - 验证：工具列表渲染、增删改、导入导出、quick commands、更新检查、剪贴板、外链全部手测通过；`npm run typecheck` + vitest 绿
