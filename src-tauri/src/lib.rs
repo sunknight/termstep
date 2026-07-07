@@ -3,6 +3,7 @@
 mod types;
 mod pure;
 mod updater;
+mod tools;
 
 use tauri::Manager;
 
