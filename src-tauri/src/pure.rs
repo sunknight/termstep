@@ -2,7 +2,7 @@
 //! 后端用到的最小子集。无 fs/网络，纯函数，#[cfg(test)] 覆盖。
 
 use crate::types::*;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 /// 合并 existing tool.json 与编辑器 patch，裁掉被清空的 optional 字段。
 /// 对偶 src/shared/toolJson.ts mergeToolJson。
@@ -256,6 +256,7 @@ pub fn slugify(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     // ── merge_tool_json（对偶 tests/toolJson.test.ts）─────────────────────────
     #[test]

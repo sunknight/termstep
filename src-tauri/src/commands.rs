@@ -289,7 +289,7 @@ pub async fn update_check(
 }
 
 // ── pty（portable-pty 池）───────────────────────────────────────────────────
-use crate::pty::PtyService;
+// PtyArc 的类型用全限定路径 crate::pty::PtyService，无需 import。
 
 #[tauri::command]
 pub async fn pty_write(

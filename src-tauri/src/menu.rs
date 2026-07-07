@@ -2,7 +2,7 @@
 //! 第一项 label = "TermStep"（macOS 菜单栏粗体 app 名）。结构：TermStep / 编辑 / 视图 / 窗口。
 
 use tauri::menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 pub fn set_app_menu(handle: &AppHandle) -> tauri::Result<()> {
     let name = "TermStep";
