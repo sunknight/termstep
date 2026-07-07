@@ -2,6 +2,7 @@
 // main.rs 只是薄入口。
 mod commands;
 mod cwd;
+mod menu;
 mod pty;
 mod seed;
 mod tmux;
@@ -86,6 +87,11 @@ pub fn run() {
                 });
             }
 
+            // 原生应用菜单（对偶 src/main/menu.ts）+ About 元数据。
+            if let Err(e) = menu::set_app_menu(app.handle()) {
+                eprintln!("menu setup failed: {}", e);
+            }
+
             // dev：自动开 devtools
             #[cfg(debug_assertions)]
             {
@@ -122,6 +128,37 @@ pub fn run() {
             commands::pty_kill,
             commands::pty_cwd,
         ])
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "check_update" => {
+                // 菜单「检查更新…」→ 手动检查（manual=true，错误暴露给 UI）
+                let h = app.clone();
+                let st = app
+                    .state::<Arc<Mutex<updater::UpdaterState>>>()
+                    .inner()
+                    .clone();
+                let av = app.package_info().version.to_string();
+                let sf = app
+                    .path()
+                    .app_data_dir()
+                    .expect("no app_data_dir")
+                    .join("update-state.json");
+                tauri::async_runtime::spawn(async move {
+                    let _ = updater::check_for_updates(h, st, av, sf, true).await;
+                });
+            }
+            "toggle_fullscreen" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.set_fullscreen(!w.is_fullscreen().unwrap_or(false));
+                }
+            }
+            "zoom" => {
+                // macOS 窗口 zoom（绿色按钮行为）：Tauri 无直接 API，用 maximize 近似
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.maximize();
+                }
+            }
+            _ => {}
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
