@@ -39,6 +39,58 @@
 
 ## 后续阶段（待执行）
 
-- **阶段 2**：低风险模块（updater/tools/tool_io/cwd/watcher）→ Rust commands + renderer 适配
 - **阶段 3**：PTY 攻坚（portable-pty + 6 行为）
 - **阶段 4**：原生体验（菜单/Dock/About）+ 打包 + 清理 Electron
+
+---
+
+## 阶段 2：低风险模块 — 完成 ✅
+
+- **日期**: 2026-07-07
+- **Plan**: `docs/superpowers/plans/2026-07-07-tauri-migration-stage2-modules.md`
+
+### 已完成（7 个 Rust 模块 + renderer 适配）
+
+| 模块/Task | 提交 | 测试 |
+|---|---|---|
+| types.rs + pure.rs | `3074555` | 14 测试 PASS（merge/append/meta/slugify） |
+| updater.rs | `662fb76` | 15 测试 PASS（compare_versions/parse_manifest） |
+| tools.rs | `47925d2` | 20 测试 PASS（scan + 敏感路径守卫 + fetchRemoteMarkdown） |
+| cwd.rs + tool_io.rs + watcher.rs + seed.rs | `8c33b21` | 无单测（fs/OS 调用，靠手测） |
+| commands.rs + lib.rs 注册 | `5dd42db` | 24 commands 注册，cargo check 通过 |
+| renderer api.ts + 34 调用点 | `aab70be` | typecheck 0 错误，vitest shared 全绿 |
+
+**Rust 测试合计 49 PASS**（14+15+20）。
+
+### 过程中修正的 plan 偏差（已记录，供阶段 3 plan 参考）
+1. **notify 6.x API 变化**：`recommended_watcher` 只接单个回调（不再接 Config 参数），用闭包包 channel。
+2. **Tauri v2 把 clipboard 移到插件**：`app.clipboard()` 是 v1 API。改用 `arboard` crate（无需插件注册/capability，更简单）。
+3. **reqwest 用 rustls-tls**（`default-features=false, features=["rustls-tls"]`）避免系统 openssl 依赖。
+4. **`tempfile` crate 修测试并行冲突**：tools 测试用 nanos 时间戳做唯一目录偶发冲突，改用 `tempfile::TempDir`（自动唯一 + drop 清理）稳定。
+5. **invoke 返回类型需显式标注**：Electron 时代 preload 返回 `Promise<any>` 静默编译，Tauri `invoke<T>` 默认 `Promise<unknown>`，bundle.export/import 等需显式标注 union 类型对齐 Rust 后端 JSON shape。
+6. **TerminalView 的 pty:data 订阅提到组件顶层**：原 `offDataRef.current = pty.onData(...)` 赋值模式与 Tauri 异步 `listen` 不兼容，改用 `useTauriEvent` + termRef。
+7. **starter_help_md 用 Rust raw string**：`{{` 在 format! 需转义 `{{{{`，改用 `r#"..."#` raw string 直接写 `{{`。
+
+### 验证结果（端到端）
+- ✅ `cargo test`：49 Rust 测试全 PASS
+- ✅ `npx tsc --noEmit`：0 错误
+- ✅ `npm run build:web`：成功（561KB JS）
+- ✅ vitest：10/11 文件通过（140 测试），仅 `ptyService.test.ts` 失败（node-pty Electron 代码，阶段 3/4 删）；shared 纯逻辑测试全绿——零回归
+- ✅ `npm run dev`（tauri dev）：窗口启动，无 panic/error
+- ✅ **userData 数据天然连续**：Tauri 读到 Electron 时代创建的全部工具（git + tool-2~12），路径 `~/Library/Application Support/TermStep/tools/` 完全相同，零丢失
+- ✅ auto-update 链路通：`update-state.json` 写入 `{"version":"0.5.0"}`
+
+### 待人工确认（headless 环境无法观察 GUI）
+- [ ] **工具列表渲染**：窗口侧边栏应显示 git + tool-2~12（共 13 个工具），非空
+- [ ] **工具 CRUD**：新建/编辑/删除/排序生效
+- [ ] **导入导出**：rfd 对话框弹出 + json 读写
+- [ ] **quick commands**：下拉显示按钮，编辑保存生效
+- [ ] **剪贴板**：终端选中复制、⌘C/⌘V（arboard）
+- [ ] **外链**：帮助页链接在浏览器打开
+- [ ] **更新检查**：sidebar 徽章状态变化
+- [ ] **mdUrl 订阅**：编辑工具加 http URL → 远程内容显示
+- [ ] **终端区域**：xterm 初始化不崩溃（PTY stub，无输出正常）
+
+### 已知预期行为（非问题，阶段 3 处理）
+- PTY 是 stub：`pty_*` commands 返回空/no-op，终端无 shell 输出、输入无响应。
+- Electron 相关文件/依赖仍保留（`src/main/`、`src/preload/`、electron-builder 等），阶段 4 清理。
