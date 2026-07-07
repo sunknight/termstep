@@ -80,6 +80,24 @@
 - [ ] 菜单栏显示 TermStep/编辑/视图/窗口
 - [ ] PTY 6 行为 + tmux + 复制粘贴（见阶段 3 待确认项）
 
+---
+
+## 迁移后修复（手测发现）
+
+### 修复 1：userData 路径不匹配（commit `1869f78`）
+- **现象**：只有 seed 的 git 工具，老用户的 13 个工具没读到。
+- **根因**：spec 假设 Tauri v2 `app_data_dir()` 与 Electron userData 同路径——**错误**。Tauri 按 identifier 派生 → `~/Library/Application Support/local.termstep/`；Electron 按 productName 派生 → `~/Library/Application Support/TermStep/`。
+- **修复**：lib.rs setup 改用 `path().config_dir().join("TermStep")`（config_dir = `~/Library/Application Support`，不拼 identifier），与 Electron 路径完全一致。
+- **验证**：13 个工具正确读取；`local.termstep/` 不再创建。
+- **教训**：跨框架迁移时，"路径同源"的假设必须实测验证，不能靠文档推断。
+
+### 修复 2：更新检查 TLS 失败（commit `1869f78`）
+- **现象**：手动点「检查更新」提示"检查更新失败，请检查网络后重试"。
+- **根因**：reqwest 用 `rustls-tls`（默认 webpki-roots），无法验证 plainraw.com 的证书链（系统 curl/OpenSSL 能过）。
+- **修复**：reqwest 改 `native-tls`（macOS SecureTransport，与系统同源 root store）。
+- **验证**：manifest 成功拉取，update-state.json 正确写入。
+- **教训**：rustls 的纯 Rust 证书验证与系统 TLS 行为有差异，对某些证书链会失败；macOS 应用优先 native-tls。
+
 ## 阶段 3：PTY 攻坚 — 完成 ✅
 
 - **日期**: 2026-07-07
