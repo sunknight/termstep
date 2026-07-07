@@ -31,3 +31,8 @@ yarn-error.log*
 
 # git worktrees (local isolation workspaces)
 .worktrees/
+
+# Tauri generated icons (regenerated via `npm run icon`, source kept in assets/)
+src-tauri/icons/
+# Rust build artifacts
+src-tauri/target/
