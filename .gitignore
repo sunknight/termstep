@@ -1,9 +1,11 @@
 # dependencies
 node_modules/
 
-# build output (Vite → dist/, Rust → src-tauri/target/)
+# build output (Vite → dist/, Rust → src-tauri/target/, installers → release/)
 dist/
 out/
+release/
+build/
 
 # logs
 *.log

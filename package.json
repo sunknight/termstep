@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "icon": "tauri icon assets/icon.png",
-    "package": "tauri build"
+    "package": "tauri build",
+    "release": "tauri build --target universal-apple-darwin && mkdir -p release && cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg release/"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
