@@ -3,6 +3,7 @@
 mod commands;
 mod cwd;
 mod seed;
+mod tmux;
 mod tool_io;
 mod tools;
 mod types;
