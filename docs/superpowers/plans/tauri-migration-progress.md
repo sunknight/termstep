@@ -39,10 +39,65 @@
 
 ## 后续阶段（待执行）
 
-- **阶段 3**：PTY 攻坚（portable-pty + 6 行为）
 - **阶段 4**：原生体验（菜单/Dock/About）+ 打包 + 清理 Electron
 
 ---
+
+## 阶段 3：PTY 攻坚 — 完成 ✅
+
+- **日期**: 2026-07-07
+- **Plan**: `docs/superpowers/plans/2026-07-07-tauri-migration-stage3-pty.md`
+
+### 已完成
+
+| Task | 提交 | 说明 |
+|---|---|---|
+| tmux.rs | `915942f` | sanitize_tmux_name + tmux_argv（6 测试 PASS） |
+| pty.rs | `05cc3f8` | PtyService 池 + 6 行为 + 读线程 emit + generation guard |
+| commands.rs + lib.rs | `05cc3f8` | pty_* 接真实 PtyService；manage + kill_all on Destroyed |
+
+**Rust 测试合计 55 PASS**（49 + tmux 6）。
+
+### 6 行为实现情况
+
+| 行为 | 实现 | 验证 |
+|---|---|---|
+| 1 登录 shell `-l` | `cmd.arg("-l")` | ✅ 进程树见 `bash -l`（带 -l） |
+| 2 TERM=xterm-256color | `cmd.env("TERM", "xterm-256color")` | 待手测 `echo $TERM` |
+| 3 locale 回退 | `LANG/LC_CTYPE` 仅 unset 时设 | 待手测中文文件名 |
+| 4 COLORTERM | 仅 unset 时设 truecolor | 待手测 `echo $COLORTERM` |
+| 5 initCommands 时机 | spawn 后立即 write_all | 待手测 |
+| 6 restart 竞态 | generation 号 identity guard | 待手测连点 restart |
+
+### 过程中修正的 plan 偏差
+1. **PtyEntry 保留 master**：plan 草稿漏了 resize 需 master，实现时 entry 存 `Box<dyn MasterPty + Send>`（take_writer/try_clone_reader 不消耗 master）。
+2. **读线程 generation guard 的锁层级**：`svc.lock()` → `svc.ptys.lock()` 两层锁（PtyService 内 ptys 是 Mutex<HashMap>），非 `ptys.ptys.get()` 单层。
+3. **读线程用 `try_state`** 而非 `state`（EOF 时 app 可能正在关闭，try_state 容错返回 None）。
+4. **kill_all 挂在 on_window_event(Destroyed)**：Tauri v2 无 before-quit 全局钩子，用窗口销毁事件近似。
+
+### 验证结果（端到端）
+- ✅ `cargo check` 通过，55 Rust 测试全 PASS
+- ✅ `npm run dev` 启动，无 panic / openpty/spawn/reader/writer 失败
+- ✅ **PTY 核心链路通**：进程树见 termstep 派生 `bash -l`（登录 shell 子进程），证明 spawn 成功
+- ✅ 行为 1（登录 shell -l）已通过进程树验证
+
+### 待人工确认（headless 无法看 GUI 终端输出）
+请在 `.worktrees/migrate-to-tauri` 跑 `npm run dev`，激活某工具终端后逐项验证：
+- [ ] **行为 2 TERM**：`echo $TERM` → `xterm-256color`
+- [ ] **行为 3 locale**：`touch 中文 && ls` → 文件名正常（非 `?`）；`echo $LANG` 含 UTF-8
+- [ ] **行为 4 COLORTERM**：`echo $COLORTERM` → `truecolor`；`ls --color` 有色
+- [ ] **行为 5 initCommands**：配 `initCommands: ["echo HI"]` → 首屏见 HI
+- [ ] **行为 6 restart**：快速连点重启按钮 → 尺寸不回缩、新 shell 存活
+- [ ] **tmux**：配 `tmux: "x"` → `tmux ls` 含 session；重开 re-attach
+- [ ] **resize**：拖窗口 → `stty size` 更新
+- [ ] **cwd 跟随**：顶栏 cwd 跟随 `cd`
+- [ ] **复制粘贴**：选中复制、⌘V 粘贴
+- [ ] **Ctrl-C**：中断命令正常
+- [ ] **中文输出**：`echo 你好` 不乱码（UTF-8 boundary）
+
+### 已知潜在风险（手测时关注）
+- **UTF-8 多字节跨 chunk 边界**：读线程用 `String::from_utf8_lossy`，中文字符若跨 4KB chunk 可能断裂显示。若乱码，改用 wezterm 式 UTF-8 boundary 累积 buffer。
+- **portable-pty vs node-pty 信号传递**：Ctrl-C/Ctrl-Z 行为可能有细微差异。
 
 ## 阶段 2：低风险模块 — 完成 ✅
 
