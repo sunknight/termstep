@@ -7,6 +7,11 @@ use std::path::Path;
 
 pub const DEFAULT_AUTO_UPDATE_MINUTES: i64 = 0;
 
+// 一些 CDN/防火墙（plainraw 用的 Cloudflare 类）拒绝没有标准浏览器 UA 的请求
+// （返回 403）。reqwest 默认 UA "reqwest/<ver>" 会被拒，所以所有 HTTP 抓取都
+// 带一个标准浏览器 UA。注意：UA 必须像浏览器，不能是 "TermStep" 等自定义名。
+const HTTP_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
 // ── 敏感路径守卫（对偶 toolsScanner.ts）──────────────────────────────────────
 const SENSITIVE_DIR_SEGMENTS: &[&str] = &[
     ".ssh",
@@ -114,6 +119,7 @@ pub async fn fetch_remote_markdown(url: &str) -> FetchedMd {
     } else {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_millis(8000))
+            .user_agent(HTTP_UA)
             .build()
             .unwrap();
         match client.get(url).send().await {

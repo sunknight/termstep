@@ -219,8 +219,11 @@ async fn check_inner(
 }
 
 async fn fetch_manifest(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    // 带标准浏览器 UA：plainraw（Cloudflare）拒绝非浏览器 UA（403）。
+    const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(FETCH_TIMEOUT_MS))
+        .user_agent(UA)
         .build()?;
     let resp = client.get(url).send().await?;
     if !resp.status().is_success() {
