@@ -4,6 +4,10 @@ mod types;
 mod pure;
 mod updater;
 mod tools;
+mod cwd;
+mod tool_io;
+mod watcher;
+mod seed;
 
 use tauri::Manager;
 
