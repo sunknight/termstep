@@ -4,6 +4,7 @@ import { md } from '../lib/markdown';
 import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
 import { substituteParams } from '../../shared/buttonBlock';
+import { api } from '../lib/api';
 
 interface TipState {
   text: string;
@@ -67,7 +68,7 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
         const href = anchor.getAttribute('href') ?? '';
         if (/^(https?:|mailto:)/i.test(href)) {
           e.preventDefault();
-          void window.api.shell.openExternal(href);
+          void api.shell.openExternal(href);
         }
       }
     };

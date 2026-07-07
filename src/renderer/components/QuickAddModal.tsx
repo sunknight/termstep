@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { api } from '../lib/api';
 
 // Quick-add (append mode): grab the clipboard (or let the user type), then
 // append it as a new ```buttons fence to the end of the tool's help.md. Mirrors
@@ -23,7 +24,7 @@ export function QuickAddModal(props: {
     const ta = taRef.current;
     ta?.focus();
     let cancelled = false;
-    window.api.clipboard
+    api.clipboard
       .readText()
       .then((text) => {
         if (!cancelled && text) setValue(text);

@@ -3,6 +3,7 @@ import { parseButtonsFromMarkdown, substituteParams, type ButtonParam } from '..
 import type { Tool, PtySpawnOpts } from '../../shared/types';
 import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
+import { api } from '../lib/api';
 
 // Global quick-command dropdown. The command list lives in a single markdown
 // file (read/written via api.quick) — NOT a tool. Its `buttons` blocks are
@@ -17,11 +18,11 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    window.api.quick.get().then(setMd);
+    api.quick.get().then(setMd);
   }, []);
   // Re-read whenever the dropdown opens, so edits/external changes are picked up.
   useEffect(() => {
-    if (open) window.api.quick.get().then(setMd);
+    if (open) api.quick.get().then(setMd);
   }, [open]);
 
   // Close the dropdown on outside-click / Escape.
@@ -74,7 +75,7 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
   const saveDraft = async () => {
     setSaving(true);
     try {
-      await window.api.quick.save(draft);
+      await api.quick.save(draft);
       setMd(draft);
       setEditing(false);
     } finally {

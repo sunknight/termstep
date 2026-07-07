@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useUpdateState } from '../hooks/useUpdateState';
+import { api } from '../lib/api';
 
 // Sidebar-bottom update checker: a SINGLE persistent button whose label and
 // behavior depend on the check state.
@@ -30,7 +31,7 @@ export function UpdateChecker() {
     if (checking) return;
     setChecking(true);
     try {
-      await window.api.update.check();
+      await api.update.check();
     } finally {
       // status broadcast will flip this off via the effect above; safety net in
       // case the broadcast races.
@@ -89,7 +90,7 @@ export function UpdateChecker() {
             <div className="up-actions">
               <button
                 className="up-primary"
-                onClick={() => void window.api.shell.openExternal(state.url)}
+                onClick={() => void api.shell.openExternal(state.url)}
               >
                 去下载
               </button>

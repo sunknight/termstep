@@ -10,6 +10,7 @@ import { Notifications } from './components/Notifications';
 import { HoverTip } from './components/HoverTip';
 import { PanelToggle } from './components/PanelToggle';
 import { termRegistry } from './lib/termRegistry';
+import { api } from './lib/api';
 
 // Right panel width bounds. Match the sidebar's range so the two sides feel
 // symmetric; the default keeps the old hardcoded 340px.
@@ -82,7 +83,7 @@ export default function App() {
     let timer: number | undefined;
     const tick = async () => {
       try {
-        const c = await window.api.pty.cwd(activeId);
+        const c = await api.pty.cwd(activeId);
         if (!cancelled) setLiveCwd(c);
       } catch {
         // shell not spawned yet / gone — ignore
@@ -100,34 +101,34 @@ export default function App() {
   // tool with a placeholder name and drop straight into the editor, where the user
   // can set the real name, icon, and cwd.
   const createTool = async () => {
-    const id = await window.api.tool.create('新工具');
+    const id = await api.tool.create('新工具');
     setActiveId(id);
     setEditingId(id);
   };
   const deleteTool = async (id: string) => {
     if (!window.confirm('删除该工具？')) return;
-    await window.api.tool.del(id);
+    await api.tool.del(id);
     if (activeId === id) setActiveId(null);
   };
   // Tool ordering is done by drag-and-drop in the sidebar now.
   const reorderTools = async (orderedIds: string[]) => {
-    await window.api.tool.reorder(orderedIds);
+    await api.tool.reorder(orderedIds);
   };
 
   const exportTools = async () => {
-    const res = await window.api.bundle.export();
+    const res = await api.bundle.export();
     if (!res || res.canceled) return;
     if ('error' in res && res.error) window.alert(`导出失败: ${res.error}`);
     else window.alert(`已导出 ${res.count} 个工具到:\n${res.path}`);
   };
   const exportOne = async (id: string) => {
-    const res = await window.api.bundle.exportOne(id);
+    const res = await api.bundle.exportOne(id);
     if (!res || res.canceled) return;
     if ('error' in res && res.error) window.alert(`导出失败: ${res.error}`);
     else if ('path' in res) window.alert(`已导出工具到:\n${res.path}`);
   };
   const importTools = async () => {
-    const res = await window.api.bundle.import();
+    const res = await api.bundle.import();
     if (!res || res.canceled) return;
     if ('error' in res && res.error) window.alert(`导入失败: ${res.error}`);
     else window.alert(`已导入 ${res.count} 个工具。`);
@@ -164,7 +165,7 @@ export default function App() {
               <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
               <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>⤓ 导出</button>
               {active.meta.useRemote && (
-                <button title="重新读取远程内容" onClick={() => window.api.refreshMd()}>⟳ 重新读取</button>
+                <button title="重新读取远程内容" onClick={() => api.refreshMd()}>⟳ 重新读取</button>
               )}
               {!active.meta.useRemote && (
                 <button title="快速添加命令（追加到末尾）" onClick={() => setQuickAddOpen(true)}>+</button>
@@ -221,7 +222,7 @@ export default function App() {
                 title="重启终端"
                 onClick={() => {
                   termRegistry.get(active.meta.id)?.reset();
-                  window.api.pty.restart(active.meta.id, {
+                  api.pty.restart(active.meta.id, {
                     cwd: active.meta.cwd,
                     shell: active.meta.shell,
                     env: active.meta.env,
@@ -255,7 +256,9 @@ export default function App() {
       {errors.length > 0 && <Notifications errors={errors} />}
       {quickAddOpen && active && (
         <QuickAddModal
-          onSubmit={(body) => window.api.tool.appendButtons(active.meta.id, body)}
+          onSubmit={async (body) => {
+            await api.tool.appendButtons(active.meta.id, body);
+          }}
           onClose={() => setQuickAddOpen(false)}
         />
       )}

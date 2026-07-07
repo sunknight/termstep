@@ -4,6 +4,8 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { PtySpawnOpts } from '../../shared/types';
 import { termRegistry } from '../lib/termRegistry';
+import { api } from '../lib/api';
+import { useTauriEvent } from '../hooks/useTauriEvent';
 
 export function TerminalView(props: {
   toolId: string;
@@ -13,7 +15,19 @@ export function TerminalView(props: {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  const offDataRef = useRef<(() => void) | null>(null);
+  // pty:data 订阅提到组件顶层：handler 通过 termRef 写入对应终端。
+  // firstData 标志强制首帧重绘（xterm v5 首次 open+fit 后偶尔漏画 prompt）。
+  const firstDataRef = useRef(true);
+  useTauriEvent<{ toolId: string; data: string }>('pty:data', ({ toolId, data }) => {
+    if (toolId !== props.toolId) return;
+    const term = termRef.current;
+    if (!term) return;
+    term.write(data);
+    if (firstDataRef.current) {
+      firstDataRef.current = false;
+      requestAnimationFrame(() => term.refresh(0, term.rows - 1));
+    }
+  });
 
   // Create the xterm terminal lazily the first time this tool becomes visible.
   // Opening xterm while its container is display:none leaves the renderer unable
@@ -50,7 +64,7 @@ export function TerminalView(props: {
       // only real xterm selections are copied.
       term.onSelectionChange(() => {
         const text = term.getSelection();
-        if (text) void window.api.clipboard.writeText(text);
+        if (text) void api.clipboard.writeText(text);
       });
 
       // ⌘C copies the current selection; ⌘V pastes the clipboard into the pty.
@@ -60,7 +74,7 @@ export function TerminalView(props: {
         const key = ev.key.toLowerCase();
         if (ev.metaKey && key === 'c') {
           if (term.hasSelection()) {
-            void window.api.clipboard.writeText(term.getSelection());
+            void api.clipboard.writeText(term.getSelection());
             return false;
           }
           return true; // nothing selected — let it pass (no-op)
@@ -73,7 +87,7 @@ export function TerminalView(props: {
           // event.clipboardData and paste again, duplicating the text
           // ("tmux" -> "tmuxtmux"). Without this the native paste fires too.
           ev.preventDefault();
-          window.api.clipboard.readText().then((text) => {
+          api.clipboard.readText().then((text) => {
             if (text) term.paste(text);
           });
           return false;
@@ -98,7 +112,7 @@ export function TerminalView(props: {
         try {
           const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
           const text = new TextDecoder('utf-8').decode(bytes);
-          void window.api.clipboard.writeText(text);
+          void api.clipboard.writeText(text);
         } catch {
           // malformed base64 — ignore
         }
@@ -107,19 +121,10 @@ export function TerminalView(props: {
 
       // xterm v5 sometimes skips its first paint after open()+fit() until the next
       // user interaction, leaving the startup prompt invisible ("blank terminal
-      // until Enter"). The first bytes have landed in the buffer by now, so force a
-      // full repaint on the next frame to make the prompt show immediately.
-      let firstData = true;
-      offDataRef.current = window.api.pty.onData((tid, data) => {
-        if (tid !== props.toolId) return;
-        term.write(data);
-        if (firstData) {
-          firstData = false;
-          requestAnimationFrame(() => term.refresh(0, term.rows - 1));
-        }
-      });
-      term.onData((data) => window.api.pty.write(props.toolId, data, props.spawnOpts));
-      term.onResize(({ cols, rows }) => window.api.pty.resize(props.toolId, cols, rows));
+      // until Enter"). The pty:data subscription (component-top useTauriEvent)
+      // forces a repaint on the first data frame.
+      term.onData((data) => api.pty.write(props.toolId, data, props.spawnOpts));
+      term.onResize(({ cols, rows }) => api.pty.resize(props.toolId, cols, rows));
     }
 
     // Defer fit + spawn to the next frame so the just-shown container is laid out.
@@ -131,9 +136,9 @@ export function TerminalView(props: {
         // ignore
       }
       if (term && term.cols > 0 && term.rows > 0) {
-        window.api.pty.resize(props.toolId, term.cols, term.rows);
+        api.pty.resize(props.toolId, term.cols, term.rows);
       }
-      window.api.pty.open(props.toolId, props.spawnOpts);
+      api.pty.open(props.toolId, props.spawnOpts);
       term?.focus();
     });
     return () => cancelAnimationFrame(raf);
@@ -167,11 +172,10 @@ export function TerminalView(props: {
     };
   }, [props.active]);
 
-  // Dispose the terminal (and its global data listener) when the tool unmounts.
+  // Dispose the terminal when the tool unmounts. (The pty:data subscription is
+  // owned by useTauriEvent and cleaned up automatically.)
   useEffect(() => {
     return () => {
-      offDataRef.current?.();
-      offDataRef.current = null;
       const term = termRef.current;
       if (term) {
         termRegistry.del(props.toolId);

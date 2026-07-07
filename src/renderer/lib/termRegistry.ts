@@ -1,5 +1,6 @@
 import type { Terminal } from '@xterm/xterm';
 import type { PtySpawnOpts } from '../../shared/types';
+import { api } from './api';
 
 const terms = new Map<string, Terminal>();
 
@@ -19,9 +20,9 @@ export const termRegistry = {
 export function runCommand(toolId: string, command: string, edit: boolean, opts: PtySpawnOpts) {
   const term = termRegistry.get(toolId);
   if (!term) {
-    window.api.pty.write(toolId, command + (edit ? '' : '\r'), opts);
+    api.pty.write(toolId, command + (edit ? '' : '\r'), opts);
     return;
   }
   term.paste(command);
-  if (!edit) window.api.pty.write(toolId, '\r', opts);
+  if (!edit) api.pty.write(toolId, '\r', opts);
 }

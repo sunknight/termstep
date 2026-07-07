@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Tool, ToolMeta } from '../../shared/types';
+import { api } from '../lib/api';
 
 // A small, curated set of icons that read well at sidebar size. Shown in a
 // popup beside the icon input so it doesn't eat vertical space in the form.
@@ -57,7 +58,7 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
     if (!url) return;
     setPreviewLoading(true);
     try {
-      const res = await window.api.fetchMdPreview(url);
+      const res = await api.fetchMdPreview(url);
       if (res?.error) {
         setError(`远程读取失败: ${res.error}`);
       } else {
@@ -119,7 +120,7 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
     meta.useRemote = effective === 'remote';
     try {
       // Always saves the LOCAL markdown; the remote copy is fetched, never written.
-      await window.api.tool.save(props.tool.meta.id, markdownText, meta);
+      await api.tool.save(props.tool.meta.id, markdownText, meta);
       props.onDone();
     } catch (e) {
       setError(String((e as Error)?.message ?? e));
@@ -261,7 +262,7 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
                     className="mdurl-pick"
                     title="在 Finder 中选择本地 Markdown 文件（仅记录路径）"
                     onClick={async () => {
-                      const res = await window.api.pickMdFile();
+                      const res = await api.pickMdFile();
                       if (!res.canceled) setMdUrl(res.path);
                     }}
                   >
