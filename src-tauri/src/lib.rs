@@ -2,6 +2,7 @@
 // main.rs 只是薄入口。
 mod types;
 mod pure;
+mod updater;
 
 use tauri::Manager;
 
