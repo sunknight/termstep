@@ -278,31 +278,83 @@ pub async fn update_check(
     Ok(updater::check_for_updates(handle, st, app_version, sf, true).await)
 }
 
-// ── pty（阶段 3 实现；本阶段 stub 让 renderer 的 invoke 不报错）──────────────
+// ── pty（portable-pty 池）───────────────────────────────────────────────────
+use crate::pty::PtyService;
+
 #[tauri::command]
-pub async fn pty_write(_tool_id: String, _data: String, _opts: Option<crate::types::PtySpawnOpts>) -> Result<(), String> {
+pub async fn pty_write(
+    handle: AppHandle,
+    pty: State<'_, Arc<Mutex<PtyService>>>,
+    tool_id: String,
+    data: String,
+    opts: Option<crate::types::PtySpawnOpts>,
+) -> Result<(), String> {
+    let opts = opts.unwrap_or_default();
+    pty.inner().lock().unwrap().write(&handle, &tool_id, &data, &opts);
     Ok(())
 }
+
 #[tauri::command]
-pub async fn pty_open(_tool_id: String, _opts: Option<crate::types::PtySpawnOpts>) -> Result<(), String> {
+pub async fn pty_open(
+    handle: AppHandle,
+    pty: State<'_, Arc<Mutex<PtyService>>>,
+    tool_id: String,
+    opts: Option<crate::types::PtySpawnOpts>,
+) -> Result<(), String> {
+    let opts = opts.unwrap_or_default();
+    pty.inner().lock().unwrap().open(&handle, &tool_id, &opts);
     Ok(())
 }
+
 #[tauri::command]
-pub async fn pty_restart(_tool_id: String, _opts: Option<crate::types::PtySpawnOpts>) -> Result<(), String> {
+pub async fn pty_restart(
+    handle: AppHandle,
+    pty: State<'_, Arc<Mutex<PtyService>>>,
+    tool_id: String,
+    opts: Option<crate::types::PtySpawnOpts>,
+) -> Result<(), String> {
+    let opts = opts.unwrap_or_default();
+    pty.inner().lock().unwrap().restart(&handle, &tool_id, &opts);
     Ok(())
 }
+
 #[tauri::command]
-pub async fn pty_resize(_tool_id: String, _cols: u16, _rows: u16) -> Result<(), String> {
+pub async fn pty_resize(
+    pty: State<'_, Arc<Mutex<PtyService>>>,
+    tool_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    pty.inner().lock().unwrap().resize(&tool_id, cols, rows);
     Ok(())
 }
+
 #[tauri::command]
-pub async fn pty_kill(_tool_id: String) -> Result<(), String> {
+pub async fn pty_kill(pty: State<'_, Arc<Mutex<PtyService>>>, tool_id: String) -> Result<(), String> {
+    pty.inner().lock().unwrap().kill(&tool_id);
     Ok(())
 }
+
+// 实时 cwd：先试 lsof 拿 shell 的 cwd；拿不到则回退到工具 meta 的 cwd 或 home。
 #[tauri::command]
-pub async fn pty_cwd(_tool_id: String) -> Result<String, String> {
-    // 阶段 2 无 pty，回退到 home
+pub async fn pty_cwd(
+    pty: State<'_, Arc<Mutex<PtyService>>>,
+    tools_dir: State<'_, DirState>,
+    tool_id: String,
+) -> Result<String, String> {
+    let pid = pty.inner().lock().unwrap().pid_of(&tool_id);
+    if let Some(cwd) = pid.and_then(crate::cwd::live_cwd) {
+        return Ok(cwd.to_string_lossy().to_string());
+    }
+    // 回退：扫工具拿 meta.cwd，再不行 home
+    let td = tools_dir.lock().unwrap().clone();
+    let scan = crate::tools::scan_tools(&td).await;
+    if let Some(t) = scan.tools.into_iter().find(|t| t.meta.id == tool_id) {
+        if let Some(cwd) = t.meta.cwd {
+            return Ok(crate::pty::expand_home(&cwd));
+        }
+    }
     Ok(dirs::home_dir()
         .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|| "~".into()))
+        .unwrap_or_else(|| "~".to_string()))
 }

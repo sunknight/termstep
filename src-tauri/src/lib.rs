@@ -2,6 +2,7 @@
 // main.rs 只是薄入口。
 mod commands;
 mod cwd;
+mod pty;
 mod seed;
 mod tmux;
 mod tool_io;
@@ -52,6 +53,11 @@ pub fn run() {
             app.manage(Mutex::new(state_file.clone()));
             app.manage(updater_state.clone());
 
+            // PTY 服务池（Arc<Mutex<PtyService>>，读线程通过 try_state 取它做
+            // generation guard）。
+            let pty_service = Arc::new(Mutex::new(pty::PtyService::new()));
+            app.manage(pty_service.clone());
+
             // 启动 watcher（初始 scan + emit tools:changed + notify + auto-tick）。
             // watcher_state 用同一 Arc 让 refresh_md command 也能访问 lastTools。
             app.manage(watcher_state.clone());
@@ -66,6 +72,17 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     let st = Arc::new(Mutex::new(updater::UpdaterState::default()));
                     let _ = updater::check_for_updates(h, st, av, sf, false).await;
+                });
+            }
+
+            // 窗口销毁时 kill 所有 pty（近似 Electron before-quit 的 killAll）。
+            {
+                let ps = pty_service.clone();
+                let w = app.get_webview_window("main").expect("main window missing");
+                w.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Destroyed = event {
+                        ps.lock().unwrap().kill_all();
+                    }
                 });
             }
 
