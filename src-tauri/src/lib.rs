@@ -53,9 +53,9 @@ pub fn run() {
             let watcher_state = Arc::new(Mutex::new(watcher::WatcherState::default()));
             let updater_state = Arc::new(Mutex::new(updater::UpdaterState::default()));
 
-            app.manage(Mutex::new(tools_dir.clone()));
-            app.manage(Mutex::new(user_data_dir.clone()));
-            app.manage(Mutex::new(state_file.clone()));
+            app.manage(commands::ToolsDir(Mutex::new(tools_dir.clone())));
+            app.manage(commands::UserDataDir(Mutex::new(user_data_dir.clone())));
+            app.manage(commands::UpdateStateFile(Mutex::new(state_file.clone())));
             app.manage(updater_state.clone());
 
             // PTY 服务池（Arc<Mutex<PtyService>>，读线程通过 try_state 取它做
@@ -68,15 +68,17 @@ pub fn run() {
             app.manage(watcher_state.clone());
             watcher::start_watcher(app.handle().clone(), tools_dir.clone(), watcher_state);
 
-            // auto-update check（启动 5s 后静默，沿用现有延迟）
+            // auto-update check（启动 5s 后静默，沿用现有延迟）。
+            // 复用 manage 的 updater_state（与 manual check / command 共享 checking 标志
+            // 和 notified_version，防重入正确）。
             {
                 let h = app.handle().clone();
                 let av = app_version.clone();
                 let sf = state_file.clone();
+                let ust = updater_state.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                    let st = Arc::new(Mutex::new(updater::UpdaterState::default()));
-                    let _ = updater::check_for_updates(h, st, av, sf, false).await;
+                    let _ = updater::check_for_updates(h, ust, av, sf, false).await;
                 });
             }
 
@@ -141,11 +143,15 @@ pub fn run() {
                     .inner()
                     .clone();
                 let av = app.package_info().version.to_string();
+                // state_file 从 manage 的 UpdateStateFile 取（不能用 app_data_dir——
+                // 那会派生出 local.termstep 而非 TermStep 路径）。
                 let sf = app
-                    .path()
-                    .app_data_dir()
-                    .expect("no app_data_dir")
-                    .join("update-state.json");
+                    .state::<commands::UpdateStateFile>()
+                    .inner()
+                    .0
+                    .lock()
+                    .unwrap()
+                    .clone();
                 tauri::async_runtime::spawn(async move {
                     let _ = updater::check_for_updates(h, st, av, sf, true).await;
                 });

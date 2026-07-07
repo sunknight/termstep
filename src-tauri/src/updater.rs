@@ -130,6 +130,11 @@ pub async fn check_for_updates(
         }
         s.checking = true;
     }
+    // manual 检查开始时广播 checking，让前端按钮显示「检查中…」（对齐原 TS updater.ts：
+    // `if (opts.manual) setState({ status: 'checking' })`）。auto 检查静默。
+    if manual {
+        set_state(&handle, &st, UpdateState::Checking);
+    }
     let result = check_inner(&handle, &st, &app_version, &state_file, manual).await;
     st.lock().unwrap().checking = false;
     result

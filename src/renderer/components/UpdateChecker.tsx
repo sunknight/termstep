@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useUpdateState } from '../hooks/useUpdateState';
 import { api } from '../lib/api';
@@ -17,25 +17,19 @@ import { api } from '../lib/api';
 export function UpdateChecker() {
   const state = useUpdateState();
   const [open, setOpen] = useState(false); // available-version popover open?
-  const [checking, setChecking] = useState(false);
+  // checking 单一来源：后端 emit 的 state.status === 'checking'。不用本地 state
+  // 管理，避免与 useUpdateState 的推送打架。runCheck 用 ref 防重入。
+  const checking = state.status === 'checking';
+  const inFlightRef = useRef(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
-  // Reflect the "checking" phase in the button label: main sets status=checking
-  // only for MANUAL checks (auto checks never broadcast checking). Reset once a
-  // terminal state (available/upToDate/error) or idle arrives.
-  useEffect(() => {
-    setChecking(state.status === 'checking');
-  }, [state.status]);
-
   const runCheck = async () => {
-    if (checking) return;
-    setChecking(true);
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     try {
       await api.update.check();
     } finally {
-      // status broadcast will flip this off via the effect above; safety net in
-      // case the broadcast races.
-      setChecking(false);
+      inFlightRef.current = false;
     }
   };
 
