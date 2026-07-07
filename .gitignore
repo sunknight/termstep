@@ -28,3 +28,6 @@ yarn-error.log*
 
 # superpowers subagent-driven-dev scratch (progress ledger)
 .superpowers/
+
+# git worktrees (local isolation workspaces)
+.worktrees/
