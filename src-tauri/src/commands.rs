@@ -243,7 +243,7 @@ pub async fn tools_import(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::
     let td = lock_or_recover!(&tools_dir.0).clone();
     let mut count = 0;
     for t in parsed.tools {
-        let id = tool_io::unique_id(&td, &t.meta.id).await;
+        let id = tool_io::new_tool_id();
         let dir = td.join(&id);
         tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
         let mut meta = serde_json::to_value(&t.meta).map_err(|e| e.to_string())?;

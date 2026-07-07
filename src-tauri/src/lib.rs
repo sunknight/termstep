@@ -37,6 +37,9 @@ pub fn run() {
 
             // seed 默认 git 工具（仅当 toolsDir 空）—— 对偶 seed.ts
             {
+                // 先迁移旧 slug 目录名 → UUID（同步，在任何 scan/seed/pty 之前），
+                // 确保随后 spawn 的 seed 判空与 watcher 初始 scan 看到的都是迁移后的状态。
+                let _ = tool_io::migrate_to_uuid_ids_blocking(&tools_dir);
                 let td = tools_dir.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Ok(mut entries) = tokio::fs::read_dir(&td).await {

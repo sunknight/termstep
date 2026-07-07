@@ -1,6 +1,6 @@
 [package]
 name = "termstep"
-version = "0.7.1"
+version = "0.7.2"
 description = "Local macOS app to run CLI commands via menus and buttons"
 edition = "2021"
 rust-version = "1.77"
@@ -29,3 +29,4 @@ opener = "0.7"
 chrono = "0.4"
 arboard = "3"
 portable-pty = "0.9"
+uuid = { version = "1", features = ["v4"] }

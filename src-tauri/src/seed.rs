@@ -4,7 +4,7 @@ use std::path::Path;
 
 pub async fn seed_default_tool(tools_dir: &Path) -> std::io::Result<()> {
     tokio::fs::create_dir_all(tools_dir).await?;
-    let git_dir = tools_dir.join("git");
+    let git_dir = tools_dir.join(crate::tool_io::new_tool_id());
     tokio::fs::create_dir_all(&git_dir).await?;
     tokio::fs::write(
         git_dir.join("tool.json"),
