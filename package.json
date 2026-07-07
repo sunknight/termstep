@@ -1,33 +1,26 @@
 {
   "name": "termstep",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Local macOS app to run CLI commands via menus and buttons",
-  "main": "./out/main/index.js",
+  "private": true,
+  "type": "module",
   "scripts": {
     "dev": "tauri dev",
     "dev:web": "vite",
     "build": "tauri build",
     "build:web": "vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "icon": "tauri icon assets/icon.png",
-    "package": "tauri build",
-    "_dev_electron": "electron-vite dev",
-    "_build_electron": "electron-vite build",
-    "_package_electron": "electron-vite build && electron-builder",
-    "_icon_electron": "electron scripts/render-icon.cjs"
+    "package": "tauri build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
     "@types/markdown-it": "^14.1.2",
-    "@types/node": "^20.14.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3",
-    "electron-vite": "^2.3.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "typescript": "^5.5.0",
@@ -35,13 +28,11 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
     "@codemirror/lang-markdown": "^6.3.0",
+    "@tauri-apps/api": "^2",
     "@uiw/react-codemirror": "^4.23.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "chokidar": "^3.6.0",
-    "markdown-it": "^14.1.0",
-    "node-pty": "^1.0.0"
+    "markdown-it": "^14.1.0"
   }
 }

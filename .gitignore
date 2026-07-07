@@ -1,17 +1,9 @@
 # dependencies
 node_modules/
 
-# build output
+# build output (Vite → dist/, Rust → src-tauri/target/)
 dist/
 out/
-build/
-# ...but the app icon source assets live in build/ (electron-builder convention);
-# keep them tracked so dev Dock + packaging work out of the box.
-!build/icon.svg
-!build/icon.png
-
-# electron-builder
-release/
 
 # logs
 *.log
