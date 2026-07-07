@@ -23,6 +23,8 @@ const SENSITIVE_DIR_SEGMENTS: &[&str] = &[
     "Library/Keychains",
     "Library/Cookies",
     ".password-store",
+    // 系统配置目录（含 passwd/hosts/sudoers 等）
+    "etc",
 ];
 
 fn sensitive_file_patterns() -> Vec<Regex> {
@@ -39,7 +41,96 @@ fn sensitive_file_patterns() -> Vec<Regex> {
         Regex::new(r"(?i)^.*\.pem$").unwrap(),
         Regex::new(r"(?i)^.*\.pfx$").unwrap(),
         Regex::new(r"(?i)^.*\.keystore$").unwrap(),
+        // shell rc / history 常含别名、token、export 的密钥
+        Regex::new(r"(?i)^\.bashrc$").unwrap(),
+        Regex::new(r"(?i)^\.zshrc$").unwrap(),
+        Regex::new(r"(?i)^\.profile$").unwrap(),
+        Regex::new(r"(?i)^\.bash_history$").unwrap(),
+        Regex::new(r"(?i)^\.zsh_history$").unwrap(),
+        Regex::new(r"(?i)^\.gitconfig$").unwrap(),
+        Regex::new(r"(?i)^\.npmrc$").unwrap(),
+        // 系统账户/凭据文件
+        Regex::new(r"(?i)^passwd$").unwrap(),
+        Regex::new(r"(?i)^shadow$").unwrap(),
+        Regex::new(r"(?i)^sudoers$").unwrap(),
+        Regex::new(r"(?i)^hosts$").unwrap(),
     ]
+}
+
+/// 本地 markdown 读取允许的扩展名白名单。mdUrl 本地路径仅允许这些后缀，
+/// 防止把 fetch_md_preview 当成任意文件读取器（例如 /etc/passwd、~/.zshrc）。
+fn allowed_md_extensions() -> &'static [&'static str] {
+    &["md", "markdown", "txt"]
+}
+
+/// 判断本地路径是否在允许读取的范围内：扩展名必须在白名单内。
+fn is_allowed_local_md(p: &str) -> bool {
+    let lower = p.to_lowercase();
+    allowed_md_extensions()
+        .iter()
+        .any(|ext| lower.ends_with(&format!(".{}", ext)))
+}
+
+/// 判断 URL 的 host 是否为内网/元数据地址（SSRF 防护）。
+/// 拒绝：环回、私有、链路本地、运营商级 NAT、未分配、云元数据链路本地地址。
+fn is_internal_host(host: &str) -> bool {
+    let h = host.to_lowercase();
+    // 明确文本形式
+    matches!(
+        h.as_str(),
+        "localhost"
+        | "ip6-localhost"
+        | "ip6-loopback"
+        | "metadata.google.internal" // GCP 元数据
+    ) || h.ends_with(".local")
+        || h.ends_with(".internal")
+        // 解析 IP 后判断（IPv4 点分十进制；IPv6 形如 [::1]）
+        || is_internal_ipv4(&h)
+        || h.trim_start_matches('[').trim_end_matches(']').starts_with("::")
+}
+
+/// IPv4 内网段判断。点分十进制且整体解析为 u32 后比对 CIDR。
+fn is_internal_ipv4(host: &str) -> bool {
+    // 去掉端口
+    let h = host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host);
+    let octets: Vec<&str> = h.split('.').collect();
+    if octets.len() != 4 {
+        return false;
+    }
+    let mut bytes = [0u8; 4];
+    for (i, o) in octets.iter().enumerate() {
+        match o.parse::<u8>() {
+            Ok(v) => bytes[i] = v,
+            Err(_) => return false,
+        }
+    }
+    let [a, b, _c, _d] = bytes;
+    match a {
+        0 => true,                          // 0.0.0.0/8 当前网络
+        10 => true,                         // 10.0.0.0/8 私有
+        127 => true,                        // 127.0.0.0/8 环回
+        169 if b == 254 => true,            // 169.254.0.0/16 链路本地（含 AWS/GCP 元数据 169.254.169.254）
+        172 if (16..=31).contains(&b) => true, // 172.16.0.0/12 私有
+        192 if b == 0 => true,              // 192.0.0.0/24、192.0.2.0/24（保留）
+        192 if b == 168 => true,            // 192.168.0.0/16 私有
+        198 if (18..=19).contains(&b) => true, // 198.18.0.0/15 基准测试
+        198 if b == 51 && _c == 100 => true,// 198.51.100.0/24 文档用例
+        203 if b == 0 && _c == 113 => true, // 203.0.113.0/24 文档用例
+        224..=239 => true,                  // 多播
+        240..=255 => true,                  // 保留
+        _ => false,
+    }
+}
+
+/// 从 URL 字符串提取 host 部分（http(s)://host[:port]/path → host[:port]）。
+fn extract_host(url: &str) -> Option<String> {
+    let stripped = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let host_end = stripped
+        .find(['/', '?', '#'])
+        .unwrap_or(stripped.len());
+    Some(stripped[..host_end].to_string())
 }
 
 /// 路径敏感则返回人类可读理由，否则 None。
@@ -106,10 +197,19 @@ pub async fn fetch_remote_markdown(url: &str) -> FetchedMd {
         } else {
             url.to_string()
         };
+        // 敏感守卫优先：无论扩展名，凭据/系统文件一律拒绝。
         if let Some(reason) = sensitive_path_reason(&p) {
             return FetchedMd {
                 markdown: String::new(),
                 error: Some(format!("拒绝读取敏感文件: {}", reason)),
+            };
+        }
+        // 扩展名白名单：非敏感文件也仅允许 .md/.markdown/.txt，防止读取任意文件
+        // （如 /etc/passwd 虽非凭据，也不应作为"帮助文档"被读取）。
+        if !is_allowed_local_md(&p) {
+            return FetchedMd {
+                markdown: String::new(),
+                error: Some("本地路径仅允许 .md / .markdown / .txt 文件".into()),
             };
         }
         match tokio::fs::read_to_string(&p).await {
@@ -117,11 +217,30 @@ pub async fn fetch_remote_markdown(url: &str) -> FetchedMd {
             Err(e) => FetchedMd { markdown: String::new(), error: Some(e.to_string()) },
         }
     } else {
-        let client = reqwest::Client::builder()
+        // SSRF 防护：拒绝内网/环回/链路本地/元数据地址。
+        if let Some(host) = extract_host(url) {
+            if is_internal_host(&host) {
+                return FetchedMd {
+                    markdown: String::new(),
+                    error: Some(format!("拒绝访问内网地址: {}", host)),
+                };
+            }
+        }
+        // 禁止重定向（防止 http→file 或重定向到内网）。无重定向则不会跟随跳转。
+        let client = match reqwest::Client::builder()
             .timeout(std::time::Duration::from_millis(8000))
             .user_agent(HTTP_UA)
+            .redirect(reqwest::redirect::Policy::none())
             .build()
-            .unwrap();
+        {
+            Ok(c) => c,
+            Err(e) => {
+                return FetchedMd {
+                    markdown: String::new(),
+                    error: Some(format!("HTTP 客户端构建失败: {}", e)),
+                }
+            }
+        };
         match client.get(url).send().await {
             Ok(resp) => {
                 if !resp.status().is_success() {
@@ -130,8 +249,28 @@ pub async fn fetch_remote_markdown(url: &str) -> FetchedMd {
                         error: Some(format!("HTTP {}", resp.status())),
                     };
                 }
+                // 限制响应体大小（2 MiB），防止超大响应导致 OOM。
+                // 带 Content-Length 且超限直接拒绝；不带的由下方 text() + 8s 超时兜底。
+                const LIMIT: u64 = 2 * 1024 * 1024;
+                if let Some(len) = resp.content_length() {
+                    if len > LIMIT {
+                        return FetchedMd {
+                            markdown: String::new(),
+                            error: Some("响应超过 2 MiB 上限".into()),
+                        };
+                    }
+                }
                 match resp.text().await {
-                    Ok(t) => FetchedMd { markdown: t, error: None },
+                    Ok(t) => {
+                        // chunked 编码可能不带 Content-Length，再次校验实际长度。
+                        if t.len() > LIMIT as usize {
+                            return FetchedMd {
+                                markdown: String::new(),
+                                error: Some("响应超过 2 MiB 上限".into()),
+                            };
+                        }
+                        FetchedMd { markdown: t, error: None }
+                    }
                     Err(e) => FetchedMd { markdown: String::new(), error: Some(e.to_string()) },
                 }
             }
@@ -458,5 +597,84 @@ mod tests {
     #[test]
     fn local_path_rejects_data() {
         assert!(!is_local_path("data:text/plain,hi"));
+    }
+
+    // ── 扩展名白名单（本地 mdUrl 仅允许 .md/.markdown/.txt）────────────────────
+    #[tokio::test]
+    async fn fetch_rejects_non_md_extension() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 写一个非敏感但扩展名不在白名单的文件（.sh）
+        let p = write_md(&dir, "script.sh", "#!/bin/sh").await;
+        let r = fetch_remote_markdown(&p.to_string_lossy()).await;
+        assert_eq!(r.markdown, "");
+        assert!(r.error.unwrap().contains("仅允许"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn fetch_allows_markdown_extension() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        let p = write_md(&dir, "guide.markdown", "# ok").await;
+        let r = fetch_remote_markdown(&p.to_string_lossy()).await;
+        assert_eq!(r.markdown, "# ok");
+        assert!(r.error.is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn fetch_allows_txt_extension() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        let p = write_md(&dir, "notes.txt", "plain text").await;
+        let r = fetch_remote_markdown(&p.to_string_lossy()).await;
+        assert_eq!(r.markdown, "plain text");
+        assert!(r.error.is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn fetch_blocks_etc_passwd_by_dir() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 在 tmp 下建 etc/passwd，验证 etc 段被敏感守卫拦截（无论扩展名）
+        expect_blocked(&dir, "etc/passwd").await;
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn fetch_blocks_zshrc_by_name() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        expect_blocked(&dir, "home/.zshrc").await;
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ── SSRF 内网过滤 ───────────────────────────────────────────────────────────
+    #[test]
+    fn internal_host_detects_loopback() {
+        assert!(is_internal_host("127.0.0.1"));
+        assert!(is_internal_host("localhost"));
+        assert!(is_internal_host("169.254.169.254")); // 云元数据
+        assert!(is_internal_host("10.0.0.5"));
+        assert!(is_internal_host("192.168.1.1"));
+        assert!(is_internal_host("172.16.0.1"));
+    }
+
+    #[test]
+    fn internal_host_rejects_public() {
+        assert!(!is_internal_host("example.com"));
+        assert!(!is_internal_host("plainraw.com"));
+        assert!(!is_internal_host("8.8.8.8"));
+        assert!(!is_internal_host("1.1.1.1"));
+    }
+
+    #[test]
+    fn extract_host_strips_path_and_port() {
+        assert_eq!(extract_host("https://example.com/a/b").as_deref(), Some("example.com"));
+        assert_eq!(extract_host("http://localhost:8080/x").as_deref(), Some("localhost:8080"));
+        assert_eq!(extract_host("https://a.com").as_deref(), Some("a.com"));
+        assert!(extract_host("ftp://x").is_none()); // 非 http(s)
     }
 }

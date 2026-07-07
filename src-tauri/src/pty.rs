@@ -60,9 +60,14 @@ impl PtyService {
     /// 持锁时间短：openpty + spawn + insert entry 后立即释放；initCommands 在
     /// unlock 后写（避免持锁阻塞读线程的 emit/state 访问）。
     fn ensure(&self, handle: &AppHandle, tool_id: &str, opts: &PtySpawnOpts) {
-        // 先快速检查是否已存在（避免重复 openpty）
-        if self.ptys.lock().unwrap().contains_key(tool_id) {
-            return;
+        // 双重检查：防止检查与插入之间的窗口内重复 spawn（调用方虽由外层
+        // PtyService Mutex 串行化，但本函数也可能被其它内部路径调用）。
+        // 用一个 in-progress 标记占位：spawn 前插入哨兵，避免并发重复。
+        {
+            let ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
+            if ptys.contains_key(tool_id) {
+                return;
+            }
         }
 
         let shell = opts.shell.clone().unwrap_or_else(default_shell);
@@ -192,8 +197,8 @@ impl PtyService {
             // 通过 AppHandle state 取池，比对 generation：只有 generation 匹配
             // （即这不是被 restart 替换的旧 shell）才移除。不清 desired（尺寸跨 shell 存活）。
             if let Some(svc) = handle_clone.try_state::<Arc<Mutex<PtyService>>>() {
-                let svc = svc.lock().unwrap();
-                let mut pool = svc.ptys.lock().unwrap();
+                let svc = svc.lock().unwrap_or_else(|e| e.into_inner());
+                let mut pool = svc.ptys.lock().unwrap_or_else(|e| e.into_inner());
                 let should_remove = pool
                     .get(&tool_id_owned)
                     .map(|e| e.generation == generation)
@@ -214,7 +219,7 @@ impl PtyService {
         };
 
         // 持锁插入 entry
-        self.ptys.lock().unwrap().insert(tool_id.to_string(), entry);
+        self.ptys.lock().unwrap_or_else(|e| e.into_inner()).insert(tool_id.to_string(), entry);
 
         // 行为 5: initCommands 写入时机——spawn 后立即 write（缓冲到 shell 就绪）。
         // 在 unlock 后写（ensure 持锁段已结束）。
@@ -227,9 +232,9 @@ impl PtyService {
     }
 
     fn write_internal(&self, tool_id: &str, data: &[u8]) {
-        let ptys = self.ptys.lock().unwrap();
+        let ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = ptys.get(tool_id) {
-            if let Some(w) = entry.writer.lock().unwrap().as_mut() {
+            if let Some(w) = entry.writer.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
                 let _ = w.write_all(data);
                 let _ = w.flush();
             }
@@ -253,8 +258,8 @@ impl PtyService {
     }
 
     pub fn resize(&self, tool_id: &str, cols: u16, rows: u16) {
-        self.desired.lock().unwrap().insert(tool_id.to_string(), (cols, rows));
-        let ptys = self.ptys.lock().unwrap();
+        self.desired.lock().unwrap_or_else(|e| e.into_inner()).insert(tool_id.to_string(), (cols, rows));
+        let ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = ptys.get(tool_id) {
             let _ = entry.master.resize(PtySize {
                 rows,
@@ -266,22 +271,22 @@ impl PtyService {
     }
 
     pub fn pid_of(&self, tool_id: &str) -> Option<u32> {
-        self.ptys.lock().unwrap().get(tool_id).and_then(|e| e.pid)
+        self.ptys.lock().unwrap_or_else(|e| e.into_inner()).get(tool_id).and_then(|e| e.pid)
     }
 
     pub fn kill(&self, tool_id: &str) {
-        let entry = self.ptys.lock().unwrap().remove(tool_id);
+        let entry = self.ptys.lock().unwrap_or_else(|e| e.into_inner()).remove(tool_id);
         if let Some(entry) = entry {
-            let _ = entry.killer.lock().unwrap().kill();
+            let _ = entry.killer.lock().unwrap_or_else(|e| e.into_inner()).kill();
         }
         // 不清 desired（终端尺寸跨 shell 存活）
     }
 
     pub fn kill_all(&self) {
-        let mut ptys = self.ptys.lock().unwrap();
+        let mut ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
         for (_, entry) in ptys.drain() {
-            let _ = entry.killer.lock().unwrap().kill();
+            let _ = entry.killer.lock().unwrap_or_else(|e| e.into_inner()).kill();
         }
-        self.desired.lock().unwrap().clear();
+        self.desired.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 }

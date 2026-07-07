@@ -226,15 +226,27 @@ async fn check_inner(
 async fn fetch_manifest(url: &str) -> Result<String, Box<dyn std::error::Error>> {
     // 带标准浏览器 UA：plainraw（Cloudflare）拒绝非浏览器 UA（403）。
     const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    // 禁止重定向：清单 URL 是固定的，无需跟随跳转，可降低 SSRF/劫持风险。
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(FETCH_TIMEOUT_MS))
         .user_agent(UA)
+        .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let resp = client.get(url).send().await?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()).into());
     }
-    Ok(resp.text().await?)
+    // 限制清单大小（1 MiB 足够），防止超大响应导致 OOM。
+    if let Some(len) = resp.content_length() {
+        if len > 1024 * 1024 {
+            return Err("更新清单超过 1 MiB 上限".into());
+        }
+    }
+    let text = resp.text().await?;
+    if text.len() > 1024 * 1024 {
+        return Err("更新清单超过 1 MiB 上限".into());
+    }
+    Ok(text)
 }
 
 #[cfg(test)]

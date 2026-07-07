@@ -9,6 +9,32 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 
+/// 校验前端传入的 tool_id，防止路径穿越（`..`、`/`、`\`、NUL 等）。
+/// 合法的 tool_id 是工具目录名：由 slugify 产生的 `[a-z0-9-]` 子集。
+/// 返回 Err 时携带可向用户展示的错误信息。
+fn validate_tool_id(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || id.contains('/')
+        || id.contains('\\')
+        || id.contains("..")
+        || id.contains('\0')
+    {
+        return Err("非法工具标识".into());
+    }
+    Ok(())
+}
+
+/// 容错地获取 Mutex 锁：跳过中毒锁（panic 后遗留），避免一处 panic 永久瘫痪整个子系统。
+/// 中毒意味着数据可能不一致，但比起让整个 PTY/watcher 子系统永久不可用，继续运行更可取。
+macro_rules! lock_or_recover {
+    ($m:expr) => {
+        match $m.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(), // 中毒锁：取出数据继续
+        }
+    };
+}
+
 // 共享状态容器。每个 PathBuf 用途必须是**不同的类型**——Tauri State 按类型查找，
 // 三个 Mutex<PathBuf> 会冲突（只保留最后一个）。所以用 newtype 包装区分。
 // Arc<Mutex<T>> 的状态（updater/watcher/pty）本身类型不同，无需包装。
@@ -25,7 +51,7 @@ type PtyArc = Arc<Mutex<crate::pty::PtyService>>;
 // ── tools ───────────────────────────────────────────────────────────────────
 #[tauri::command]
 pub async fn tools_list(tools_dir: State<'_, ToolsDir>) -> Result<crate::types::ScanResult, String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    let td = lock_or_recover!(&tools_dir.0).clone();
     Ok(tools::scan_tools(&td).await)
 }
 
@@ -35,10 +61,10 @@ pub async fn refresh_md(
     watcher_state: State<'_, WatcherArc>,
     tools_dir: State<'_, ToolsDir>,
 ) -> Result<(), String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    let td = lock_or_recover!(&tools_dir.0).clone();
     let r = tools::scan_tools(&td).await;
     {
-        let mut s = watcher_state.lock().unwrap();
+        let mut s = lock_or_recover!(&watcher_state);
         s.last_tools = r.tools.clone();
     }
     let _ = handle.emit("tools:changed", &r);
@@ -53,7 +79,8 @@ pub async fn tool_save(
     markdown: String,
     meta_patch: serde_json::Value,
 ) -> Result<(), String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    validate_tool_id(&tool_id)?;
+    let td = lock_or_recover!(&tools_dir.0).clone();
     tool_io::tool_save(&td.join(&tool_id), &markdown, meta_patch)
         .await
         .map_err(|e| e.to_string())
@@ -65,7 +92,8 @@ pub async fn tool_append_buttons(
     tool_id: String,
     body: String,
 ) -> Result<bool, String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    validate_tool_id(&tool_id)?;
+    let td = lock_or_recover!(&tools_dir.0).clone();
     tool_io::tool_append_buttons(&td.join(&tool_id), &body)
         .await
         .map_err(|e| e.to_string())
@@ -73,7 +101,7 @@ pub async fn tool_append_buttons(
 
 #[tauri::command]
 pub async fn tool_create(tools_dir: State<'_, ToolsDir>, name: String) -> Result<String, String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    let td = lock_or_recover!(&tools_dir.0).clone();
     tool_io::tool_create(&td, &name)
         .await
         .map_err(|e| e.to_string())
@@ -81,7 +109,8 @@ pub async fn tool_create(tools_dir: State<'_, ToolsDir>, name: String) -> Result
 
 #[tauri::command]
 pub async fn tool_delete(tools_dir: State<'_, ToolsDir>, tool_id: String) -> Result<(), String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    validate_tool_id(&tool_id)?;
+    let td = lock_or_recover!(&tools_dir.0).clone();
     // pty kill 留到阶段 3（现在 stub）
     tool_io::tool_delete(&td, &tool_id)
         .await
@@ -93,7 +122,10 @@ pub async fn tool_reorder(
     tools_dir: State<'_, ToolsDir>,
     ordered_ids: Vec<String>,
 ) -> Result<(), String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    for id in &ordered_ids {
+        validate_tool_id(id)?;
+    }
+    let td = lock_or_recover!(&tools_dir.0).clone();
     tool_io::tool_reorder(&td, &ordered_ids)
         .await
         .map_err(|e| e.to_string())
@@ -126,7 +158,7 @@ pub async fn pick_md_file() -> Result<serde_json::Value, String> {
 // ── bundle ──────────────────────────────────────────────────────────────────
 #[tauri::command]
 pub async fn tools_export(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::Value, String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    let td = lock_or_recover!(&tools_dir.0).clone();
     let scan = tools::scan_tools(&td).await;
     let bundle = crate::pure::serialize_tools(&scan.tools, &chrono::Utc::now().to_rfc3339());
     let stamp = chrono::Utc::now().format("%Y-%m-%d").to_string();
@@ -154,7 +186,8 @@ pub async fn export_one(
     tools_dir: State<'_, ToolsDir>,
     tool_id: String,
 ) -> Result<serde_json::Value, String> {
-    let td = tools_dir.0.lock().unwrap().clone();
+    validate_tool_id(&tool_id)?;
+    let td = lock_or_recover!(&tools_dir.0).clone();
     let scan = tools::scan_tools(&td).await;
     let tool = scan
         .tools
@@ -207,7 +240,7 @@ pub async fn tools_import(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::
     if let Some(err) = parsed.error {
         return Ok(serde_json::json!({"canceled": false, "count": 0, "error": err}));
     }
-    let td = tools_dir.0.lock().unwrap().clone();
+    let td = lock_or_recover!(&tools_dir.0).clone();
     let mut count = 0;
     for t in parsed.tools {
         let id = tool_io::unique_id(&td, &t.meta.id).await;
@@ -232,7 +265,7 @@ pub async fn tools_import(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::
 // ── quick ───────────────────────────────────────────────────────────────────
 #[tauri::command]
 pub async fn quick_get(user_data_dir: State<'_, UserDataDir>) -> Result<String, String> {
-    let ud = user_data_dir.0.lock().unwrap().clone();
+    let ud = lock_or_recover!(&user_data_dir.0).clone();
     Ok(tool_io::quick_get(&ud).await)
 }
 
@@ -241,7 +274,7 @@ pub async fn quick_save(
     user_data_dir: State<'_, UserDataDir>,
     md: String,
 ) -> Result<(), String> {
-    let ud = user_data_dir.0.lock().unwrap().clone();
+    let ud = lock_or_recover!(&user_data_dir.0).clone();
     tool_io::quick_save(&ud, &md)
         .await
         .map_err(|e| e.to_string())
@@ -280,7 +313,7 @@ pub async fn update_check(
     state: State<'_, UpdaterArc>,
     state_file: State<'_, UpdateStateFile>,
 ) -> Result<crate::types::UpdateState, String> {
-    let sf = state_file.0.lock().unwrap().clone();
+    let sf = lock_or_recover!(&state_file.0).clone();
     let app_version = handle.package_info().version.to_string();
     // State<'_, Arc<...>> 实现了 Deref 到 Arc，但 check_for_updates 需要_owned_ Arc；
     // clone 出来。
@@ -299,8 +332,9 @@ pub async fn pty_write(
     data: String,
     opts: Option<crate::types::PtySpawnOpts>,
 ) -> Result<(), String> {
+    validate_tool_id(&tool_id)?;
     let opts = opts.unwrap_or_default();
-    pty.inner().lock().unwrap().write(&handle, &tool_id, &data, &opts);
+    lock_or_recover!(pty.inner()).write(&handle, &tool_id, &data, &opts);
     Ok(())
 }
 
@@ -311,8 +345,9 @@ pub async fn pty_open(
     tool_id: String,
     opts: Option<crate::types::PtySpawnOpts>,
 ) -> Result<(), String> {
+    validate_tool_id(&tool_id)?;
     let opts = opts.unwrap_or_default();
-    pty.inner().lock().unwrap().open(&handle, &tool_id, &opts);
+    lock_or_recover!(pty.inner()).open(&handle, &tool_id, &opts);
     Ok(())
 }
 
@@ -323,8 +358,9 @@ pub async fn pty_restart(
     tool_id: String,
     opts: Option<crate::types::PtySpawnOpts>,
 ) -> Result<(), String> {
+    validate_tool_id(&tool_id)?;
     let opts = opts.unwrap_or_default();
-    pty.inner().lock().unwrap().restart(&handle, &tool_id, &opts);
+    lock_or_recover!(pty.inner()).restart(&handle, &tool_id, &opts);
     Ok(())
 }
 
@@ -335,13 +371,15 @@ pub async fn pty_resize(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    pty.inner().lock().unwrap().resize(&tool_id, cols, rows);
+    validate_tool_id(&tool_id)?;
+    lock_or_recover!(pty.inner()).resize(&tool_id, cols, rows);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn pty_kill(pty: State<'_, PtyArc>, tool_id: String) -> Result<(), String> {
-    pty.inner().lock().unwrap().kill(&tool_id);
+    validate_tool_id(&tool_id)?;
+    lock_or_recover!(pty.inner()).kill(&tool_id);
     Ok(())
 }
 
@@ -352,12 +390,13 @@ pub async fn pty_cwd(
     tools_dir: State<'_, ToolsDir>,
     tool_id: String,
 ) -> Result<String, String> {
-    let pid = pty.inner().lock().unwrap().pid_of(&tool_id);
+    validate_tool_id(&tool_id)?;
+    let pid = lock_or_recover!(pty.inner()).pid_of(&tool_id);
     if let Some(cwd) = pid.and_then(crate::cwd::live_cwd) {
         return Ok(cwd.to_string_lossy().to_string());
     }
     // 回退：扫工具拿 meta.cwd，再不行 home
-    let td = tools_dir.0.lock().unwrap().clone();
+    let td = lock_or_recover!(&tools_dir.0).clone();
     let scan = crate::tools::scan_tools(&td).await;
     if let Some(t) = scan.tools.into_iter().find(|t| t.meta.id == tool_id) {
         if let Some(cwd) = t.meta.cwd {
@@ -367,4 +406,37 @@ pub async fn pty_cwd(
     Ok(dirs::home_dir()
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|| "~".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_tool_id;
+
+    #[test]
+    fn tool_id_accepts_normal_slug() {
+        assert!(validate_tool_id("git").is_ok());
+        assert!(validate_tool_id("my-tool-2").is_ok());
+        assert!(validate_tool_id("工具").is_ok()); // 非 ASCII 字符允许（slugify 不影响目录名）
+    }
+
+    #[test]
+    fn tool_id_rejects_traversal() {
+        assert!(validate_tool_id("..").is_err());
+        assert!(validate_tool_id("../").is_err());
+        assert!(validate_tool_id("../..").is_err());
+        assert!(validate_tool_id("a/../b").is_err());
+        assert!(validate_tool_id("a/../../etc").is_err());
+    }
+
+    #[test]
+    fn tool_id_rejects_separators() {
+        assert!(validate_tool_id("a/b").is_err());
+        assert!(validate_tool_id(r"a\b").is_err());
+        assert!(validate_tool_id("a\0b").is_err());
+    }
+
+    #[test]
+    fn tool_id_rejects_empty() {
+        assert!(validate_tool_id("").is_err());
+    }
 }
