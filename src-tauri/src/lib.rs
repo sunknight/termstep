@@ -20,12 +20,16 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            // 路径：app_data_dir()（macOS = ~/Library/Application Support/TermStep，
-            // 与 Electron userData 同路径，无需迁移）。
+            // 用户数据路径：~/Library/Application Support/TermStep
+            // 故意用 productName（"TermStep"）而非 Tauri 默认的 identifier
+            // （"local.termstep"）派生，以与 Electron 时代的 userData 路径完全
+            // 一致——这样老用户的工具数据零丢失。app_data_dir() 会给出
+            // .../local.termstep，是错的。
             let user_data_dir = app
                 .path()
-                .app_data_dir()
-                .expect("no app_data_dir");
+                .config_dir()
+                .expect("no config_dir")
+                .join("TermStep");
             let tools_dir = user_data_dir.join("tools");
             let state_file = user_data_dir.join("update-state.json");
             std::fs::create_dir_all(&tools_dir).ok();
