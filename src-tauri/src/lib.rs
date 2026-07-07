@@ -1,5 +1,8 @@
 // Tauri v2 推荐 lib/bin 分离：lib 持有 app 构造逻辑（便于将来 #[cfg(test)] 单测），
-// main.rs 只是薄入口。本阶段无 command、无 setup，只创建窗口加载前端。
+// main.rs 只是薄入口。
+mod types;
+mod pure;
+
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
