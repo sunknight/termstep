@@ -39,9 +39,46 @@
 
 ## 后续阶段（待执行）
 
-- **阶段 4**：原生体验（菜单/Dock/About）+ 打包 + 清理 Electron
+（无——迁移已完成）
 
 ---
+
+## 阶段 4：原生体验 + 打包 + 清理 — 完成 ✅
+
+- **日期**: 2026-07-07
+- **Plan**: `docs/superpowers/plans/2026-07-07-tauri-migration-stage4-native-cleanup.md`
+
+### 已完成
+
+| Task | 提交 | 说明 |
+|---|---|---|
+| menu.rs | `ba35413` | 原生 macOS 菜单（4 子菜单 + 检查更新/全屏） |
+| 删除 Electron | `c555145` | 删 6416 行（src/main、src/preload、配置、依赖） |
+| tauri build | — | dmg 产出 |
+| CLAUDE.md | (本 task) | 全面更新为 Tauri 版 |
+
+### 🎯 核心成果：体积对比
+
+| | 体积 | 说明 |
+|---|---|---|
+| Electron (旧 0.4.0) | **94 MB** | 含 Chromium |
+| Tauri (新 0.5.0) | **5.4 MB** | 系统 WebView |
+| **降幅** | **-94.3%** | 超额完成（预期 12-15MB） |
+
+产物：`src-tauri/target/release/bundle/dmg/TermStep_0.5.0_aarch64.dmg`（5,636,714 字节）。
+
+### 验证
+- ✅ cargo check 通过，55 Rust 测试 PASS
+- ✅ typecheck 0 错误
+- ✅ vitest 7 文件 105 测试全绿（shared 纯逻辑零回归）
+- ✅ node_modules 476 → 139 packages
+- ✅ `tauri build` 成功，dmg 5.4MB
+- ✅ Electron 代码零残留
+
+### 待人工确认
+- [ ] dmg 安装运行：双击 dmg，拖到 Applications，`xattr -cr` 后启动
+- [ ] 菜单栏显示 TermStep/编辑/视图/窗口
+- [ ] PTY 6 行为 + tmux + 复制粘贴（见阶段 3 待确认项）
 
 ## 阶段 3：PTY 攻坚 — 完成 ✅
 
