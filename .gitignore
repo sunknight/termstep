@@ -34,5 +34,7 @@ yarn-error.log*
 
 # Tauri generated icons (regenerated via `npm run icon`, source kept in assets/)
 src-tauri/icons/
+# Tauri generated capability schemas (regenerated on build)
+src-tauri/gen/
 # Rust build artifacts
 src-tauri/target/
