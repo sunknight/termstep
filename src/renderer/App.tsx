@@ -5,6 +5,7 @@ import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
 import { EditorPane } from './components/EditorPane';
 import { QuickAddModal } from './components/QuickAddModal';
+import { HelpModal } from './components/HelpModal';
 import { QuickCommands } from './components/QuickCommands';
 import { Notifications } from './components/Notifications';
 import { HoverTip } from './components/HoverTip';
@@ -24,6 +25,7 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
   const [liveCwd, setLiveCwd] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
@@ -147,6 +149,7 @@ export default function App() {
       onNew={createTool}
       onExport={exportTools}
       onImport={importTools}
+      onHelp={() => setHelpOpen(true)}
       floating={sidebarCollapsed}
     />
   );
@@ -270,6 +273,7 @@ export default function App() {
           onClose={() => setQuickAddOpen(false)}
         />
       )}
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }
