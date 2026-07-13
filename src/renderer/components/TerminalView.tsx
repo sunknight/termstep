@@ -189,7 +189,13 @@ export function TerminalView(props: {
     <div
       ref={containerRef}
       className="term"
-      style={{ display: props.active ? 'block' : 'none', height: '100%' }}
+      // height uses calc instead of 100%: the xterm ResizeObserver watches this
+      // element, and only an actual height reduction triggers fit() to recompute
+      // rows and lift the last line off the window's bottom edge. padding on the
+      // wrapper wouldn't reliably shrink height:100% (percentage-height through
+      // padded parents isn't honored in every layout path), leaving the canvas
+      // glued to the bottom. 8px keeps the last text row ~6-8px clear of the edge.
+      style={{ display: props.active ? 'block' : 'none', height: 'calc(100% - 8px)' }}
     />
   );
 }

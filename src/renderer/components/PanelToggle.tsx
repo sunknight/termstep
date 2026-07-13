@@ -39,7 +39,7 @@ export function PanelToggle(props: PanelToggleProps) {
           side={props.side}
           anchorRef={btnRef}
           contentProps={peek.contentProps}
-          closeOnClick={props.closePeekOnClick}
+          closeOnDown={props.closePeekOnClick}
           onClose={peek.close}
         >
           {props.peekContent}

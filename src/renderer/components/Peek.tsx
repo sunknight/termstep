@@ -6,7 +6,7 @@ interface PeekProps {
   side: 'left' | 'right';
   anchorRef: React.RefObject<HTMLElement>; // the toggle button — peek sits below it
   contentProps: { onMouseEnter: () => void; onMouseLeave: () => void };
-  closeOnClick?: boolean; // sidebar peek: click dismisses; help peek: stays open
+  closeOnDown?: boolean; // sidebar peek: mousedown dismisses; help peek: stays open
   onClose?: () => void;
   children: ReactNode;
 }
@@ -48,7 +48,10 @@ export function Peek(props: PeekProps) {
       style={style}
       onMouseEnter={props.contentProps.onMouseEnter}
       onMouseLeave={props.contentProps.onMouseLeave}
-      onClick={props.closeOnClick ? props.onClose : undefined}
+      // 用 mousedown 关闭，不用 click：触控板「轻点来点按」抬起时手指易横向滑动几像素，
+      // 使 mousedown 与 mouseup 落在不同元素 → 不合成 click → peek 不会关闭。mousedown
+      // 稳定触发，故用它。子元素（如侧边栏工具项）的 mousedown 先于冒泡到此，选中已入队。
+      onMouseDown={props.closeOnDown ? props.onClose : undefined}
     >
       {props.children}
     </div>,
