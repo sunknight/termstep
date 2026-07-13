@@ -24,6 +24,8 @@ Single test by name: `npx vitest run -t "restart keeps"`
 Rust tests: `cargo test --manifest-path src-tauri/Cargo.toml` (pure/updater/tools/tmux = 55 tests)
 Rust check: `cargo check --manifest-path src-tauri/Cargo.toml`
 
+**设置版本号**：`npm run version:set 0.8.2` —— 一键同步 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.lock`（termstep 包那一处）。不要手动逐个改，容易漏 Cargo.lock。
+
 ## Architecture
 
 Two sides, wired by Tauri v2:
