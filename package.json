@@ -1,6 +1,6 @@
 {
   "name": "termstep",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Local macOS app to run CLI commands via menus and buttons",
   "private": true,
   "type": "module",

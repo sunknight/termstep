@@ -331,19 +331,25 @@ pub async fn scan_tools(tools_dir: &Path) -> ScanResult {
         let help_markdown = std::fs::read_to_string(child.join("help.md")).unwrap_or_default();
 
         // 可选远程 md（与 helpMarkdown 分开，不清除本地）
+        // 仅当 useRemote:true 才拉取 mdUrl——与前端显示逻辑一致
+        // （App.tsx: useRemote ? remoteMarkdown : helpMarkdown）。否则即便 mdUrl
+        // 指向 ~/Downloads 等受 TCC 保护的目录，也不会每次扫描都读文件、触发
+        // macOS「想访问下载文件夹」权限弹窗。
         let mut remote_markdown = None;
-        if let Some(md_url) = meta.md_url.clone() {
-            if meta.auto_update_minutes.is_none() {
-                meta.auto_update_minutes = Some(DEFAULT_AUTO_UPDATE_MINUTES);
-            }
-            let fetched = fetch_remote_markdown(&md_url).await;
-            if fetched.markdown.is_empty() && fetched.error.is_some() {
-                result.errors.push(ScanError {
-                    id: id.clone(),
-                    message: format!("远程帮助加载失败 ({}): {}", md_url, fetched.error.unwrap()),
-                });
-            } else {
-                remote_markdown = Some(fetched.markdown);
+        if meta.use_remote == Some(true) {
+            if let Some(md_url) = meta.md_url.clone() {
+                if meta.auto_update_minutes.is_none() {
+                    meta.auto_update_minutes = Some(DEFAULT_AUTO_UPDATE_MINUTES);
+                }
+                let fetched = fetch_remote_markdown(&md_url).await;
+                if fetched.markdown.is_empty() && fetched.error.is_some() {
+                    result.errors.push(ScanError {
+                        id: id.clone(),
+                        message: format!("远程帮助加载失败 ({}): {}", md_url, fetched.error.unwrap()),
+                    });
+                } else {
+                    remote_markdown = Some(fetched.markdown);
+                }
             }
         }
         result.tools.push(Tool {
@@ -483,15 +489,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_reads_local_path_mdurl() {
+    async fn scan_reads_local_path_mdurl_when_use_remote() {
         let _dir = tmp();
         let dir = _dir.path();
         let ext = write_md(&dir, "remote.md", "# From File").await;
-        let json = format!(r#"{{"name":"A","mdUrl":{:?}}}"#, ext.to_string_lossy());
+        let json = format!(
+            r#"{{"name":"A","mdUrl":{:?},"useRemote":true}}"#,
+            ext.to_string_lossy()
+        );
         write_tool(&dir, "a", Some(&json), "# Local").await;
         let r = scan_tools(&dir).await;
         assert_eq!(r.tools.len(), 1);
         assert_eq!(r.tools[0].remote_markdown, Some("# From File".into()));
+        assert_eq!(r.tools[0].help_markdown, "# Local");
+        assert!(r.errors.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+        // _dir (TempDir) drops here, auto-cleaning.
+    }
+
+    // 回归：useRemote 不为 true（含缺省）时，即便 mdUrl 指向本地文件，scan 也不读它。
+    // 这避免指向 ~/Downloads 等受 TCC 保护目录的 mdUrl 在每次扫描时触发 macOS
+    // 「想访问下载文件夹」权限弹窗。
+    #[tokio::test]
+    async fn scan_skips_local_path_mdurl_when_not_use_remote() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        let ext = write_md(&dir, "remote.md", "# From File").await;
+        // useRemote:false —— mdUrl 存在但不应被读取
+        let json = format!(
+            r#"{{"name":"A","mdUrl":{:?},"useRemote":false}}"#,
+            ext.to_string_lossy()
+        );
+        write_tool(&dir, "a", Some(&json), "# Local").await;
+        let r = scan_tools(&dir).await;
+        assert_eq!(r.tools.len(), 1);
+        assert_eq!(r.tools[0].remote_markdown, None);
         assert_eq!(r.tools[0].help_markdown, "# Local");
         assert!(r.errors.is_empty());
         std::fs::remove_dir_all(&dir).ok();
