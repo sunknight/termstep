@@ -1,25 +1,60 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 
-// Quick-add (append mode): grab the clipboard (or let the user type), then
-// append it as a new ```buttons fence to the end of the tool's help.md. Mirrors
-// ParamPromptModal's structure (overlay + autofocus + Esc). Reuses existing
-// modal/textarea CSS classes — no new styles.
+// Quick-add (append mode): the textarea starts as a ```buttons fence template
+// (so the user can edit commands in place), and the whole input is appended to
+// the tool's help.md verbatim as a markdown block — not force-wrapped. That
+// means the user can change the fence type (```sh, ```bash), drop the fence for
+// a heading/plain text, or paste arbitrary markdown. Clipboard content, when
+// present, is spliced inside the fence and selected so typing replaces it;
+// otherwise the cursor lands inside the empty fence. Mirrors ParamPromptModal's
+// structure (overlay + autofocus + Esc). Reuses existing modal/textarea CSS
+// classes — no new styles.
+
+// Empty fence template. Index 11 (right after "```buttons\n") is the inside.
+const BUTTONS_TEMPLATE = '```buttons\n\n```';
+const FENCE_INSIDE_START = '```buttons\n'.length; // 11
+
+// Whether the input has any real content to append. Strips an empty ```buttons
+// fence (the starting template) so opening the modal and hitting "添加" without
+// typing anything is a no-op; any other content (commands inside the fence,
+// plain text/headings, a different fence type) counts as real.
+const EMPTY_FENCE_RE = /```buttons\s*\n\s*\n```/;
+function hasRealContent(v: string): boolean {
+  return v.replace(EMPTY_FENCE_RE, '').trim() !== '';
+}
+
 export function QuickAddModal(props: {
   onSubmit: (body: string) => Promise<void>;
   onClose: () => void;
 }) {
   const { onSubmit, onClose } = props;
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(BUTTONS_TEMPLATE);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const selectedRef = useRef(false);
+  const cursorPlacedRef = useRef(false);
+
+  // Position the textarea selection once. No-op after the first successful
+  // placement (cursorPlacedRef). Deferred via rAF so the DOM value (which may
+  // have just changed via setValue) is committed before we select.
+  const placeCursor = (start: number, end: number) => {
+    if (cursorPlacedRef.current) return;
+    cursorPlacedRef.current = true;
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(start, end);
+    });
+  };
 
   // Prefill from the clipboard (async — it's the main-process clipboard over
   // IPC, since the sandboxed preload can't reach `clipboard` directly). Focus
-  // immediately; once the prefilled content lands, select-all so typing replaces
-  // it. Errors (clipboard unavailable) degrade to an empty field.
+  // immediately. The field already shows the buttons fence template; if the
+  // clipboard has content it gets spliced inside the fence and selected so
+  // typing replaces it. If the clipboard is empty/unavailable the template
+  // stays and the cursor lands inside the empty fence.
   useEffect(() => {
     const ta = taRef.current;
     ta?.focus();
@@ -27,22 +62,26 @@ export function QuickAddModal(props: {
     api.clipboard
       .readText()
       .then((text) => {
-        if (!cancelled && text) setValue(text);
+        if (cancelled) return;
+        const trimmed = text.trim();
+        if (trimmed) {
+          // Splice clipboard inside the fence and select it for quick replace.
+          const filled = '```buttons\n' + trimmed + '\n```';
+          setValue(filled);
+          placeCursor(FENCE_INSIDE_START, FENCE_INSIDE_START + trimmed.length);
+        } else {
+          placeCursor(FENCE_INSIDE_START, FENCE_INSIDE_START);
+        }
       })
       .catch(() => {
-        /* clipboard unavailable — leave empty */
+        /* clipboard unavailable — keep the empty fence template */
+        placeCursor(FENCE_INSIDE_START, FENCE_INSIDE_START);
       });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Select-all once, after the prefilled value first arrives.
-  useEffect(() => {
-    if (selectedRef.current || !value) return;
-    selectedRef.current = true;
-    taRef.current?.select();
-  }, [value]);
 
   // Esc cancels (not while a submit is in flight).
   useEffect(() => {
@@ -53,7 +92,7 @@ export function QuickAddModal(props: {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, busy]);
 
-  const canSubmit = value.trim() !== '' && !busy;
+  const canSubmit = hasRealContent(value) && !busy;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -73,7 +112,7 @@ export function QuickAddModal(props: {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">快速添加命令</div>
         <div className="modal-hint">
-          每行一条命令，将作为新的 <code>buttons</code> 块追加到文档末尾。
+          输入会作为 markdown 块原样追加到文档末尾。默认是 <code>```buttons</code> 围栏，可改为其它围栏类型或添加普通文本/标题。
         </div>
         <textarea
           ref={taRef}

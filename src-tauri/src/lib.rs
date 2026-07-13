@@ -118,7 +118,7 @@ pub fn run() {
             commands::tools_list,
             commands::refresh_md,
             commands::tool_save,
-            commands::tool_append_buttons,
+            commands::tool_append_md,
             commands::tool_create,
             commands::tool_delete,
             commands::tool_reorder,

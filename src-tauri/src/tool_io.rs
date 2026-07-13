@@ -1,6 +1,6 @@
 //! 对偶 src/main/ipc.ts 中 tool CRUD / bundle / quick 部分。纯 fs 操作。
 
-use crate::pure::{build_buttons_append, merge_tool_json, parse_tool_meta};
+use crate::pure::{build_md_append, merge_tool_json, parse_tool_meta};
 use std::path::Path;
 use uuid::Uuid;
 
@@ -29,11 +29,12 @@ pub async fn tool_save(
     Ok(())
 }
 
-/// tool_append_buttons：追加 ```buttons 围栏。返回是否实际写入。对偶 TOOL_APPEND_BUTTONS。
-pub async fn tool_append_buttons(dir: &Path, body: &str) -> std::io::Result<bool> {
+/// tool_append_md：把 body 原样作为 markdown 块追加到 help.md 末尾（不再包裹 ```buttons 围栏）。
+/// 返回是否实际写入。对偶 TOOL_APPEND_MD。
+pub async fn tool_append_md(dir: &Path, body: &str) -> std::io::Result<bool> {
     let file = dir.join("help.md");
     let cur = tokio::fs::read_to_string(&file).await.unwrap_or_default();
-    let next = build_buttons_append(&cur, body);
+    let next = build_md_append(&cur, body);
     if next == cur {
         return Ok(false); // 空体 no-op，跳过写入
     }

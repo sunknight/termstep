@@ -27,8 +27,8 @@ export const api = {
   tool: {
     save: (toolId: string, markdown: string, meta: Partial<ToolMeta>) =>
       invoke('tool_save', { toolId, markdown, metaPatch: meta }),
-    appendButtons: (toolId: string, body: string) =>
-      invoke<boolean>('tool_append_buttons', { toolId, body }),
+    appendMd: (toolId: string, body: string) =>
+      invoke<boolean>('tool_append_md', { toolId, body }),
     create: (name: string) => invoke<string>('tool_create', { name }),
     del: (toolId: string) => invoke('tool_delete', { toolId }),
     reorder: (orderedIds: string[]) => invoke('tool_reorder', { orderedIds }),

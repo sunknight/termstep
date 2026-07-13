@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock, buildButtonsAppend } from '../src/shared/buttonBlock';
+import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock, buildMdAppend } from '../src/shared/buttonBlock';
 
 describe('parseButtonLine', () => {
   it('command only -> label is the command', () => {
@@ -286,31 +286,41 @@ describe('renderButtonsJsonBlock', () => {
   });
 });
 
-describe('buildButtonsAppend', () => {
+describe('buildMdAppend', () => {
   it('empty / whitespace-only body -> returns currentMd unchanged', () => {
-    expect(buildButtonsAppend('# Title\n', '')).toBe('# Title\n');
+    expect(buildMdAppend('# Title\n', '')).toBe('# Title\n');
     // whitespace-only body is treated as empty
-    expect(buildButtonsAppend('# Title\n', '   \n  \n')).toBe('# Title\n');
+    expect(buildMdAppend('# Title\n', '   \n  \n')).toBe('# Title\n');
   });
 
-  it('appends a new buttons fence wrapping the body at the end', () => {
-    const out = buildButtonsAppend('# Title\n\n```buttons\nls\n```', 'pwd');
-    expect(out).toBe('# Title\n\n```buttons\nls\n```\n\n```buttons\npwd\n```\n');
+  it('appends the body verbatim at the end (no wrapping)', () => {
+    const out = buildMdAppend('# Title\n\n```buttons\nls\n```', 'pwd');
+    expect(out).toBe('# Title\n\n```buttons\nls\n```\n\npwd\n');
   });
 
-  it('normalizes trailing whitespace on currentMd to a single blank line separator', () => {
-    const out = buildButtonsAppend('# Title\n\n\n\n', 'pwd');
+  it('keeps a ```buttons fence in the body as-is (no double wrapping)', () => {
+    const out = buildMdAppend('# Title\n', '```buttons\npwd\n```');
     expect(out).toBe('# Title\n\n```buttons\npwd\n```\n');
   });
 
+  it('keeps arbitrary markdown (headings / other fences) verbatim', () => {
+    const out = buildMdAppend('# Title\n', '## Section\n\n```sh\necho hi\n```');
+    expect(out).toBe('# Title\n\n## Section\n\n```sh\necho hi\n```\n');
+  });
+
+  it('normalizes trailing whitespace on currentMd to a single blank line separator', () => {
+    const out = buildMdAppend('# Title\n\n\n\n', 'pwd');
+    expect(out).toBe('# Title\n\npwd\n');
+  });
+
   it('first append to an empty doc has no leading blank line', () => {
-    const out = buildButtonsAppend('', 'pwd');
-    expect(out).toBe('```buttons\npwd\n```\n');
+    const out = buildMdAppend('', 'pwd');
+    expect(out).toBe('pwd\n');
   });
 
   it('trims surrounding whitespace off the body but keeps interior blank lines', () => {
-    const out = buildButtonsAppend('# Title', 'pwd\n\nls');
-    expect(out).toBe('# Title\n\n```buttons\npwd\n\nls\n```\n');
+    const out = buildMdAppend('# Title', 'pwd\n\nls');
+    expect(out).toBe('# Title\n\npwd\n\nls\n');
   });
 });
 

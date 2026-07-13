@@ -80,21 +80,20 @@ export function renderButtonsBlock(code: string): string {
   return `<div class="cmd-buttons">${items.join('')}</div>`;
 }
 
-// Build the result of appending `body` as a NEW ```buttons fence to the end of
-// `currentMd`. Used by the quick-add "+" flow (append mode): the user dumps one
-// or more commands (one per line) and they get wrapped and appended to help.md
-// for later editing. An empty/whitespace body is a no-op (returns currentMd
-// unchanged so the caller can skip writing). Trailing whitespace on currentMd is
-// normalized to a single blank-line separator; an empty doc gets no leading
-// blank line. Interior blank lines in body are preserved (renderButtonsBlock
-// ignores them at render time).
-export function buildButtonsAppend(currentMd: string, body: string): string {
+// Append `body` verbatim as a markdown block to the end of `currentMd`. Used by
+// the quick-add "+" flow (append mode): the modal prefills a ```buttons fence
+// template, but the body is no longer force-wrapped — the user can edit the
+// fence type, drop it for plain text/headings, or paste arbitrary markdown. An
+// empty/whitespace body is a no-op (returns currentMd unchanged so the caller
+// can skip writing). Trailing whitespace on currentMd is normalized to a single
+// blank-line separator; an empty doc gets no leading blank line. Interior blank
+// lines in body are preserved verbatim.
+export function buildMdAppend(currentMd: string, body: string): string {
   const trimmedBody = body.trim();
   if (trimmedBody === '') return currentMd;
   const trimmedMd = currentMd.replace(/\s+$/, '');
-  const fence = '```buttons\n' + trimmedBody + '\n```';
-  if (trimmedMd === '') return fence + '\n';
-  return trimmedMd + '\n\n' + fence + '\n';
+  if (trimmedMd === '') return trimmedBody + '\n';
+  return trimmedMd + '\n\n' + trimmedBody + '\n';
 }
 
 // Collect every button declared across all `buttons` and `buttons-json` fenced

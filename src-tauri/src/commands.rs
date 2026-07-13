@@ -87,14 +87,14 @@ pub async fn tool_save(
 }
 
 #[tauri::command]
-pub async fn tool_append_buttons(
+pub async fn tool_append_md(
     tools_dir: State<'_, ToolsDir>,
     tool_id: String,
     body: String,
 ) -> Result<bool, String> {
     validate_tool_id(&tool_id)?;
     let td = lock_or_recover!(&tools_dir.0).clone();
-    tool_io::tool_append_buttons(&td.join(&tool_id), &body)
+    tool_io::tool_append_md(&td.join(&tool_id), &body)
         .await
         .map_err(|e| e.to_string())
 }

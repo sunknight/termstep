@@ -43,19 +43,20 @@ pub fn merge_tool_json(existing: &Value, patch: &Value) -> Value {
     Value::Object(merged)
 }
 
-/// 把 body 作为新 ```buttons 围栏追加到 current_md 末尾。
-/// 对偶 src/shared/buttonBlock.ts buildButtonsAppend。
-pub fn build_buttons_append(current_md: &str, body: &str) -> String {
+/// 把 body 原样作为 markdown 块追加到 current_md 末尾（不再包裹 ```buttons 围栏）。
+/// 快速添加输入框默认预填 buttons 围栏模板，但 body 不再强制包裹——
+/// 用户可改围栏类型、删掉围栏写普通文本/标题，或粘贴任意 markdown。
+/// 对偶 src/shared/buttonBlock.ts buildMdAppend。
+pub fn build_md_append(current_md: &str, body: &str) -> String {
     let trimmed_body = body.trim();
     if trimmed_body.is_empty() {
         return current_md.to_string();
     }
     let trimmed_md = current_md.trim_end();
-    let fence = format!("```buttons\n{}\n```", trimmed_body);
     if trimmed_md.is_empty() {
-        format!("{}\n", fence)
+        format!("{}\n", trimmed_body)
     } else {
-        format!("{}\n\n{}\n", trimmed_md, fence)
+        format!("{}\n\n{}\n", trimmed_md, trimmed_body)
     }
 }
 
@@ -257,27 +258,34 @@ mod tests {
         assert!(m.get("useRemote").is_none());
     }
 
-    // ── build_buttons_append（对偶 buttonBlock append 行为）────────────────────
+    // ── build_md_append（对偶 buttonBlock append 行为，body 原样追加不再包裹）──
     #[test]
     fn append_empty_body_is_noop() {
-        assert_eq!(build_buttons_append("existing", "   "), "existing");
+        assert_eq!(build_md_append("existing", "   "), "existing");
     }
 
     #[test]
     fn append_to_empty_doc() {
-        assert_eq!(build_buttons_append("", "ls\npwd"), "```buttons\nls\npwd\n```\n");
+        assert_eq!(build_md_append("", "ls\npwd"), "ls\npwd\n");
     }
 
     #[test]
     fn append_to_existing_doc_adds_separator() {
-        let r = build_buttons_append("# Title\n", "git status");
+        let r = build_md_append("# Title\n", "git status");
+        assert_eq!(r, "# Title\n\ngit status\n");
+    }
+
+    #[test]
+    fn append_body_keeps_verbatim_including_buttons_fence() {
+        // body 含 ```buttons 围栏时原样追加，不二次包裹
+        let r = build_md_append("# Title\n", "```buttons\ngit status\n```");
         assert_eq!(r, "# Title\n\n```buttons\ngit status\n```\n");
     }
 
     #[test]
     fn append_trims_trailing_whitespace_of_body() {
-        let r = build_buttons_append("", "ls\n\n\n");
-        assert_eq!(r, "```buttons\nls\n```\n");
+        let r = build_md_append("", "ls\n\n\n");
+        assert_eq!(r, "ls\n");
     }
 
     // ── parse_tool_meta（对偶 tests/toolConfig.test.ts）───────────────────────

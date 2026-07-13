@@ -10,7 +10,7 @@ export const IPC = {
   PTY_KILL: 'pty:kill',
   PTY_CWD: 'pty:cwd',
   TOOL_SAVE: 'tool:save',
-  TOOL_APPEND_BUTTONS: 'tool:appendButtons',
+  TOOL_APPEND_MD: 'tool:appendMd',
   TOOL_CREATE: 'tool:create',
   TOOL_DELETE: 'tool:delete',
   TOOL_REORDER: 'tool:reorder',

@@ -265,7 +265,7 @@ export default function App() {
       {quickAddOpen && active && (
         <QuickAddModal
           onSubmit={async (body) => {
-            await api.tool.appendButtons(active.meta.id, body);
+            await api.tool.appendMd(active.meta.id, body);
           }}
           onClose={() => setQuickAddOpen(false)}
         />
