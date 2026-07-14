@@ -5,6 +5,7 @@ import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
 import { substituteParams } from '../../shared/buttonBlock';
 import { api } from '../lib/api';
+import { copyOnModifier } from '../lib/clipboardToast';
 
 interface TipState {
   text: string;
@@ -35,6 +36,11 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
       const btn = (e.target as HTMLElement).closest('.cmd-btn') as HTMLButtonElement | null;
       if (btn) {
         const command = btn.dataset['cmd'] ?? '';
+        // ⌘/Ctrl + 点击：复制命令到剪贴板，不输入终端。
+        if (e.metaKey || e.ctrlKey) {
+          void copyOnModifier(e, command);
+          return;
+        }
         const edit = btn.dataset['edit'] === '1';
         const paramsRaw = btn.dataset['params'];
         const opts = {
