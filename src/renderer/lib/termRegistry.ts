@@ -14,6 +14,10 @@ export const termRegistry = {
   del(id: string) {
     terms.delete(id);
   },
+  // 遍历所有已注册终端。主题切换时用：把新 xterm theme 热更新到每个实例。
+  forEach(fn: (t: Terminal) => void) {
+    terms.forEach(fn);
+  },
 };
 
 // Button injection path: paste respects bracketed-paste; Enter sent separately for run mode.

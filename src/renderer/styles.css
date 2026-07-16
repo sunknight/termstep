@@ -1,29 +1,167 @@
+/* ============================================================================
+   TermStep 样式
+   设计语言：Linear/Vercel 简洁扁平——中性灰阶、单一强调色、1px 细边框、
+   靠边框分层（少阴影）、6–8px 圆角。主题通过 [data-theme] 上的 CSS 变量驱动，
+   浅色为默认（:root），深色在 [data-theme="dark"] 覆盖。终端区域也跟随主题切换
+   （xterm 主题在 lib/theme.ts 中热更新）。
+   ========================================================================== */
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { font-family: -apple-system, system-ui, sans-serif; }
-.app { display: flex; height: 100%; }
+
+:root {
+  /* 文本 */
+  --text:        #18181b;
+  --text-2:      #52525b;
+  --text-3:      #a1a1aa;
+
+  /* 表面 / 背景 */
+  --bg:              #fafafa;
+  --surface:         #ffffff;
+  --surface-2:       #f4f4f5;   /* 悬停 / 次级填充 */
+  --surface-3:       #ececef;   /* 更深一档（active tab 底等） */
+  --surface-active:  #eff6ff;   /* 选中项柔和强调底 */
+  --surface-inset:   #f6f8fa;   /* 代码块 / 预览等内嵌区 */
+
+  /* 边框 */
+  --border:        #e4e4e7;
+  --border-strong: #d4d4d8;
+
+  /* 强调（蓝） */
+  --accent:         #3b82f6;
+  --accent-hover:   #2563eb;
+  --accent-subtle:  #eff6ff;
+  --accent-border:  #bfdbfe;
+  --accent-weak:    #dbeafe;
+
+  /* 语义 */
+  --danger:         #ef4444;
+  --danger-hover:   #dc2626;
+  --danger-subtle:  #fef2f2;
+  --danger-border:  #fecaca;
+  --success:        #22c55e;
+  --warning:        #f59e0b;
+  --warning-subtle: #fffbeb;
+  --warning-border: #fde68a;
+
+  /* 浮层 / 阴影（极弱，扁平优先靠边框） */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.10);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.18);
+  --ring: 0 0 0 2px var(--accent-weak);
+
+  /* 圆角 / 字体 / 顶栏高度 */
+  --radius-sm: 6px;
+  --radius:    8px;
+  --radius-lg: 10px;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', Menlo, 'Roboto Mono', Consolas, monospace;
+  /* 左/中/右三列顶栏统一高度（含 1px 边框）。 */
+  --bar-h: 41px;
+  /* 终端画布底色（与 lib/theme.ts 的 xterm 主题 background 一致），
+     浅色 = #ffffff。用作终端区域填充，使四周与画布同色、无灰边。 */
+  --term-bg: #ffffff;
+}
+
+[data-theme="dark"] {
+  --text:        #fafafa;
+  --text-2:      #a1a1aa;
+  --text-3:      #71717a;
+
+  --bg:              #09090b;
+  --surface:         #18181b;
+  --surface-2:       #27272a;
+  --surface-3:       #2a2a2e;
+  --surface-active:  #1e293b;
+  --surface-inset:   #1c1c1f;
+
+  --border:        #27272a;
+  --border-strong: #3f3f46;
+
+  --accent:         #3b82f6;
+  --accent-hover:   #60a5fa;
+  --accent-subtle:  #1e293b;
+  --accent-border:  #1d4ed8;
+  --accent-weak:    rgba(59, 130, 246, 0.30);
+
+  --danger:         #f87171;
+  --danger-hover:   #fca5a5;
+  --danger-subtle:  #2a1212;
+  --danger-border:  #7f1d1d;
+  --success:        #4ade80;
+  --warning:        #fbbf24;
+  --warning-subtle: #2a200a;
+  --warning-border: #78350f;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6);
+  --ring: 0 0 0 2px var(--accent-weak);
+  /* 终端画布底色，深色 = #09090b（与 xterm 主题 background 一致）。 */
+  --term-bg: #09090b;
+}
+
+body { font-family: var(--font-sans); background: var(--bg); color: var(--text); }
+
+/* ============================================================================
+   主体布局：3 列 flex 行（侧栏 | 终端 | 帮助/编辑器）
+   ========================================================================== */
+.app { display: flex; height: 100%; background: var(--bg); }
+
+/* ----------------------------------------------------------------------------
+   左列：侧栏
+   ------------------------------------------------------------------------- */
 .sidebar {
   position: relative;
-  background: #f4f4f6; border-right: 1px solid #ddd;
-  display: flex; flex-direction: column; padding: 8px;
-  overflow-x: hidden; overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: visible; /* 设置面板需从底部向上滑出、越过列表区，故不裁剪 */
+  color: var(--text);
 }
-.sidebar ul { list-style: none; padding: 0; margin: 0; flex: 1; }
+/* 顶部顶栏：与中、右列顶栏等高，固定不滚动。放「新建工具」。 */
+.sidebar-top {
+  flex: 0 0 var(--bar-h);
+  display: flex; align-items: center;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+/* 中间工具列表：唯一可滚动区域。 */
+.sidebar-list {
+  list-style: none; padding: 8px; margin: 0;
+  flex: 1 1 auto; min-height: 0;
+  overflow-x: hidden; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px;
+}
+/* 底部操作区：固定不滚动（设置 / 更新检查）。 */
+.sidebar-bottom {
+  flex: 0 0 auto;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex; flex-direction: column; gap: 6px;
+}
 .sidebar li {
   position: relative; /* for the drag-over ::before drop indicator */
-  padding: 8px; border-radius: 6px; cursor: pointer;
-  display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding: 7px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; gap: 9px; min-width: 0;
+  color: var(--text-2);
   /* 工具列表项是「按钮」语义，不可选中文本。选中由 .name 的 mousedown 触发（见
      Sidebar.tsx），不依赖 click——触控板「轻点来点按」抬起时手指易横向滑动几像素，
      使 mousedown 与 mouseup 落在不同元素，浏览器不合成 click。user-select:none 是
      语义上的正确选择（列表项不应被框选），也避免 mousedown 拖出文本选择干扰视觉。 */
   -webkit-user-select: none;
   user-select: none;
+  transition: background 0.12s, color 0.12s;
 }
-.sidebar li:hover { background: #ececf0; }
-.sidebar li.active { background: #d9e3ff; }
+.sidebar li:hover { background: var(--surface-2); color: var(--text); }
+.sidebar li.active {
+  background: var(--surface-active);
+  color: var(--text);
+}
 .sidebar .icon {
-  width: 1.2em; flex: 0 0 auto;
+  width: 1.2em; flex: 0 0 auto; font-size: 1.05em;
 }
 /* The icon is the drag-reorder handle, but only in the docked (non-floating)
    sidebar. We do NOT use native draggable — WKWebView's drag-gesture recognizer
@@ -35,12 +173,18 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .sidebar .name {
   flex: 1 1 auto; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px;
 }
 .new-tool {
-  margin-top: 8px; padding: 8px; cursor: pointer; font-size: 12px;
-  border: 1px dashed #b8c0d6; background: #fff; color: #555; border-radius: 6px;
+  width: 100%; padding: 6px 11px; cursor: pointer; font-size: 12px;
+  border: 1px dashed var(--border-strong); background: transparent;
+  color: var(--text-2); border-radius: var(--radius-sm);
+  line-height: 16px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.new-tool:hover { background: #eef2ff; border-color: #6b8cff; color: #4a6cff; }
+.new-tool:hover {
+  background: var(--accent-subtle); border-color: var(--accent); color: var(--accent);
+}
 .sidebar li.dragging { opacity: 0.4; }
 /* Drop indicator: a flat straight bar across the top of the target item.
    Uses an absolutely-positioned ::before (not box-shadow / border-top) because
@@ -52,26 +196,34 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 3px;
-  background: #6b8cff;
+  background: var(--accent);
   border-radius: 0;
   pointer-events: none;
 }
+
+/* ----------------------------------------------------------------------------
+   中列：终端区域（标题栏 + 终端面板）
+   ------------------------------------------------------------------------- */
 .terminal-area {
-  flex: 1; min-width: 0; min-height: 0; background: #1e1e1e;
+  flex: 1; min-width: 0; min-height: 0;
+  background: var(--term-bg); /* 四周与终端画布同色，无灰边 */
   display: flex; flex-direction: column; overflow: hidden;
 }
 /* Title bar above the terminal: cwd on the left, quick/restart on the right
-   (buttons are no longer floating over the terminal). */
+   (buttons are no longer floating over the terminal). 高度与左/右顶栏统一。 */
 .term-header {
-  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; padding: 6px 10px; background: #252526; border-bottom: 1px solid #333;
+  flex: 0 0 var(--bar-h); display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 0 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 .term-cwd {
-  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 5px;
-  color: #ddd; opacity: 0.9; font-family: Menlo, monospace; font-size: 12px;
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;
+  color: var(--text-2); opacity: 0.95; font-family: var(--font-mono); font-size: 12px;
+  line-height: 16px; /* 与顶栏按钮行高一致，保证垂直中心同线 */
   overflow: hidden;
 }
-.term-cwd-icon { flex: 0 0 auto; }
+.term-cwd-icon { flex: 0 0 auto; line-height: 1; }
 /* Show the TAIL of a long path (the last directory) and clip the left: direction
    rtl puts the ellipsis on the left while an all-LTR path still reads in order.
    text-align:left keeps short paths flush-left; the full path is in the title. */
@@ -88,41 +240,49 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .term .xterm-viewport { scrollbar-width: none; -ms-overflow-style: none; }
 .term .xterm-viewport::-webkit-scrollbar { display: none; }
 .term-restart {
-  padding: 4px 10px; font-size: 12px; cursor: pointer;
-  color: #ddd; background: rgba(40, 40, 40, 0.82);
-  border: 1px solid #555; border-radius: 6px;
+  padding: 6px 11px; font-size: 12px; line-height: 16px; cursor: pointer;
+  color: var(--text-2); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.term-restart:hover { background: rgba(70, 70, 70, 0.95); color: #fff; }
+.term-restart:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
 /* Global quick-command dropdown (backed by the _quick tool). */
 .quick-cmd { position: relative; }
 .quick-cmd-toggle {
-  padding: 4px 10px; font-size: 12px; cursor: pointer;
-  color: #1e1e1e; background: rgba(255, 215, 110, 0.92);
-  border: 1px solid #d9a900; border-radius: 6px;
+  padding: 6px 11px; font-size: 12px; line-height: 16px; cursor: pointer;
+  color: var(--accent); background: var(--accent-subtle);
+  border: 1px solid var(--accent-border); border-radius: var(--radius-sm);
+  transition: background 0.12s, border-color 0.12s;
 }
-.quick-cmd-toggle:hover { background: rgba(255, 205, 80, 0.95); }
+.quick-cmd-toggle:hover { background: var(--accent-weak); border-color: var(--accent); }
 .quick-cmd-toggle:disabled { opacity: 0.45; cursor: default; }
 .quick-cmd-menu {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
   min-width: 200px; max-width: 320px; max-height: 60vh; overflow-y: auto;
   display: flex; flex-direction: column; gap: 4px;
-  padding: 6px; background: #fff; border: 1px solid #c8d2ff; border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  padding: 6px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
 }
-.quick-cmd-empty { font-size: 11px; color: #888; padding: 6px 8px; }
+.quick-cmd-empty { font-size: 11px; color: var(--text-3); padding: 6px 8px; }
 .cmd-btn.compact {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   font-size: 12px; padding: 5px 8px; margin: 0;
 }
 .cmd-btn.compact .cmd-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmd-btn.compact .cmd-edit-tag {
-  flex: 0 0 auto; font-size: 10px; color: #888; border: 1px dashed #bbb;
-  border-radius: 4px; padding: 0 4px;
+  flex: 0 0 auto; font-size: 10px; color: var(--text-3);
+  border: 1px dashed var(--border-strong); border-radius: 4px; padding: 0 4px;
 }
 /* Width set inline by the docked panel (see startHelpDrag in App.tsx); when
    floated inside the collapsed peek, no width is set and the Peek sizes itself. */
-.help-area { border-left: 1px solid #ddd; padding: 12px; overflow-y: auto; }
-.placeholder { color: #999; padding: 16px; }
+.help-area {
+  border-left: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  display: flex; flex-direction: column;
+  overflow: hidden; /* 顶栏固定，文档区独立滚动 */
+}
+.placeholder { color: var(--text-3); padding: 16px; }
 .errors { display: none; }
 /* Transient scan-error toasts (auto-dismiss + manual close). */
 .notifs {
@@ -131,79 +291,91 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 }
 .notif {
   display: flex; align-items: flex-start; gap: 8px;
-  background: #fff0f0; color: #8a1500; border: 1px solid #f0b8b8;
-  padding: 8px 10px; border-radius: 7px; font-size: 12px; line-height: 1.4;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  background: var(--danger-subtle); color: var(--danger-hover);
+  border: 1px solid var(--danger-border);
+  padding: 9px 11px; border-radius: var(--radius); font-size: 12px; line-height: 1.4;
+  box-shadow: var(--shadow-md);
 }
 .notif-msg { flex: 1 1 auto; min-width: 0; word-break: break-word; }
-.notif-msg strong { color: #b00; }
+.notif-msg strong { color: var(--danger); }
 .notif-close {
-  flex: 0 0 auto; cursor: pointer; font-size: 12px; color: #8a1500;
+  flex: 0 0 auto; cursor: pointer; font-size: 12px; color: var(--danger-hover);
   background: transparent; border: 0; padding: 0 2px; line-height: 1.4;
 }
-.notif-close:hover { color: #500; }
-/* Markdown body (.help). Conventional, hierarchical typography — heading
-   sizes descend strictly. The old single ".help h1 { 1.2em }" rule left
-   h2..h6 at browser defaults, so h2 (default ~1.5em) rendered LARGER than
-   h1. Em-based so the scale tracks the inherited base font-size. */
-.help { line-height: 1.6; color: #24292f; overflow-wrap: break-word; }
+.notif-close:hover { color: var(--danger); }
+
+/* ----------------------------------------------------------------------------
+   右列：帮助 / Markdown 排版
+   ------------------------------------------------------------------------- */
+.help { line-height: 1.6; color: var(--text); overflow-wrap: break-word; font-size: 13px; }
 .help > *:first-child { margin-top: 0; }
 .help > *:last-child { margin-bottom: 0; }
 /* Headings: descending scale, semibold, with a bottom rule on h1/h2. */
 .help h1, .help h2, .help h3, .help h4, .help h5, .help h6 {
   margin: 1.4em 0 0.6em; font-weight: 600; line-height: 1.25;
 }
-.help h1 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid #eaecef; }
-.help h2 { font-size: 1.3em; padding-bottom: 0.25em; border-bottom: 1px solid #eaecef; }
+.help h1 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+.help h2 { font-size: 1.3em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
 .help h3 { font-size: 1.15em; }
 .help h4 { font-size: 1em; }
 .help h5 { font-size: 0.92em; }
-.help h6 { font-size: 0.85em; color: #6a737d; }
+.help h6 { font-size: 0.85em; color: var(--text-3); }
 .help p { margin: 0 0 0.8em; }
 /* Lists. */
 .help ul, .help ol { margin: 0 0 0.8em; padding-left: 1.6em; }
 .help li { margin: 0.2em 0; }
 .help li > ul, .help li > ol { margin: 0.2em 0; }
 /* Code: inline gets a pill; <pre> keeps its block background (pre>code resets). */
-.help code { font-family: Menlo, monospace; font-size: 0.9em; }
+.help code { font-family: var(--font-mono); font-size: 0.9em; }
 .help :not(pre) > code {
-  background: #f0f1f4; padding: 0.15em 0.4em; border-radius: 4px;
+  background: var(--surface-2); color: var(--text);
+  padding: 0.15em 0.4em; border-radius: 4px;
 }
 .help pre {
   margin: 0 0 0.8em; padding: 10px;
-  background: #f6f8fa; border-radius: 6px; overflow: auto;
+  background: var(--surface-inset); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); overflow: auto;
 }
 .help pre code { background: none; padding: 0; }
 /* Blockquote. */
 .help blockquote {
   margin: 0 0 0.8em; padding: 0.4em 1em;
-  color: #6a737d; background: #f6f8fa; border-left: 0.25em solid #d0d7de;
+  color: var(--text-2); background: var(--surface-inset);
+  border-left: 0.25em solid var(--border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 /* Tables scroll horizontally if wider than the 340px panel. */
 .help table { border-collapse: collapse; margin: 0 0 0.8em; display: block; width: max-content; max-width: 100%; overflow: auto; }
-.help th, .help td { border: 1px solid #d0d7de; padding: 6px 12px; }
-.help th { background: #f6f8fa; font-weight: 600; text-align: left; }
-.help tbody tr:nth-child(2n) td { background: #f6f8fa; }
+.help th, .help td { border: 1px solid var(--border); padding: 6px 12px; }
+.help th { background: var(--surface-inset); font-weight: 600; text-align: left; }
+.help tbody tr:nth-child(2n) td { background: var(--surface-inset); }
 /* Misc block + inline elements. */
-.help hr { border: 0; border-top: 1px solid #eaecef; margin: 1.2em 0; }
+.help hr { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
 .help img { max-width: 100%; }
 .help kbd {
-  font-family: Menlo, monospace; font-size: 0.85em;
-  background: #f6f8fa; border: 1px solid #d0d7de; border-bottom-width: 2px;
+  font-family: var(--font-mono); font-size: 0.85em;
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-bottom-width: 2px;
   border-radius: 4px; padding: 1px 5px;
 }
+
+/* ----------------------------------------------------------------------------
+   命令按钮块
+   ------------------------------------------------------------------------- */
 .cmd-buttons { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 8px 0; }
 .cmd-error {
-  margin: 8px 0; padding: 6px 10px;
-  background: #fff0f0; color: #8a1500; border: 1px solid #f0b8b8;
-  border-radius: 6px; font-size: 12px; font-family: Menlo, monospace;
+  margin: 8px 0; padding: 7px 10px;
+  background: var(--danger-subtle); color: var(--danger);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm); font-size: 12px; font-family: var(--font-mono);
 }
 .cmd-btn {
-  font-family: Menlo, monospace; font-size: 12px; text-align: left;
-  padding: 6px 10px; border: 1px solid #c8d2ff; background: #eef2ff;
-  border-radius: 6px; cursor: pointer;
+  font-family: var(--font-mono); font-size: 12px; text-align: left;
+  padding: 6px 10px; border: 1px solid var(--accent-border);
+  background: var(--accent-subtle); color: var(--text);
+  border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
 }
-.cmd-btn:hover { background: #dbe3ff; }
+.cmd-btn:hover { background: var(--accent-weak); border-color: var(--accent); }
 .cmd-btn[data-edit="1"] { border-style: dashed; }
 /* Plain-text row inside a `buttons` block (a `//`-prefixed line). It deliberately
    inherits the surrounding `.help` body-text style (family / size / color / weight /
@@ -215,47 +387,71 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .cmd-tip {
   position: fixed; z-index: 100;
   padding: 4px 8px;
-  background: #1e1e1e; color: #f4f4f6;
-  font-family: Menlo, monospace; font-size: 12px;
-  white-space: nowrap; border-radius: 5px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  background: var(--surface); color: var(--text);
+  font-family: var(--font-mono); font-size: 12px;
+  white-space: nowrap; border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
   pointer-events: none;
 }
 /* 轻量 toast：复制到剪贴板时的短暂提示，顶部居中淡入淡出。 */
 .clipboard-toast {
   position: fixed; top: 16px; left: 50%; transform: translate(-50%, -10px);
-  z-index: 200; padding: 6px 14px;
-  background: #1e1e1e; color: #f4f4f6;
-  font-size: 13px; border-radius: 6px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  z-index: 200; padding: 7px 15px;
+  background: var(--text); color: var(--surface);
+  font-size: 13px; border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
   opacity: 0; transition: opacity 0.2s, transform 0.2s;
   pointer-events: none;
 }
 .clipboard-toast.show {
   opacity: 1; transform: translate(-50%, 0);
 }
+
+/* ----------------------------------------------------------------------------
+   帮助区：工具栏 + 编辑器
+   ------------------------------------------------------------------------- */
 .help-area { position: relative; display: flex; flex-direction: column; }
+/* 右列顶栏：与左、中列顶栏等高、固定不滚动。 */
 .help-toolbar {
+  flex: 0 0 var(--bar-h);
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 4px 0 8px; border-bottom: 1px solid #ececef; margin-bottom: 8px;
+  padding: 0 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+/* 工具文档独立滚动区：顶栏固定、它单独滚。含 padding。 */
+.help-scroll {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
 }
 .help-toolbar button {
-  padding: 5px 10px; font-size: 12px; cursor: pointer; color: #222;
-  border: 1px solid #cfd2da; border-radius: 6px; background: #fff;
+  padding: 6px 11px; font-size: 12px; line-height: 16px; cursor: pointer; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface);
+  transition: background 0.12s, border-color 0.12s;
 }
-.help-toolbar button:hover { background: #f2f3f6; }
+.help-toolbar button:hover { background: var(--surface-2); border-color: var(--border-strong); }
 .help-toolbar button:disabled { opacity: 0.45; cursor: default; }
-.help-toolbar button.danger { color: #b00; border-color: #f0c0c0; }
-.help-toolbar button.danger:hover { background: #fff0f0; }
-.help-toolbar button.primary {
-  margin-left: auto; background: #4a6cff; border-color: #4a6cff; color: #fff;
+/* 删除按钮：默认低可见（与普通按钮同色），悬停才显红——避免常态红色过于突兀。 */
+.help-toolbar button.danger { color: var(--text-2); border-color: var(--border); }
+.help-toolbar button.danger:hover {
+  color: var(--danger); border-color: var(--danger-border); background: var(--danger-subtle);
 }
-.help-toolbar button.primary:hover { background: #3a58f0; }
-.editor { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto; gap: 8px; padding-right: 4px; }
+.help-toolbar button.primary {
+  margin-left: auto; background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.help-toolbar button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.editor {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column; overflow-y: auto;
+  gap: 8px; padding: 14px;
+}
 .editor-header {
   flex: 0 0 auto;
-  font-size: 13px; font-weight: 600; color: #333;
-  padding-bottom: 6px; border-bottom: 1px solid #e3e3e6;
+  font-size: 13px; font-weight: 600; color: var(--text);
+  padding-bottom: 7px; border-bottom: 1px solid var(--border);
 }
 /* The whole editor is one scroll region: when the window is short the form AND
    the markdown textarea scroll together. The textarea itself also scrolls
@@ -265,73 +461,79 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   display: flex; flex-direction: column; gap: 8px; font-size: 12px;
 }
 .form-section {
-  border: 1px solid #e9e9ee; border-radius: 8px; padding: 4px 10px 10px; margin: 0;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 12px 12px; margin: 0;
   display: flex; flex-direction: column; gap: 8px;
 }
 .form-section legend {
-  font-size: 10px; font-weight: 700; color: #6b8cff; padding: 0 4px; letter-spacing: 0.5px;
+  font-size: 10px; font-weight: 700; color: var(--accent); padding: 0 4px; letter-spacing: 0.5px;
 }
 .field { display: flex; flex-direction: column; gap: 3px; }
-.field-label { color: #555; font-size: 11px; }
-.field-label em { color: #aaa; font-style: normal; font-weight: 400; }
+.field-label { color: var(--text-2); font-size: 11px; }
+.field-label em { color: var(--text-3); font-style: normal; font-weight: 400; }
 .meta-form input, .meta-form textarea {
-  padding: 5px 7px; font-size: 12px; color: #222;
-  border: 1px solid #cfd2da; border-radius: 5px; background: #fff; outline: none;
+  padding: 6px 8px; font-size: 12px; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); outline: none;
   font-family: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
 .meta-form input:focus, .meta-form textarea:focus {
-  border-color: #6b8cff; box-shadow: 0 0 0 2px #dbe3ff;
+  border-color: var(--accent); box-shadow: var(--ring);
 }
 .icon-input { width: 5em; }
 /* Icon picker is now a popup beside the input, not a full-width grid. */
 .icon-control { position: relative; display: flex; align-items: center; gap: 4px; }
 .icon-popup-toggle {
-  padding: 5px 9px; font-size: 11px; cursor: pointer; color: #555;
-  border: 1px solid #cfd2da; border-radius: 5px; background: #fff;
+  padding: 6px 10px; font-size: 11px; cursor: pointer; color: var(--text-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  transition: background 0.12s;
 }
-.icon-popup-toggle:hover { background: #f2f3f6; }
+.icon-popup-toggle:hover { background: var(--surface-2); }
 
 /* mdUrl field: input + an inline "pick local file" button. Mirrors icon-control. */
 .mdurl-control { display: flex; align-items: center; gap: 4px; }
 .mdurl-control input { flex: 1; }
 .mdurl-pick {
-  padding: 5px 9px; font-size: 13px; line-height: 1; cursor: pointer; color: #555;
-  border: 1px solid #cfd2da; border-radius: 5px; background: #fff;
+  padding: 6px 10px; font-size: 13px; line-height: 1; cursor: pointer; color: var(--text-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  transition: background 0.12s;
 }
-.mdurl-pick:hover { background: #f2f3f6; }
+.mdurl-pick:hover { background: var(--surface-2); }
 .icon-popup {
   position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
   display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
-  padding: 8px; width: 224px; background: #fff;
-  border: 1px solid #d4d4dc; border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  padding: 8px; width: 224px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
 }
 .icon-cell {
   font-size: 16px; line-height: 1; padding: 5px 0; text-align: center;
-  border: 1px solid transparent; border-radius: 5px; background: transparent; cursor: pointer;
+  border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; cursor: pointer;
+  transition: background 0.12s;
 }
-.icon-cell:hover { background: #eef2ff; }
-.icon-cell.selected { border-color: #6b8cff; background: #dbe3ff; }
+.icon-cell:hover { background: var(--accent-subtle); }
+.icon-cell.selected { border-color: var(--accent); background: var(--accent-weak); }
 /* Tabbed sub-region: the 本地/远程 tabs live inside this bordered box and swap
    only the markdown / URL content. The main form above stays always visible. */
 .md-subregion {
   flex: 1 1 auto; min-height: 280px;
   display: flex; flex-direction: column; overflow: hidden;
-  border: 1px solid #e3e3e6; border-radius: 6px; background: #fff;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
 }
 /* Local/remote tabs — header of the sub-region. */
 .editor-tabs {
-  flex: 0 0 auto; display: flex; gap: 0; border-bottom: 1px solid #e3e3e6; background: #fafafb;
+  flex: 0 0 auto; display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface-inset);
 }
 .editor-tabs button {
-  padding: 7px 16px; font-size: 12px; cursor: pointer;
+  padding: 8px 16px; font-size: 12px; cursor: pointer;
   background: transparent; border: 0; border-bottom: 2px solid transparent;
-  color: #888; margin-bottom: -1px;
+  color: var(--text-3); margin-bottom: -1px;
+  transition: color 0.12s, border-color 0.12s;
 }
-.editor-tabs button:hover { color: #333; }
-.editor-tabs button.active { color: #4a6cff; border-bottom-color: #4a6cff; font-weight: 600; }
+.editor-tabs button:hover { color: var(--text); }
+.editor-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 /* ✓ marks the EFFECTIVE source tab (the one the tool's help will use). */
-.editor-tabs .tab-check { color: #2a9d4a; font-weight: 700; margin-right: 4px; }
+.editor-tabs .tab-check { color: var(--success); font-weight: 700; margin-right: 4px; }
 /* Local tab: the textarea is a direct child of the sub-region and fills it. */
 .md-subregion > .md-editor {
   flex: 1 1 auto; min-height: 200px; border: 0; border-radius: 0;
@@ -347,38 +549,45 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 /* Markdown area header (label, and on the remote tab a re-read button). */
 .md-head {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; padding: 5px 8px; border-bottom: 1px solid #ececef; background: #fafafb;
-  font-size: 11px; color: #666;
+  gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--surface-inset);
+  font-size: 11px; color: var(--text-2);
 }
 .md-head button {
-  padding: 3px 8px; font-size: 11px; cursor: pointer; color: #555;
-  border: 1px solid #cfd2da; border-radius: 5px; background: #fff;
+  padding: 4px 9px; font-size: 11px; cursor: pointer; color: var(--text-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  transition: background 0.12s;
 }
-.md-head button:hover { background: #f2f3f6; }
+.md-head button:hover { background: var(--surface-2); }
 .md-editor {
   width: 100%; box-sizing: border-box;
   border: 0; outline: none; resize: vertical; padding: 8px;
-  font-family: Menlo, monospace; font-size: 12px; line-height: 1.5; color: #222;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--text);
+  background: var(--surface);
 }
-.md-editor:focus { box-shadow: inset 0 0 0 2px #dbe3ff; }
+.md-editor:focus { box-shadow: inset 0 0 0 2px var(--accent-weak); }
 .editor-actions { flex: 0 0 auto; display: flex; gap: 8px; }
 .editor-actions button {
-  padding: 6px 14px; font-size: 12px; cursor: pointer; color: #222;
-  border: 1px solid #cfd2da; border-radius: 6px; background: #fff;
+  padding: 7px 15px; font-size: 12px; cursor: pointer; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  transition: background 0.12s, border-color 0.12s;
 }
-.editor-actions button:hover { background: #f2f3f6; }
+.editor-actions button:hover { background: var(--surface-2); border-color: var(--border-strong); }
 .editor-actions button.primary {
-  background: #4a6cff; border-color: #4a6cff; color: #fff;
+  background: var(--accent); border-color: var(--accent); color: #fff;
 }
-.editor-actions button.primary:hover { background: #3a58f0; }
+.editor-actions button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .editor-actions button:disabled { opacity: 0.6; cursor: default; }
-.editor-error { color: #900; font-size: 12px; }
+.editor-error { color: var(--danger); font-size: 12px; }
 /* Per-tool action buttons (move/delete) live in the help toolbar now, not the sidebar. */
+
+/* ----------------------------------------------------------------------------
+   分隔条 / Resizers
+   ------------------------------------------------------------------------- */
 .sidebar-resizer {
   position: absolute; top: 0; right: -3px; bottom: 0; width: 6px;
   cursor: col-resize; z-index: 10;
 }
-.sidebar-resizer:hover, .sidebar-resizer:active { background: rgba(74, 108, 255, 0.25); }
+.sidebar-resizer:hover, .sidebar-resizer:active { background: var(--accent-weak); }
 
 /* Right panel resizer — mirror of .sidebar-resizer, anchored to the LEFT edge
    (the panel's border side). Dragging it left widens the panel. */
@@ -386,62 +595,135 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   position: absolute; top: 0; left: -3px; bottom: 0; width: 6px;
   cursor: col-resize; z-index: 10;
 }
-.help-resizer:hover, .help-resizer:active { background: rgba(74, 108, 255, 0.25); }
+.help-resizer:hover, .help-resizer:active { background: var(--accent-weak); }
 
 /* Markdown links open in the system browser (clicks routed via openExternal). */
-.help a { color: #2a60d6; text-decoration: underline; cursor: pointer; }
-.help a:hover { color: #1a40b0; }
+.help a { color: var(--accent); text-decoration: underline; cursor: pointer; }
+.help a:hover { color: var(--accent-hover); }
 
-/* Import / export buttons at the bottom of the sidebar. */
-.sidebar-io { display: flex; gap: 6px; margin-top: 6px; }
-.io-btn {
-  flex: 1; padding: 6px; font-size: 12px; cursor: pointer;
-  border: 1px solid #cfd2da; background: #fff; color: #555; border-radius: 6px;
+/* ----------------------------------------------------------------------------
+   侧栏底部：设置分区（按钮 = 新建工具同款；面板从下方滑出）
+   ------------------------------------------------------------------------- */
+.settings-section { position: relative; }
+/* 设置按钮：与「新建工具」同款——文字居中、虚线描边、全宽。 */
+.settings-toggle {
+  width: 100%; padding: 6px 10px; cursor: pointer; font-size: 12px;
+  border: 1px solid var(--border-strong); background: transparent;
+  color: var(--text-2); border-radius: var(--radius-sm);
+  text-align: center;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.io-btn:hover { background: #f2f3f6; color: #222; }
-/* The help button shares .io-btn styling but doesn't grow (no flex:1) — it
-   stays a compact icon-like button while export/import split the row. */
-.io-btn.help-btn { flex: 0 0 auto; min-width: 32px; font-weight: 600; }
+.settings-toggle:hover {
+  background: var(--accent-subtle); border-color: var(--accent); color: var(--accent);
+}
+.settings-toggle.open {
+  background: var(--accent-subtle); border-color: var(--accent); color: var(--accent);
+}
+/* 从按钮下方滑出的浮层面板：绝对定位、与侧栏等宽（left:0;right:0）、不占文档流。 */
+.settings-panel {
+  position: absolute; bottom: calc(100% + 6px); left: 0; right: 0; z-index: 40;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 6px; background: var(--surface);
+  box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column; gap: 4px;
+  transform-origin: bottom;
+  animation: settings-slide-up 0.16s ease-out;
+}
+@keyframes settings-slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.settings-group { display: flex; flex-direction: column; gap: 3px; }
+.settings-group + .settings-group { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 4px; }
+.settings-group-label {
+  font-size: 10px; font-weight: 700; color: var(--text-3);
+  letter-spacing: 0.5px; padding: 2px 4px;
+}
+/* 主题分段选择器（浅 / 深 / 跟随） */
+.theme-segments {
+  display: flex; gap: 0; padding: 2px;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.seg-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 6px 4px; font-size: 11px; cursor: pointer;
+  color: var(--text-2); background: transparent;
+  border: 0; border-radius: 5px;
+  transition: background 0.12s, color 0.12s;
+}
+.seg-btn:hover { color: var(--text); }
+.seg-btn.active {
+  background: var(--surface); color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.seg-icon { font-size: 13px; line-height: 1; }
+.seg-label { font-weight: 500; }
+/* 数据 / 帮助列表项 */
+.settings-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 7px 8px; font-size: 12px; cursor: pointer;
+  color: var(--text-2); background: transparent;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  transition: background 0.12s, color 0.12s;
+}
+.settings-item:hover { background: var(--surface-2); color: var(--text); }
+.settings-item-icon { flex: 0 0 auto; width: 1.2em; text-align: center; }
+.settings-item-label { flex: 1 1 auto; min-width: 0; }
+
+/* 旧 .io-btn / .sidebar-io 样式已废弃（由设置分区取代），此处移除。 */
 
 /* Hint shown on the remote tab before a URL is set. */
 .md-hint {
-  font-size: 11px; color: #665200; background: #fff7d6;
-  border: 1px solid #ecdd9a; border-radius: 6px; padding: 6px 8px; line-height: 1.4;
+  font-size: 11px; color: var(--warning);
+  background: var(--warning-subtle);
+  border: 1px solid var(--warning-border); border-radius: var(--radius-sm);
+  padding: 7px 9px; line-height: 1.4;
 }
 
 /* New editor inputs: init-commands textarea + number input. */
 .meta-form textarea.init-commands {
-  resize: vertical; padding: 5px 7px; font-size: 12px; font-family: Menlo, monospace;
-  color: #222; border: 1px solid #cfd2da; border-radius: 5px; background: #fff; outline: none;
+  resize: vertical; padding: 6px 8px; font-size: 12px; font-family: var(--font-mono);
+  color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-.meta-form textarea.init-commands:focus { border-color: #6b8cff; box-shadow: 0 0 0 2px #dbe3ff; }
+.meta-form textarea.init-commands:focus { border-color: var(--accent); box-shadow: var(--ring); }
 .meta-form .num-input { width: 8em; }
 
 /* "编辑" button at the bottom of the quick-command dropdown. */
 .quick-cmd-edit {
-  margin-top: 4px; padding: 5px 8px; font-size: 11px; cursor: pointer;
-  color: #4a6cff; background: #fff; border: 1px solid #c8d2ff; border-radius: 6px;
+  margin-top: 4px; padding: 6px 9px; font-size: 11px; cursor: pointer;
+  color: var(--accent); background: var(--surface);
+  border: 1px solid var(--accent-border); border-radius: var(--radius-sm);
+  transition: background 0.12s;
 }
-.quick-cmd-edit:hover { background: #eef2ff; }
+.quick-cmd-edit:hover { background: var(--accent-subtle); }
 
-/* Modal (quick-command editor). */
+/* ----------------------------------------------------------------------------
+   模态层
+   ------------------------------------------------------------------------- */
 .modal-overlay {
-  position: fixed; inset: 0; z-index: 300; background: rgba(0, 0, 0, 0.4);
+  position: fixed; inset: 0; z-index: 300; background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .modal {
   width: 560px; max-width: 100%; max-height: 80vh; display: flex; flex-direction: column;
-  background: #fff; border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); overflow: hidden;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); overflow: hidden;
 }
-.modal-header { flex: 0 0 auto; font-size: 14px; font-weight: 600; padding: 12px 16px; border-bottom: 1px solid #ececef; }
-.modal-hint { flex: 0 0 auto; font-size: 11px; color: #777; padding: 8px 16px 0; }
-.modal-hint code { font-family: Menlo, monospace; background: #f0f1f4; padding: 0 4px; border-radius: 3px; }
+.modal-header { flex: 0 0 auto; font-size: 14px; font-weight: 600; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.modal-hint { flex: 0 0 auto; font-size: 11px; color: var(--text-2); padding: 10px 16px 0; }
+.modal-hint code { font-family: var(--font-mono); background: var(--surface-2); padding: 0 4px; border-radius: 3px; }
 .quick-editor-md {
-  flex: 1 1 auto; min-height: 220px; margin: 8px 16px; resize: none;
-  font-family: Menlo, monospace; font-size: 12px; line-height: 1.5; color: #222;
-  border: 1px solid #cfd2da; border-radius: 6px; padding: 8px; outline: none;
+  flex: 1 1 auto; min-height: 220px; margin: 10px 16px; resize: none;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; outline: none;
+  background: var(--surface-inset);
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-.quick-editor-md:focus { border-color: #6b8cff; box-shadow: 0 0 0 2px #dbe3ff; }
+.quick-editor-md:focus { border-color: var(--accent); box-shadow: var(--ring); }
 /* Help modal: wider than the default 560px, with a scrollable body for the
    long reference content. Reuses .help typography via the inner .help div.
    Scaled down font-size (12px) so the long reference doc fits more per screen
@@ -449,40 +731,54 @@ body { font-family: -apple-system, system-ui, sans-serif; }
 .help-modal { width: 720px; max-height: 86vh; }
 .help-modal-body { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
 .help-modal-body .help { font-size: 12px; }
-.modal-actions { flex: 0 0 auto; display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #ececef; }
+.modal-actions { flex: 0 0 auto; display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
 .modal-actions button {
-  padding: 6px 14px; font-size: 12px; cursor: pointer; color: #222;
-  border: 1px solid #cfd2da; border-radius: 6px; background: #fff;
+  padding: 7px 15px; font-size: 12px; cursor: pointer; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  transition: background 0.12s, border-color 0.12s;
 }
-.modal-actions button.primary { background: #4a6cff; border-color: #4a6cff; color: #fff; }
-.modal-actions button.primary:hover { background: #3a58f0; }
+.modal-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.modal-actions button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .modal-actions button:disabled { opacity: 0.6; cursor: default; }
 
 /* ParamPromptModal (reuses .modal / .modal-overlay / .modal-actions). */
 .param-modal { width: 420px; }
 .param-preview {
-  flex: 0 0 auto; font-family: Menlo, monospace; font-size: 12px; color: #444;
-  background: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px;
-  padding: 6px 10px; margin: 8px 16px 0; word-break: break-all;
+  flex: 0 0 auto; font-family: var(--font-mono); font-size: 12px; color: var(--text-2);
+  background: var(--surface-inset); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 7px 10px; margin: 10px 16px 0; word-break: break-all;
 }
-.param-fields { flex: 1 1 auto; overflow-y: auto; padding: 8px 16px; display: flex; flex-direction: column; gap: 8px; }
-.param-field label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 2px; }
+.param-fields { flex: 1 1 auto; overflow-y: auto; padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; }
+.param-field label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 3px; color: var(--text); }
 .param-field input {
-  width: 100%; box-sizing: border-box; font-family: Menlo, monospace; font-size: 12px;
-  padding: 5px 8px; border: 1px solid #c8d2ff; border-radius: 5px; outline: none;
+  width: 100%; box-sizing: border-box; font-family: var(--font-mono); font-size: 12px;
+  padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  outline: none; background: var(--surface); color: var(--text);
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-.param-field input:focus { border-color: #6b8aff; box-shadow: 0 0 0 2px #dbe3ff; }
-.param-hint { font-size: 11px; color: #888; margin-top: 2px; }
-.param-error { flex: 0 0 auto; font-size: 12px; color: #b00; padding: 0 16px 4px; }
+.param-field input:focus { border-color: var(--accent); box-shadow: var(--ring); }
+.param-hint { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+.param-error { flex: 0 0 auto; font-size: 12px; color: var(--danger); padding: 0 16px 4px; }
+
+/* ----------------------------------------------------------------------------
+   折叠 Peek 浮层 / 面板开关
+   ------------------------------------------------------------------------- */
 /* Floating "peek" overlay for a collapsed side panel. Portalled to body,
-   position: fixed; width is dictated by the child (.sidebar / .help-area). */
+   position: fixed; width is dictated by the child (.sidebar / .help-area).
+   No top border: the peek's top edge sits flush against the header bar's
+   bottom edge (Peek.tsx anchors to .term-header), so a top border would
+   introduce a 1px visible gap. Side/bottom borders remain for separation
+   from the terminal. The whole overlay (incl. any inner padding) captures
+   hover, bridging the toggle→panel transit so the panel never snaps shut. */
 .peek {
   z-index: 50;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+  border-top: 0;
   overflow: hidden;
 }
-.peek.peek-left { background: #f4f4f6; border-right: 1px solid #ddd; }
-.peek.peek-right { background: #fff; border-left: 1px solid #ddd; }
+.peek.peek-left { background: var(--surface); }
+.peek.peek-right { background: var(--surface); }
 /* The docked panels are stretched by the flex row; inside the fixed peek they
    need an explicit height so their own overflow-y scrolling works. */
 .peek > * { height: 100%; }
@@ -492,21 +788,26 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;
   font-size: 16px; line-height: 1; padding: 0;
-  color: #ccc; background: transparent;
-  border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+  color: var(--text-2); background: transparent;
+  border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
-.panel-toggle:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.panel-toggle:hover { background: var(--surface-2); color: var(--text); }
 
 /* Active-tool badge shown in the term-header when the sidebar is collapsed
-   (the highlighted list entry is no longer visible). Sits right after the path. */
+   (the highlighted list entry is no longer visible). Sits right after the path.
+   高度/行高与 .panel-toggle、顶栏按钮统一（28px），保证整条顶栏所有元素的垂直中心
+   在同一水平线上。 */
 .term-active-tool {
   flex: 0 0 auto;
   display: flex; align-items: center; gap: 5px;
   max-width: 160px;
-  padding: 2px 8px;
-  color: #2a2a2a; font-size: 12px;        /* dark text on the lavender selected-item bg */
-  background: #d9e3ff;                     /* matches .sidebar li.active (selected tool) */
-  border-radius: 6px;
+  height: 28px;
+  padding: 0 9px;
+  color: var(--text); font-size: 12px; line-height: 16px;
+  background: var(--surface-active);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
 }
 .term-active-tool-icon { flex: 0 0 auto; }
 .term-active-tool-name {
@@ -514,60 +815,64 @@ body { font-family: -apple-system, system-ui, sans-serif; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Update checker (sidebar bottom): a single state-driven button. */
+/* ----------------------------------------------------------------------------
+   更新检查器（侧栏底部，设置分区上方）
+   ------------------------------------------------------------------------- */
 .update-checker { margin-top: 6px; }
 .uc-check-btn {
-  display: block;
-  width: 100%;
-  padding: 6px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  border: 1px solid #cfd2da;
-  background: #fff;
-  color: #555;
-  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 7px 8px;
+  font-size: 12px; cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: var(--radius-sm);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.uc-check-btn:hover:not(:disabled) { background: #f2f3f6; color: #222; }
-.uc-check-btn:disabled { cursor: default; color: #999; }
+.uc-check-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+.uc-check-btn:disabled { cursor: default; color: var(--text-3); }
 /* New-version variant: red, signals "click to see what's new". */
 .uc-check-btn.uc-has-update {
-  border-color: #f0b8b8;
-  background: #fff0f0;
-  color: #b00;
+  border-color: var(--danger-border);
+  background: var(--danger-subtle);
+  color: var(--danger);
 }
-.uc-check-btn.uc-has-update:hover { background: #ffe0e0; }
+.uc-check-btn.uc-has-update:hover { background: var(--danger-border); }
 
 .update-popover {
   position: fixed;
   z-index: 300;
   width: 264px;
-  background: #fff;
-  border: 1px solid #cfd2da;
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 12px 14px;
   font-size: 12px;
   line-height: 1.45;
+  color: var(--text);
 }
-.update-popover .up-title { font-weight: 600; color: #b00; margin-bottom: 6px; }
+.update-popover .up-title { font-weight: 600; color: var(--danger); margin-bottom: 6px; }
 .update-popover .up-notes {
-  white-space: pre-wrap; word-break: break-word; color: #333;
+  white-space: pre-wrap; word-break: break-word; color: var(--text);
   max-height: 160px; overflow-y: auto; margin-bottom: 8px;
 }
 .update-popover .up-actions { display: flex; gap: 8px; margin-bottom: 6px; }
 .update-popover .up-primary {
-  flex: 1; cursor: pointer; padding: 6px; font-size: 12px;
-  border: 1px solid #6b8cff; background: #4a6cff; color: #fff; border-radius: 6px;
+  flex: 1; cursor: pointer; padding: 7px; font-size: 12px;
+  border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: var(--radius-sm);
+  transition: background 0.12s;
 }
-.update-popover .up-primary:hover { background: #3a5cff; }
+.update-popover .up-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .update-popover .up-secondary {
-  flex: 1; cursor: pointer; padding: 6px; font-size: 12px;
-  border: 1px solid #cfd2da; background: #fff; color: #555; border-radius: 6px;
+  flex: 1; cursor: pointer; padding: 7px; font-size: 12px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: var(--radius-sm);
+  transition: background 0.12s;
 }
-.update-popover .up-secondary:hover { background: #f2f3f6; }
+.update-popover .up-secondary:hover { background: var(--surface-2); }
 .update-popover .up-recheck {
   display: block; margin-left: auto; cursor: pointer; font-size: 11px;
-  color: #6b8cff; background: transparent; border: 0; padding: 0;
+  color: var(--accent); background: transparent; border: 0; padding: 0;
 }
-.update-popover .up-recheck:hover { color: #3a5cff; }
-.update-popover .up-transient { color: #555; }
+.update-popover .up-recheck:hover { color: var(--accent-hover); }
+.update-popover .up-transient { color: var(--text-2); }

@@ -184,13 +184,16 @@ export default function App() {
               <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
             </div>
           )}
-          <HelpPane
-            tool={active}
-            activeToolId={active.meta.id}
-            markdown={
-              active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
-            }
-          />
+          {/* .help-scroll 是工具文档的独立滚动容器，使上面的 help-toolbar 固定不滚动。 */}
+          <div className="help-scroll">
+            <HelpPane
+              tool={active}
+              activeToolId={active.meta.id}
+              markdown={
+                active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
+              }
+            />
+          </div>
         </>
       ) : (
         <div className="placeholder">无选中工具</div>

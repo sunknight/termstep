@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgC" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4A90FF"/>
+      <stop offset="1" stop-color="#2D6BE6"/>
+    </linearGradient>
+  </defs>
+  <!-- 方案 C：集成式——终端里伸出按钮 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#bgC)"/>
+  <!-- 主体：终端方块 -->
+  <rect x="150" y="300" width="560" height="424" rx="40" fill="#0F172A"/>
+  <polyline points="240,470 330,520 240,570" fill="none" stroke="#60A5FA" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="370" y="455" width="40" height="130" rx="12" fill="#E2E8F0"/>
+  <circle cx="205" cy="355" r="18" fill="#EF4444" opacity="0.85"/>
+  <circle cx="262" cy="355" r="18" fill="#F59E0B" opacity="0.85"/>
+  <circle cx="319" cy="355" r="18" fill="#22C55E" opacity="0.85"/>
+  <!-- 右边：3 个按钮「伸出」终端右侧，错落排布强调「命令变按钮」 -->
+  <rect x="710" y="316" width="150" height="100" rx="24" fill="#FFFFFF" opacity="0.95"/>
+  <rect x="710" y="462" width="150" height="100" rx="24" fill="#FFFFFF" opacity="0.85"/>
+  <rect x="710" y="608" width="150" height="100" rx="24" fill="#FFFFFF" opacity="0.70"/>
+  <!-- 按钮与终端的连接弧线（暗示「从终端长出来」） -->
+  <path d="M700,366 Q720,366 720,346" fill="none" stroke="#FFFFFF" stroke-width="0" opacity="0"/>
+</svg>

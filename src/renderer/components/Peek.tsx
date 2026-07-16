@@ -14,8 +14,11 @@ interface PeekProps {
 // Floating overlay for a collapsed panel. position: fixed, portalled to body so
 // it floats above the terminal without pushing it (the terminal keeps full
 // width). Width comes from the child's own class (.sidebar / .help-area); the
-// peek just positions and shadows. Top tracks the toggle button's bottom edge so
-// it always sits just under the header.
+// peek just positions and shadows. Top tracks the header bar's bottom edge so
+// left and right peeks align on the same line. A transparent hover-bridge sits
+// between the toggle button and the panel content so moving the pointer from
+// the toggle into the panel does not snap it shut (PeekController grace period
+// aside, the bridge removes any dead gap entirely).
 export function Peek(props: PeekProps) {
   const [top, setTop] = useState<number | null>(null);
 
@@ -25,7 +28,12 @@ export function Peek(props: PeekProps) {
       return;
     }
     const measure = () => {
-      const r = props.anchorRef.current?.getBoundingClientRect();
+      // Anchor to the header bar (.term-header) bottom, not the toggle button's
+      // bottom — the two toggle buttons sit at opposite ends of the header, and
+      // using the header keeps both peeks' tops on the exact same line.
+      const btn = props.anchorRef.current;
+      const header = btn?.closest('.term-header') as HTMLElement | null;
+      const r = (header ?? btn)?.getBoundingClientRect();
       if (r) setTop(r.bottom);
     };
     measure();

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4A90FF"/>
+      <stop offset="1" stop-color="#2D6BE6"/>
+    </linearGradient>
+  </defs>
+  <!-- 方案 A：左终端窗格 + 右按钮列 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#bgA)"/>
+  <!-- 左：深色终端方块 -->
+  <rect x="170" y="300" width="420" height="424" rx="40" fill="#0F172A"/>
+  <!-- 终端提示符 > 和光标 -->
+  <polyline points="250,470 340,520 250,570" fill="none" stroke="#60A5FA" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="380" y="455" width="42" height="130" rx="12" fill="#E2E8F0"/>
+  <!-- 窗口红黄绿圆点 -->
+  <circle cx="225" cy="355" r="18" fill="#EF4444" opacity="0.85"/>
+  <circle cx="282" cy="355" r="18" fill="#F59E0B" opacity="0.85"/>
+  <circle cx="339" cy="355" r="18" fill="#22C55E" opacity="0.85"/>
+  <!-- 右：3 个按钮方块 -->
+  <rect x="650" y="300" width="204" height="120" rx="24" fill="#FFFFFF" opacity="0.95"/>
+  <rect x="650" y="452" width="204" height="120" rx="24" fill="#FFFFFF" opacity="0.80"/>
+  <rect x="650" y="604" width="204" height="120" rx="24" fill="#FFFFFF" opacity="0.65"/>
+</svg>

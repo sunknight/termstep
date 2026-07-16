@@ -5,6 +5,7 @@ import '@xterm/xterm/css/xterm.css';
 import type { PtySpawnOpts } from '../../shared/types';
 import { termRegistry } from '../lib/termRegistry';
 import { api } from '../lib/api';
+import { getXtermTheme } from '../lib/theme';
 import { useTauriEvent } from '../hooks/useTauriEvent';
 
 export function TerminalView(props: {
@@ -45,10 +46,11 @@ export function TerminalView(props: {
       // select-and-copy inside tmux. (The mouse-event dispatcher also honors this
       // and skips reporting to the pty while Option is held.)
       const term = new Terminal({
-        fontFamily: 'Menlo, monospace',
+        fontFamily: 'SF Mono, Menlo, monospace',
         fontSize: 13,
         scrollback: 5000,
         macOptionClickForcesSelection: true,
+        theme: getXtermTheme(),
       });
       const fit = new FitAddon();
       term.loadAddon(fit);

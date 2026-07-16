@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Tool } from '../../shared/types';
 import { UpdateChecker } from './UpdateChecker';
+import { SettingsSection } from './SettingsSection';
 
 const MIN_WIDTH = 140;
 const MAX_WIDTH = 380;
@@ -88,7 +89,15 @@ export function Sidebar(props: {
 
   return (
     <nav className="sidebar" style={{ width: `${width}px`, flex: `0 0 ${width}px` }}>
-      <ul>
+      {/* 顶部顶栏：与中、右列顶栏等高，固定不滚动。展开态放「新建工具」。
+          折叠态（浮层）不渲染——浮层只用于选中工具/跑命令，顶栏无意义且占高度。 */}
+      {!props.floating && (
+        <div className="sidebar-top">
+          <button className="new-tool" onClick={props.onNew}>+ 新建工具</button>
+        </div>
+      )}
+      {/* 中间工具列表：唯一可滚动区域。flex:1 + min-height:0 保证在固定顶/底之间滚动。 */}
+      <ul className="sidebar-list">
         {props.tools.map((t) => {
           const id = t.meta.id;
           const cls = [
@@ -190,13 +199,14 @@ export function Sidebar(props: {
       </ul>
       {!props.floating && (
         <>
-          <button className="new-tool" onClick={props.onNew}>+ 新建工具</button>
-          <div className="sidebar-io">
-            <button className="io-btn" onClick={props.onExport} title="导出全部工具为 JSON">导出</button>
-            <button className="io-btn" onClick={props.onImport} title="从 JSON 导入工具">导入</button>
-            <button className="io-btn help-btn" onClick={props.onHelp} title="帮助">?</button>
+          <div className="sidebar-bottom">
+            <UpdateChecker />
+            <SettingsSection
+              onImport={props.onImport}
+              onExport={props.onExport}
+              onHelp={props.onHelp}
+            />
           </div>
-          <UpdateChecker />
           <div className="sidebar-resizer" onMouseDown={startDrag} title="拖动调整宽度" />
         </>
       )}
