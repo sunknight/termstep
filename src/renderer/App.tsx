@@ -177,14 +177,14 @@ export default function App() {
         <>
           {!floating && (
             <div className="help-toolbar">
-              <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
-              <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>⤓ 导出</button>
-              <button title="该工具的配置记录" onClick={() => setRecordsToolId(active.meta.id)}>⏱ 记录</button>
+              <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>删除</button>
+              <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>导出</button>
+              <button title="该工具的配置记录" onClick={() => setRecordsToolId(active.meta.id)}>记录</button>
               {active.meta.useRemote && (
-                <button title="重新读取远程内容" onClick={() => api.refreshMd()}>⟳ 重新读取</button>
+                <button title="重新读取远程内容" onClick={() => api.refreshMd()}>重新读取</button>
               )}
               {!active.meta.useRemote && (
-                <button title="快速添加命令（追加到末尾）" onClick={() => setQuickAddOpen(true)}>+</button>
+                <button title="快速添加命令（追加到末尾）" onClick={() => setQuickAddOpen(true)}>添加</button>
               )}
               <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
             </div>
