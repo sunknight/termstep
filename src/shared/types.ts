@@ -93,3 +93,15 @@ export type UpdateState =
   | { status: 'upToDate' }
   | { status: 'available'; version: string; url: string; notes: string }
   | { status: 'error'; error: string };
+
+// --- 版本控制（git 配置记录）---
+// 每次保存且文件有变动时自动提交；此处是只读的历史/diff 查询类型。
+export interface CommitEntry {
+  hash: string;
+  shortHash: string;
+  time: number;
+  message: string;
+}
+export interface VcsDiff {
+  diff: string;
+}

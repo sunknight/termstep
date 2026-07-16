@@ -6,6 +6,7 @@ import { HelpPane } from './components/HelpPane';
 import { EditorPane } from './components/EditorPane';
 import { QuickAddModal } from './components/QuickAddModal';
 import { HelpModal } from './components/HelpModal';
+import { ConfigRecords } from './components/ConfigRecords';
 import { QuickCommands } from './components/QuickCommands';
 import { Notifications } from './components/Notifications';
 import { HoverTip } from './components/HoverTip';
@@ -26,6 +27,8 @@ export default function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // 配置记录 modal：null=关闭；string=per-tool（工具 id）；'__global__'=全部配置记录。
+  const [recordsToolId, setRecordsToolId] = useState<string | null>(null);
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
   const [liveCwd, setLiveCwd] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
@@ -150,6 +153,7 @@ export default function App() {
       onExport={exportTools}
       onImport={importTools}
       onHelp={() => setHelpOpen(true)}
+      onVersions={() => setRecordsToolId('__global__')}
       floating={sidebarCollapsed}
     />
   );
@@ -175,6 +179,7 @@ export default function App() {
             <div className="help-toolbar">
               <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>✕ 删除</button>
               <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>⤓ 导出</button>
+              <button title="该工具的配置记录" onClick={() => setRecordsToolId(active.meta.id)}>⏱ 记录</button>
               {active.meta.useRemote && (
                 <button title="重新读取远程内容" onClick={() => api.refreshMd()}>⟳ 重新读取</button>
               )}
@@ -277,6 +282,12 @@ export default function App() {
         />
       )}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {recordsToolId && (
+        <ConfigRecords
+          onClose={() => setRecordsToolId(null)}
+          toolId={recordsToolId === '__global__' ? undefined : recordsToolId}
+        />
+      )}
     </div>
   );
 }

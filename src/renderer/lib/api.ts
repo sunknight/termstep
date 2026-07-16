@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { ScanResult, ToolMeta, PtySpawnOpts, UpdateState } from '../../shared/types';
+import type {
+  ScanResult,
+  ToolMeta,
+  PtySpawnOpts,
+  UpdateState,
+  CommitEntry,
+  VcsDiff,
+} from '../../shared/types';
 
 // 同构 preload/index.ts 的 api，但底层走 Tauri invoke/listen。
 // 所有命名空间/方法签名与原 window.api 一致，调用点只需 window.api → api。
@@ -66,5 +73,15 @@ export const api = {
   quick: {
     get: () => invoke<string>('quick_get'),
     save: (md: string) => invoke('quick_save', { md }),
+  },
+  vcs: {
+    // 全局（全部配置记录入口用）
+    log: (limit?: number) => invoke<CommitEntry[]>('vcs_log', { limit }),
+    diff: (rev: string) => invoke<VcsDiff>('vcs_diff', { rev }),
+    // per-tool（每个工具的配置记录用）
+    logTool: (toolId: string, limit?: number) =>
+      invoke<CommitEntry[]>('vcs_log_tool', { toolId, limit }),
+    diffTool: (toolId: string, rev: string) =>
+      invoke<VcsDiff>('vcs_diff_tool', { toolId, rev }),
   },
 };

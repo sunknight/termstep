@@ -9,6 +9,7 @@ export function SettingsSection(props: {
   onImport: () => void;
   onExport: () => void;
   onHelp: () => void;
+  onVersions: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<ThemeMode>(getThemeMode());
@@ -50,7 +51,14 @@ export function SettingsSection(props: {
     <div className="settings-section" ref={wrapRef}>
       <button
         className={'settings-toggle' + (open ? ' open' : '')}
-        onClick={() => setOpen((v) => !v)}
+        // 用 mousedown 而非 click：终端的 xterm 在隐藏 textarea 上持有焦点，
+        // 从终端点击本按钮时，焦点转移会干扰 click 合成（第一次点击常被吞，只完成
+        // 夺焦点、onClick 不触发，需点第二次）。mousedown 在焦点转移之前派发且稳定
+        // 触发；preventDefault 阻止它把焦点移到按钮，避免抢占终端焦点的副作用。
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
         title="设置"
       >
         设置
@@ -91,6 +99,10 @@ export function SettingsSection(props: {
             <button className="settings-item" onClick={props.onHelp} title="帮助文档">
               <span className="settings-item-icon">?</span>
               <span className="settings-item-label">帮助文档</span>
+            </button>
+            <button className="settings-item" onClick={props.onVersions} title="全部配置记录">
+              <span className="settings-item-icon">⏱</span>
+              <span className="settings-item-label">全部配置记录</span>
             </button>
           </div>
         </div>

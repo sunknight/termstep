@@ -276,6 +276,62 @@ pub fn migrate_order_to_index_blocking(tools_dir: &Path) -> bool {
     false
 }
 
+/// 迁移完成标志文件名（相对 configs_dir）。存在即代表迁移已成功完成，可安全跳过。
+/// 必须在所有 rename 成功后、最后才写入——这样中途失败（rename 出错 / 进程被杀）
+/// 不会留下标志文件，下次启动会重试，旧 tools/ 不致被遗弃在旧位置。
+pub const MIGRATION_MARKER: &str = ".migrated";
+
+/// 把旧布局（tools/ 和 quick-commands.md 直接放在 user_data_dir 下）搬迁到
+/// 新的 configs/ 子目录（configs 成为 git 仓库根）。
+///
+/// 幂等判断**不用** configs/ 是否存在（create_dir_all 成功但 rename 失败会留下
+/// 空 configs/，那种情况仍需重试），而用 configs/.migrated 标志文件：存在 → 已完成。
+/// 否则创建 configs/，把 user_data_dir/tools 和 user_data_dir/quick-commands.md
+/// 同卷 rename 进去（原子且瞬时）。单个 rename 失败只跳过并告警，不阻断——旧文件
+/// 原地不动，下次启动重试。全部 rename 完成（或本就无源文件）后才写标志文件。
+/// 不碰 tools.bak-polluted 等其它目录。
+///
+/// 同步（std::fs）：与 uuid / order 两个迁移一样，必须在任何 scan/seed/pty 之前、
+/// 在 tools_dir 派生之前调用。
+pub fn migrate_to_configs_blocking(user_data_dir: &Path) -> bool {
+    let configs_dir = user_data_dir.join("configs");
+    // 标志文件存在 = 已成功迁移过，跳过。
+    if configs_dir.join(MIGRATION_MARKER).exists() {
+        return false;
+    }
+    if let Err(e) = std::fs::create_dir_all(&configs_dir) {
+        eprintln!("migrate_to_configs: create_dir_all failed: {}", e);
+        return false;
+    }
+
+    let mut changed = false;
+    let tools_src = user_data_dir.join("tools");
+    if tools_src.exists() {
+        let tools_dst = configs_dir.join("tools");
+        match std::fs::rename(&tools_src, &tools_dst) {
+            Ok(()) => changed = true,
+            Err(e) => eprintln!("migrate_to_configs: rename tools failed: {}", e),
+        }
+    }
+
+    let quick_src = user_data_dir.join("quick-commands.md");
+    if quick_src.exists() {
+        let quick_dst = configs_dir.join("quick-commands.md");
+        match std::fs::rename(&quick_src, &quick_dst) {
+            Ok(()) => changed = true,
+            Err(e) => eprintln!("migrate_to_configs: rename quick-commands failed: {}", e),
+        }
+    }
+
+    // 所有 rename 完成（或本就无源文件）后写标志文件——一旦写入，后续启动直接跳过。
+    // 写失败只告警，不阻断：下次启动会重试整个迁移（标志缺失 → 重新走一遍，幂等安全）。
+    if let Err(e) = std::fs::write(configs_dir.join(MIGRATION_MARKER), "1\n") {
+        eprintln!("migrate_to_configs: write marker failed: {}", e);
+    }
+
+    changed
+}
+
 /// tool_reorder：写排序索引 order.json（不再遍历各 tool.json）。对偶 TOOL_REORDER。
 pub async fn tool_reorder(tools_dir: &Path, ordered_ids: &[String]) -> std::io::Result<()> {
     write_order_index(tools_dir, ordered_ids).await
@@ -562,6 +618,95 @@ mod tests {
                 .filter(|n| is_uuid(n))
                 .count(),
             1
+        );
+    }
+
+    // ── migrate_to_configs_blocking ───────────────────────────────────────────
+    #[test]
+    fn migrate_to_configs_moves_tools_and_quick() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 预置旧布局：tools/<uuid>/tool.json + quick-commands.md
+        let tool_dir = dir.join("tools").join("11111111-1111-4111-8111-111111111111");
+        std::fs::create_dir_all(&tool_dir).unwrap();
+        std::fs::write(tool_dir.join("tool.json"), r#"{"name":"Git"}"#).unwrap();
+        std::fs::write(dir.join("quick-commands.md"), "# 快捷\n").unwrap();
+
+        let changed = migrate_to_configs_blocking(dir);
+        assert!(changed);
+
+        // 旧位置消失，新位置有内容
+        assert!(!dir.join("tools").exists(), "old tools/ must be moved");
+        assert!(
+            !dir.join("quick-commands.md").exists(),
+            "old quick-commands.md must be moved"
+        );
+        let cfg = dir.join("configs");
+        let moved_json = std::fs::read_to_string(
+            cfg.join("tools/11111111-1111-4111-8111-111111111111/tool.json"),
+        )
+        .unwrap();
+        assert_eq!(moved_json, r#"{"name":"Git"}"#);
+        assert_eq!(
+            std::fs::read_to_string(cfg.join("quick-commands.md")).unwrap(),
+            "# 快捷\n"
+        );
+        // 迁移完成后必须有标志文件
+        assert!(
+            cfg.join(MIGRATION_MARKER).exists(),
+            "marker must exist after successful migration"
+        );
+    }
+
+    #[test]
+    fn migrate_to_configs_is_idempotent_with_marker() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 预置标志文件 = 已迁移完成。即便旧 tools/ 还在（不应出现的情况），也必须跳过。
+        std::fs::create_dir_all(dir.join("configs")).unwrap();
+        std::fs::write(dir.join("configs").join(MIGRATION_MARKER), "1\n").unwrap();
+        std::fs::create_dir_all(dir.join("tools")).unwrap();
+        std::fs::write(dir.join("tools/x.txt"), "x").unwrap();
+
+        let changed = migrate_to_configs_blocking(dir);
+        assert!(!changed, "marker exists → skip");
+        // 标志文件存在时，旧 tools/ 不被触碰
+        assert!(dir.join("tools").exists(), "old tools/ left untouched");
+    }
+
+    #[test]
+    fn migrate_to_configs_retries_when_empty_configs_without_marker() {
+        // 核心边界：configs/ 已存在但无标志文件（上次 create_dir 成功后 rename
+        // 失败 / 进程被杀）。必须重试迁移，而非因 configs 存在就跳过。
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 模拟中断后的状态：空 configs/ 已建 + 旧 tools/ 还在
+        std::fs::create_dir_all(dir.join("configs")).unwrap();
+        let tool_dir = dir.join("tools").join("22222222-2222-4222-8222-222222222222");
+        std::fs::create_dir_all(&tool_dir).unwrap();
+        std::fs::write(tool_dir.join("tool.json"), r#"{"name":"Docker"}"#).unwrap();
+
+        let changed = migrate_to_configs_blocking(dir);
+        assert!(changed, "no marker → must retry migration");
+        // tools 被搬进 configs，且标志文件写入
+        assert!(
+            dir.join("configs/tools/22222222-2222-4222-8222-222222222222/tool.json").exists(),
+            "tools must be moved on retry"
+        );
+        assert!(dir.join("configs").join(MIGRATION_MARKER).exists());
+    }
+
+    #[test]
+    fn migrate_to_configs_writes_marker_when_nothing_to_move() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 空的 user_data_dir：无源文件可搬，但 configs 创建后仍应写标志文件（首次安装路径）。
+        let changed = migrate_to_configs_blocking(dir);
+        assert!(!changed, "no files moved");
+        assert!(dir.join("configs").exists(), "configs dir created");
+        assert!(
+            dir.join("configs").join(MIGRATION_MARKER).exists(),
+            "marker written even when nothing to move"
         );
     }
 }

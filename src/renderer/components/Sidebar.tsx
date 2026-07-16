@@ -17,6 +17,7 @@ export function Sidebar(props: {
   onExport: () => void;
   onImport: () => void;
   onHelp: () => void;
+  onVersions: () => void;
   floating?: boolean;
 }) {
   const [width, setWidth] = useState<number>(() => {
@@ -205,6 +206,7 @@ export function Sidebar(props: {
               onImport={props.onImport}
               onExport={props.onExport}
               onHelp={props.onHelp}
+              onVersions={props.onVersions}
             />
           </div>
           <div className="sidebar-resizer" onMouseDown={startDrag} title="拖动调整宽度" />

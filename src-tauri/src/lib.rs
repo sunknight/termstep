@@ -11,6 +11,7 @@ mod tools;
 mod types;
 mod pure;
 mod updater;
+mod vcs;
 mod watcher;
 
 use std::sync::{Arc, Mutex};
@@ -31,14 +32,21 @@ pub fn run() {
                 .config_dir()
                 .expect("no config_dir")
                 .join("TermStep");
-            let tools_dir = user_data_dir.join("tools");
+            // 迁移时序（全部同步、幂等，在任何 scan/seed/pty 之前）：
+            // 1) 先把旧布局（tools/ + quick-commands.md 直接在 user_data_dir 下）
+            //    搬到 configs/ 子目录（configs 成为 git 仓库根）。
+            let _ = tool_io::migrate_to_configs_blocking(&user_data_dir);
+            let configs_dir = user_data_dir.join("configs");
+            // 2) tools_dir 现在指向 configs/tools——下游所有消费者（scan/watcher/
+            //    commands/seed/旧迁移）都把它当不透明 &Path，自动跟随。
+            let tools_dir = configs_dir.join("tools");
             let state_file = user_data_dir.join("update-state.json");
             std::fs::create_dir_all(&tools_dir).ok();
             let app_version = app.package_info().version.to_string();
 
             // seed 默认 git 工具（仅当 toolsDir 空）—— 对偶 seed.ts
             {
-                // 先迁移旧 slug 目录名 → UUID，再把旧 per-tool order 字段迁到 order.json
+                // 再迁移旧 slug 目录名 → UUID，把旧 per-tool order 字段迁到 order.json
                 // 索引（同步，在任何 scan/seed/pty 之前）。顺序：UUID 先、order 后
                 // （索引存的是迁移后的 UUID 目录名）。
                 let _ = tool_io::migrate_to_uuid_ids_blocking(&tools_dir);
@@ -53,14 +61,25 @@ pub fn run() {
                 });
             }
 
+            // git 版本控制初始化（降级安全）：检测不到 git 则跳过，应用其余功能不受影响。
+            let vcs_available = vcs::git_available();
+            if vcs_available {
+                if let Err(e) = vcs::ensure_repo(&configs_dir) {
+                    eprintln!("vcs ensure_repo failed: {}", e);
+                }
+            }
+
             // 共享状态（各 command 用 State<'_, T> 取）。
-            // tools_dir / user_data_dir / state_file 各装一个 Mutex<PathBuf>；
+            // tools_dir / configs_dir / state_file 各装一个 Mutex<PathBuf>；
             // updater 与 watcher 装各自的 Arc<Mutex<...>>。
             let watcher_state = Arc::new(Mutex::new(watcher::WatcherState::default()));
             let updater_state = Arc::new(Mutex::new(updater::UpdaterState::default()));
 
             app.manage(commands::ToolsDir(Mutex::new(tools_dir.clone())));
-            app.manage(commands::UserDataDir(Mutex::new(user_data_dir.clone())));
+            app.manage(commands::ConfigsDir(Mutex::new(configs_dir.clone())));
+            app.manage(commands::VcsState {
+                available: vcs_available,
+            });
             app.manage(commands::UpdateStateFile(Mutex::new(state_file.clone())));
             app.manage(updater_state.clone());
 
@@ -129,6 +148,10 @@ pub fn run() {
             commands::tools_import,
             commands::quick_get,
             commands::quick_save,
+            commands::vcs_log,
+            commands::vcs_diff,
+            commands::vcs_log_tool,
+            commands::vcs_diff_tool,
             commands::open_external,
             commands::clipboard_read,
             commands::clipboard_write,

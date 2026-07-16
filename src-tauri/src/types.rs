@@ -111,3 +111,9 @@ pub struct ToolsBundle {
     pub exported_at: Option<String>,
     pub tools: Vec<BundleTool>,
 }
+
+// --- VCS diff 结果 ---
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VcsDiff {
+    pub diff: String,
+}

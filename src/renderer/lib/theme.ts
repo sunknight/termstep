@@ -15,34 +15,21 @@ export type ResolvedTheme = 'light' | 'dark';
 
 const STORAGE_KEY = 'termstep:theme';
 
-let currentMode: ThemeMode = 'dark';
-let currentResolved: ResolvedTheme = 'dark';
+// 首次启动或未配置时，默认使用浅色模式。
+let currentMode: ThemeMode = 'light';
+let currentResolved: ResolvedTheme = 'light';
 
 // ---- xterm 主题（两套）-------------------------------------------------
-// 配色与 CSS 变量保持同一调性：浅色用白底深字，深色用近黑底浅字；光标用强调色。
+// 只设置「界面色」（背景 / 前景 / 光标 / 选区），**不覆盖 ANSI 16 色调色板**。
+// 程序（shell PS1、tmux 状态栏等）通过 ANSI 颜色转义码自行着色，若在这里改写
+// black/red/.../brightWhite，会把它们定义的颜色全部替换掉——导致 tmux 和提示符
+// 变成奇怪的蓝。省略这些字段，xterm 即用内置标准 VGA 16 色透传，程序原色保留。
 const xtermLight: ITheme = {
   background: '#ffffff',
   foreground: '#18181b',
   cursor: '#3b82f6',
   cursorAccent: '#ffffff',
   selectionBackground: 'rgba(59,130,246,0.18)',
-  // ANSI 16 色：浅色主题用偏深的色相，保证在白底上可读。
-  black: '#18181b',
-  red: '#dc2626',
-  green: '#16a34a',
-  yellow: '#ca8a04',
-  blue: '#2563eb',
-  magenta: '#c026d3',
-  cyan: '#0891b2',
-  white: '#71717a',
-  brightBlack: '#52525b',
-  brightRed: '#ef4444',
-  brightGreen: '#22c55e',
-  brightYellow: '#eab308',
-  brightBlue: '#3b82f6',
-  brightMagenta: '#d946ef',
-  brightCyan: '#06b6d4',
-  brightWhite: '#3f3f46',
 };
 
 const xtermDark: ITheme = {
@@ -51,23 +38,6 @@ const xtermDark: ITheme = {
   cursor: '#60a5fa',
   cursorAccent: '#09090b',
   selectionBackground: 'rgba(96,165,250,0.26)',
-  // 深色主题用偏亮的色相，保证在近黑底上可读。
-  black: '#09090b',
-  red: '#f87171',
-  green: '#4ade80',
-  yellow: '#facc15',
-  blue: '#60a5fa',
-  magenta: '#e879f9',
-  cyan: '#22d3ee',
-  white: '#a1a1aa',
-  brightBlack: '#52525b',
-  brightRed: '#fca5a5',
-  brightGreen: '#86efac',
-  brightYellow: '#fde68a',
-  brightBlue: '#93c5fd',
-  brightMagenta: '#f0abfc',
-  brightCyan: '#67e8f9',
-  brightWhite: '#fafafa',
 };
 
 function resolve(mode: ThemeMode): ResolvedTheme {
@@ -100,7 +70,7 @@ function refresh(resolved: ResolvedTheme): void {
 /** 在 React 渲染前同步调用：读 localStorage + 设好 data-theme。 */
 export function initTheme(): void {
   const saved = localStorage.getItem(STORAGE_KEY);
-  currentMode = saved === 'light' || saved === 'dark' ? saved : 'dark';
+  currentMode = saved === 'light' || saved === 'dark' ? saved : 'light';
   currentResolved = resolve(currentMode);
   applyResolvedToDom();
 }

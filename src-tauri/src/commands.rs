@@ -41,7 +41,11 @@ macro_rules! lock_or_recover {
 #[derive(Default)]
 pub struct ToolsDir(pub Mutex<PathBuf>);
 #[derive(Default)]
-pub struct UserDataDir(pub Mutex<PathBuf>);
+pub struct ConfigsDir(pub Mutex<PathBuf>);
+/// git 是否可用（启动时探测一次，只读）。
+pub struct VcsState {
+    pub available: bool,
+}
 #[derive(Default)]
 pub struct UpdateStateFile(pub Mutex<PathBuf>);
 type UpdaterArc = Arc<Mutex<crate::updater::UpdaterState>>;
@@ -75,47 +79,86 @@ pub async fn refresh_md(
 #[tauri::command]
 pub async fn tool_save(
     tools_dir: State<'_, ToolsDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
     tool_id: String,
     markdown: String,
     meta_patch: serde_json::Value,
 ) -> Result<(), String> {
     validate_tool_id(&tool_id)?;
     let td = lock_or_recover!(&tools_dir.0).clone();
-    tool_io::tool_save(&td.join(&tool_id), &markdown, meta_patch)
+    tool_io::tool_save(&td.join(&tool_id), &markdown, meta_patch.clone())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // 自动提交：工具名取 meta_patch.name，缺省用 id。
+    let name = meta_patch
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| tool_id.clone());
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    try_auto_commit(&vcs_state, &cd, &tool_pathspec(&tool_id), &format!("保存工具 {}", name));
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn tool_append_md(
     tools_dir: State<'_, ToolsDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
     tool_id: String,
     body: String,
 ) -> Result<bool, String> {
     validate_tool_id(&tool_id)?;
     let td = lock_or_recover!(&tools_dir.0).clone();
-    tool_io::tool_append_md(&td.join(&tool_id), &body)
+    let wrote = tool_io::tool_append_md(&td.join(&tool_id), &body)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // 仅在实际写入（非空、非重复）时提交
+    if wrote {
+        let cd = lock_or_recover!(&configs_dir.0).clone();
+        try_auto_commit(&vcs_state, &cd, &tool_pathspec(&tool_id), &format!("追加命令到 {}", tool_id));
+    }
+    Ok(wrote)
 }
 
 #[tauri::command]
-pub async fn tool_create(tools_dir: State<'_, ToolsDir>, name: String) -> Result<String, String> {
+pub async fn tool_create(
+    tools_dir: State<'_, ToolsDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
+    name: String,
+) -> Result<String, String> {
     let td = lock_or_recover!(&tools_dir.0).clone();
-    tool_io::tool_create(&td, &name)
+    let id = tool_io::tool_create(&td, &name)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    try_auto_commit(&vcs_state, &cd, &tool_pathspec(&id), &format!("新建工具 {}", name));
+    Ok(id)
 }
 
 #[tauri::command]
 pub async fn tool_delete(
     handle: AppHandle,
     tools_dir: State<'_, ToolsDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
     watcher_state: State<'_, WatcherArc>,
     tool_id: String,
 ) -> Result<(), String> {
     validate_tool_id(&tool_id)?;
     let td = lock_or_recover!(&tools_dir.0).clone();
+    // 删除前从 watcher 缓存取工具名（删除后取不到）
+    let tool_name = {
+        let s = lock_or_recover!(watcher_state);
+        s.last_tools
+            .iter()
+            .find(|t| t.meta.id == tool_id)
+            .map(|t| t.meta.name.clone())
+            .unwrap_or_else(|| tool_id.clone())
+    };
     // pty kill 留到阶段 3（现在 stub）
     tool_io::tool_delete(&td, &tool_id)
         .await
@@ -124,7 +167,8 @@ pub async fn tool_delete(
     let mut order = tool_io::read_order_index(&td);
     let before_len = order.len();
     order.retain(|x| x != &tool_id);
-    if order.len() != before_len {
+    let order_changed = before_len != order.len();
+    if order_changed {
         let _ = tool_io::write_order_index(&td, &order).await;
     }
     // 立即生效：从 watcher 缓存剔除该工具并 emit，不等全量重扫（同 reorder）。
@@ -136,6 +180,13 @@ pub async fn tool_delete(
             errors: vec![],
         });
     }
+    // 自动提交：分别记录删除目录和排序更新（各自独立提交，消息清晰）。
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    let msg = format!("删除工具 {}", tool_name);
+    try_auto_commit(&vcs_state, &cd, &tool_pathspec(&tool_id), &msg);
+    if order_changed {
+        try_auto_commit(&vcs_state, &cd, "tools/order.json", &format!("{}：更新排序", msg));
+    }
     Ok(())
 }
 
@@ -143,6 +194,8 @@ pub async fn tool_delete(
 pub async fn tool_reorder(
     handle: AppHandle,
     tools_dir: State<'_, ToolsDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
     watcher_state: State<'_, WatcherArc>,
     ordered_ids: Vec<String>,
 ) -> Result<(), String> {
@@ -158,6 +211,9 @@ pub async fn tool_reorder(
     // watcher 仍会因 order.json 变化触发一次后台 scan，但前端早已拿到新顺序；
     // 后台 scan 到达时顺序一致，只是刷新了远程 md 内容，无可见回退。
     emit_reordered(&handle, &watcher_state, &ordered_ids);
+    // 自动提交：排序变更只动 order.json。
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    try_auto_commit(&vcs_state, &cd, "tools/order.json", "重排工具顺序");
     Ok(())
 }
 
@@ -288,7 +344,11 @@ pub async fn export_one(
 }
 
 #[tauri::command]
-pub async fn tools_import(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::Value, String> {
+pub async fn tools_import(
+    tools_dir: State<'_, ToolsDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
+) -> Result<serde_json::Value, String> {
     let file = rfd::AsyncFileDialog::new()
         .set_title("导入工具")
         .add_filter("TermStep 工具包", &["json"])
@@ -333,25 +393,131 @@ pub async fn tools_import(tools_dir: State<'_, ToolsDir>) -> Result<serde_json::
         order.extend(new_ids);
         let _ = tool_io::write_order_index(&td, &order).await;
     }
+    // 自动提交：导入会写入多个新工具目录 + order.json，用一个提交涵盖整个 tools/。
+    if count > 0 {
+        let cd = lock_or_recover!(&configs_dir.0).clone();
+        try_auto_commit(&vcs_state, &cd, "tools/", &format!("导入 {} 个工具", count));
+    }
     Ok(serde_json::json!({"canceled": false, "count": count}))
 }
 
 // ── quick ───────────────────────────────────────────────────────────────────
 #[tauri::command]
-pub async fn quick_get(user_data_dir: State<'_, UserDataDir>) -> Result<String, String> {
-    let ud = lock_or_recover!(&user_data_dir.0).clone();
-    Ok(tool_io::quick_get(&ud).await)
+pub async fn quick_get(configs_dir: State<'_, ConfigsDir>) -> Result<String, String> {
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    Ok(tool_io::quick_get(&cd).await)
 }
 
 #[tauri::command]
 pub async fn quick_save(
-    user_data_dir: State<'_, UserDataDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
     md: String,
 ) -> Result<(), String> {
-    let ud = lock_or_recover!(&user_data_dir.0).clone();
-    tool_io::quick_save(&ud, &md)
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    tool_io::quick_save(&cd, &md)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    try_auto_commit(&vcs_state, &cd, "quick-commands.md", "保存快捷命令");
+    Ok(())
+}
+
+// ── 版本控制（git 配置记录）──────────────────────────────────────────────────
+// 模型：每次保存且文件有变动时自动提交（仅提交变更路径）。无手动快照。
+// 所有 vcs 命令先查 VcsState.available，git 不可用时降级返回（不报错弹窗）。
+use crate::vcs;
+use std::path::Path;
+
+/// 自动提交钩子：git 可用时，仅暂存并提交指定路径。失败只告警，**绝不阻断写入**
+/// （配置保存是首要功能，版本控制是附加价值）。
+fn try_auto_commit(state: &VcsState, configs_dir: &Path, pathspec: &str, msg: &str) {
+    if !state.available {
+        return;
+    }
+    // 仓库未初始化时跳过（理论上 lib.rs 已 init，此处防御）
+    if !configs_dir.join(".git").exists() {
+        return;
+    }
+    if let Err(e) = vcs::snapshot_path(configs_dir, pathspec, msg) {
+        eprintln!("vcs auto-commit failed ({}): {}", pathspec, e);
+    }
+}
+
+/// 从 tool_id 派生 pathspec：tools/<id>/
+fn tool_pathspec(tool_id: &str) -> String {
+    format!("tools/{}/", tool_id)
+}
+
+/// 全局配置记录历史（整个 configs 仓库）。
+#[tauri::command]
+pub async fn vcs_log(
+    state: State<'_, VcsState>,
+    configs_dir: State<'_, ConfigsDir>,
+    limit: Option<usize>,
+) -> Result<Vec<vcs::CommitEntry>, String> {
+    if !state.available {
+        return Ok(vec![]);
+    }
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    vcs::log_list(&cd, limit)
+}
+
+/// rev = "WORKING" → 工作区相对 HEAD 的未提交 diff；否则当作 commit hash。
+#[tauri::command]
+pub async fn vcs_diff(
+    state: State<'_, VcsState>,
+    configs_dir: State<'_, ConfigsDir>,
+    rev: String,
+) -> Result<crate::types::VcsDiff, String> {
+    if !state.available {
+        return Ok(crate::types::VcsDiff { diff: String::new() });
+    }
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    let diff = if rev == "WORKING" {
+        vcs::diff_working(&cd)?
+    } else {
+        vcs::diff_rev(&cd, &rev)?
+    };
+    Ok(crate::types::VcsDiff { diff })
+}
+
+/// 单工具的配置记录历史（仅触碰过 tools/<id>/ 的提交）。
+#[tauri::command]
+pub async fn vcs_log_tool(
+    state: State<'_, VcsState>,
+    configs_dir: State<'_, ConfigsDir>,
+    tool_id: String,
+    limit: Option<usize>,
+) -> Result<Vec<vcs::CommitEntry>, String> {
+    validate_tool_id(&tool_id)?;
+    if !state.available {
+        return Ok(vec![]);
+    }
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    vcs::log_list_path(&cd, &tool_pathspec(&tool_id), limit)
+}
+
+/// 单工具的 diff（仅限 tools/<id>/）。
+/// rev = "WORKING" → 该工具工作区相对 HEAD 的未提交变更；否则当 commit hash。
+#[tauri::command]
+pub async fn vcs_diff_tool(
+    state: State<'_, VcsState>,
+    configs_dir: State<'_, ConfigsDir>,
+    tool_id: String,
+    rev: String,
+) -> Result<crate::types::VcsDiff, String> {
+    validate_tool_id(&tool_id)?;
+    if !state.available {
+        return Ok(crate::types::VcsDiff { diff: String::new() });
+    }
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    let pathspec = tool_pathspec(&tool_id);
+    let diff = if rev == "WORKING" {
+        vcs::diff_working_path(&cd, &pathspec)?
+    } else {
+        vcs::diff_rev_path(&cd, &rev, &pathspec)?
+    };
+    Ok(crate::types::VcsDiff { diff })
 }
 
 // ── shell / clipboard ───────────────────────────────────────────────────────
