@@ -395,27 +395,32 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 .help-toc-btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
 
-/* 折叠分节：原生 <details>，summary 自定义箭头。 */
+/* 折叠分节：原生 <details>。容器无边框/背景/padding，与未折叠文档视觉一致；
+   summary 复刻 .help h2 的样式（字号 + 底部下划线）。
+   容器顶部 margin 与 .help h2（1.4em）一致，保证折叠/未折叠 H2 上方留白相同。 */
 .help details.help-section {
-  margin: 0 0 10px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface);
+  margin: 2.2em 0 0;
+  background: none;
 }
 /* 新展开/点击定位的 section：闪动动效。仅背景渐变（无粗边框），
    1.5s 渐隐回正常。动画结束由 JS 移除 class。 */
 @keyframes help-section-flash {
   0%   { background: var(--accent-subtle); }
   60%  { background: var(--accent-subtle); }
-  100% { background: var(--surface); }
+  100% { background: transparent; }
 }
 .help details.help-section.help-section-flash {
   animation: help-section-flash 1.5s ease-out;
 }
+/* summary 复刻 .help h2：1.3em、底部下划线；可点击加 hover 反馈和箭头。 */
 .help details.help-section > summary.help-section-summary {
   cursor: pointer; list-style: none;
-  padding: 8px 12px; font-size: 1.3em; font-weight: 600; line-height: 1.3;
-  color: var(--text); border-bottom: 1px solid transparent;
+  font-size: 1.3em; font-weight: 600; line-height: 1.3;
+  padding-bottom: 0.25em;
+  color: var(--text); border-bottom: 1px solid var(--border);
+  transition: color 0.12s;
 }
+.help details.help-section > summary.help-section-summary:hover { color: var(--accent-hover); }
 /* 隐藏原生三角标记 */
 .help details.help-section > summary.help-section-summary::-webkit-details-marker { display: none; }
 .help details.help-section > summary.help-section-summary::before {
@@ -423,11 +428,10 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   font-size: 0.7em; color: var(--text-3);
   transition: transform 0.15s ease;
 }
-/* 展开时：箭头旋转 + summary 加底边分隔 */
+/* 展开时箭头旋转 */
 .help details.help-section[open] > summary.help-section-summary::before { transform: rotate(90deg); }
-.help details.help-section[open] > summary.help-section-summary { border-bottom-color: var(--border); }
-.help .help-section-body { padding: 10px 12px; }
-/* 折叠态下移除 summary 下方的 body margin 防止多余空白 */
+/* body 无 padding，与未折叠文档正文一致 */
+.help .help-section-body { padding: 0; }
 .help details.help-section:not([open]) > .help-section-body { display: none; }
 
 /* ----------------------------------------------------------------------------
