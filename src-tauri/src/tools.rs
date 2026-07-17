@@ -86,10 +86,18 @@ fn is_internal_host(host: &str) -> bool {
         || h.ends_with(".internal")
         // 解析 IP 后判断（IPv4 点分十进制；IPv6 形如 [::1]）
         || is_internal_ipv4(&h)
-        || h.trim_start_matches('[').trim_end_matches(']').starts_with("::")
+        // 含 '[' 的视为 IPv6 字面量（含 IPv4-mapped、ULA、link-local）
+        || (h.contains('[') && is_internal_ipv6_literal(&h))
+        // 无方括号的裸 IPv6（无端口的纯 ::1 形式）
+        || (!h.contains('.') && h.contains(':') && is_internal_ipv6_literal(&h))
 }
 
-/// IPv4 内网段判断。点分十进制且整体解析为 u32 后比对 CIDR。
+/// IPv4 内网段判断。把点分四段（**仅**纯十进制，拒绝八进制 `0177.0.0.1`、
+/// 十六进制 `0x7f.0.0.1`、单整数 `2130706433`、紧缩 `127.1` 等等价写法——
+/// 这些形式经系统 resolver 仍会解析到内网，必须一并拒绝）解析为 u32 后比对 CIDR。
+/// 任何含前导 `0`（且本身不是 `0`）或含非数字字符的段都判为「无法判定 → 视为可疑」，
+/// 因为它们既可能是合法公网域名前缀（如 `0.0.0.0` 之外的 `01.example.com`），
+/// 也可能是 resolver 会内网化的 IP 字面量——安全侧取保守：拒绝。
 fn is_internal_ipv4(host: &str) -> bool {
     // 去掉端口
     let h = host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host);
@@ -99,9 +107,15 @@ fn is_internal_ipv4(host: &str) -> bool {
     }
     let mut bytes = [0u8; 4];
     for (i, o) in octets.iter().enumerate() {
+        // 拒绝任何非纯十进制段：含前导 0（非 "0"）、十六进制、空串都判为「非公网」。
+        // resolver 接受 0177/0x7f/单整数等 → 它们等价于某个内网 IP，不能放行。
+        if o.is_empty() || !o.bytes().all(|c| c.is_ascii_digit()) || (o.len() > 1 && o.starts_with('0')) {
+            return true;
+        }
         match o.parse::<u8>() {
             Ok(v) => bytes[i] = v,
-            Err(_) => return false,
+            // 超出 u8（如 321）也判内网——resolver 会做溢出归一化，保守拒绝
+            Err(_) => return true,
         }
     }
     let [a, b, _c, _d] = bytes;
@@ -122,11 +136,39 @@ fn is_internal_ipv4(host: &str) -> bool {
     }
 }
 
+/// 判断 IPv6 字面量是否为内网/环回/链路本地/私有（涵盖 ULA fc00::/7）。
+/// 对 `[::1]` / `[::ffff:127.0.0.1]` / `[fc00::1]` / `[fe80::1]` 等都返回 true。
+fn is_internal_ipv6_literal(host: &str) -> bool {
+    // 去掉方括号（host 可能带端口 `[::1]:8080` → 取 `]` 前）
+    let h = host.trim_start_matches('[');
+    let h = h.split(']').next().unwrap_or(h);
+    h.parse::<std::net::Ipv6Addr>().map(|ip| {
+        ip.is_loopback()
+            || ip.is_unspecified()
+            || ip.is_multicast()
+            // ULA（唯一本地地址）fc00::/7：标准库无 is_unicast_link_local / is_unique_local，
+            // 用段判断。fc00::/7 覆盖 fc00:: 和 fd00:: 两段。
+            || (ip.segments()[0] & 0xfe00) == 0xfc00
+            // 链路本地 fe80::/10
+            || (ip.segments()[0] & 0xffc0) == 0xfe80
+            // IPv4-mapped IPv6 ::ffff:a.b.c.d：解出内嵌 IPv4 再判
+            || ip.to_ipv4().map(|v4| {
+                let o = v4.octets();
+                // 复用 is_internal_ipv4 的公网/内网判定（环回/私有/链路本地等）
+                is_internal_ipv4(&format!("{}.{}.{}.{}", o[0], o[1], o[2], o[3]))
+            }).unwrap_or(false)
+    }).unwrap_or(false)
+}
+
 /// 从 URL 字符串提取 host 部分（http(s)://host[:port]/path → host[:port]）。
+/// **大小写不敏感**地匹配 scheme 前缀（`HTTP://localhost` 与 `https://localhost`
+/// 同等处理）——旧实现用 `strip_prefix` 区分大小写，导致大写 scheme 绕过整个
+/// SSRF 守卫（extract_host 返回 None → 检查跳过，但 reqwest 仍发请求）。
 fn extract_host(url: &str) -> Option<String> {
-    let stripped = url
+    let lower = url.to_ascii_lowercase();
+    let stripped = lower
         .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))?;
+        .or_else(|| lower.strip_prefix("http://"))?;
     let host_end = stripped
         .find(['/', '?', '#'])
         .unwrap_or(stripped.len());
@@ -748,5 +790,98 @@ mod tests {
         assert_eq!(extract_host("http://localhost:8080/x").as_deref(), Some("localhost:8080"));
         assert_eq!(extract_host("https://a.com").as_deref(), Some("a.com"));
         assert!(extract_host("ftp://x").is_none()); // 非 http(s)
+    }
+
+    // ── H1 回归：大写 scheme 不得绕过 SSRF 守卫 ──────────────────────────────────
+    // extract_host 用 strip_prefix 区分大小写 → 大写 scheme 返回 None → 守卫跳过。
+    // 修复后对 scheme 做小写化，大写 HTTP/HTTPS 同等处理。
+    #[test]
+    fn extract_host_case_insensitive_scheme() {
+        assert_eq!(extract_host("HTTPS://127.0.0.1/x").as_deref(), Some("127.0.0.1"));
+        assert_eq!(extract_host("HTTP://localhost:8080/x").as_deref(), Some("localhost:8080"));
+        assert_eq!(extract_host("Http://10.0.0.5/y").as_deref(), Some("10.0.0.5"));
+    }
+
+    #[test]
+    fn internal_host_blocks_uppercase_scheme_loopback() {
+        // 组合：大写 scheme 经 extract_host 提取后，仍应被 is_internal_host 拦截。
+        let h = extract_host("HTTPS://127.0.0.1/x").unwrap();
+        assert!(is_internal_host(&h), "uppercase scheme must not bypass SSRF");
+        let h = extract_host("HTTP://169.254.169.254/latest/").unwrap();
+        assert!(is_internal_host(&h), "uppercase scheme to metadata must be blocked");
+    }
+
+    // ── H2 回归：非十进制 IPv4 等价写法不得绕过 ─────────────────────────────────
+    // resolver 接受八进制/十六进制/单整数/紧缩形式并解析到内网，旧实现只认纯十进制
+    // 四段 → 这些形式全部漏过。修复后一律判为内网（保守拒绝）。
+    #[test]
+    fn internal_ipv4_rejects_octal_form() {
+        // 0177.0.0.1 = 127.0.0.1（八进制）
+        assert!(is_internal_ipv4("0177.0.0.1"), "octal loopback must be blocked");
+    }
+
+    #[test]
+    fn internal_ipv4_rejects_hex_form() {
+        // 0x7f000001 = 127.0.0.1（十六进制单段）
+        assert!(is_internal_ipv4("0x7f.0.0.1"), "hex form must be blocked");
+    }
+
+    #[test]
+    fn internal_ipv4_rejects_leading_zero_octet() {
+        // 010 → 前导零，resolver 视为八进制，保守拒绝
+        assert!(is_internal_ipv4("010.0.0.1"), "leading-zero octet must be blocked");
+    }
+
+    #[test]
+    fn internal_ipv4_rejects_overflow_octet() {
+        // 321 超出 u8，resolver 可能做溢出归一化，保守拒绝
+        assert!(is_internal_ipv4("321.0.0.1"), "overflow octet must be blocked");
+    }
+
+    #[test]
+    fn internal_ipv4_allows_public_decimal() {
+        // 纯十进制公网 IP 不受影响
+        assert!(!is_internal_ipv4("8.8.8.8"));
+        assert!(!is_internal_ipv4("1.1.1.1"));
+        assert!(!is_internal_ipv4("93.184.216.34")); // example.com
+    }
+
+    // ── H2 回归：IPv4-mapped IPv6 / ULA / link-local ───────────────────────────
+    #[test]
+    fn internal_ipv6_blocks_mapped_loopback() {
+        // ::ffff:127.0.0.1 = IPv4-mapped，resolver 视同 127.0.0.1
+        assert!(is_internal_ipv6_literal("[::ffff:127.0.0.1]"));
+        assert!(is_internal_ipv6_literal("[::ffff:169.254.169.254]"));
+    }
+
+    #[test]
+    fn internal_ipv6_blocks_ula() {
+        // fc00::/7（ULA 私有）
+        assert!(is_internal_ipv6_literal("[fc00::1]"));
+        assert!(is_internal_ipv6_literal("[fd12:3456:789a::1]"));
+    }
+
+    #[test]
+    fn internal_ipv6_blocks_link_local() {
+        // fe80::/10（链路本地）
+        assert!(is_internal_ipv6_literal("[fe80::1]"));
+    }
+
+    #[test]
+    fn internal_ipv6_blocks_loopback() {
+        assert!(is_internal_ipv6_literal("[::1]"));
+    }
+
+    #[test]
+    fn internal_ipv6_allows_public() {
+        // 2606:4700:4700::1111 = Cloudflare DNS，公网
+        assert!(!is_internal_ipv6_literal("[2606:4700:4700::1111]"));
+    }
+
+    #[test]
+    fn internal_host_blocks_ipv6_mapped_loopback() {
+        // 端到端：经 extract_host + is_internal_host 全链路拦截
+        let h = extract_host("https://[::ffff:127.0.0.1]/x").unwrap();
+        assert!(is_internal_host(&h));
     }
 }

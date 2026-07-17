@@ -55,7 +55,8 @@ export function parseButtonLine(raw: string): ParsedButton | null {
   return { command, label: label || command, edit };
 }
 
-export function renderButtonsBlock(code: string): string {
+export function renderButtonsBlock(code: string, opts?: { isRemote?: boolean }): string {
+  const remoteAttr = opts?.isRemote ? ' data-remote="1"' : '';
   const items: string[] = [];
   for (const raw of code.split('\n')) {
     const trimmed = raw.trim();
@@ -73,7 +74,7 @@ export function renderButtonsBlock(code: string): string {
     // text differs from the command, so hovering reveals the full command.
     const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
     items.push(
-      `<button class="cmd-btn"${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`
+      `<button class="cmd-btn"${remoteAttr}${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`
     );
   }
   if (items.length === 0) return '';
@@ -204,7 +205,8 @@ function coerceParams(raw: unknown[]): ButtonParam[] {
 // serialized (and attribute-escaped) in data-params so the delegated click
 // handler can rebuild the form without a separate registry. A parse failure
 // renders a visible error block so the author sees the syntax problem.
-export function renderButtonsJsonBlock(code: string): string {
+export function renderButtonsJsonBlock(code: string, opts?: { isRemote?: boolean }): string {
+  const remoteAttr = opts?.isRemote ? ' data-remote="1"' : '';
   const r = parseButtonsJson(code);
   if ('error' in r) {
     return `<div class="cmd-error">⚠️ buttons-json 解析失败：${escapeHtml(r.error)}</div>`;
@@ -216,7 +218,7 @@ export function renderButtonsJsonBlock(code: string): string {
         ? ` data-params="${escapeAttr(JSON.stringify(b.params))}"`
         : '';
       const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
-      return `<button class="cmd-btn"${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}"${paramsAttr}>${escapeHtml(b.label)}</button>`;
+      return `<button class="cmd-btn"${remoteAttr}${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}"${paramsAttr}>${escapeHtml(b.label)}</button>`;
     })
     .join('');
   return `<div class="cmd-buttons">${items}</div>`;

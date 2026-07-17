@@ -52,6 +52,12 @@ type UpdaterArc = Arc<Mutex<crate::updater::UpdaterState>>;
 type WatcherArc = Arc<Mutex<crate::watcher::WatcherState>>;
 type PtyArc = Arc<Mutex<crate::pty::PtyService>>;
 
+/// 导入预检缓存：dry_run 阶段解析的 bundle 存这里，commit 阶段取出落盘。
+/// 避免让 bundle 内容在前后端间来回传递（纯本地数据，但仍减少面）。
+/// 单槽：只缓存最近一次预检，新的预检覆盖旧的。
+pub type ImportPreviewArc = Arc<Mutex<Option<crate::pure::ParseResult>>>;
+
+
 // ── tools ───────────────────────────────────────────────────────────────────
 #[tauri::command]
 pub async fn tools_list(tools_dir: State<'_, ToolsDir>) -> Result<crate::types::ScanResult, String> {
@@ -348,7 +354,34 @@ pub async fn tools_import(
     tools_dir: State<'_, ToolsDir>,
     configs_dir: State<'_, ConfigsDir>,
     vcs_state: State<'_, VcsState>,
+    preview_state: State<'_, ImportPreviewArc>,
+    dry_run: Option<bool>,
 ) -> Result<serde_json::Value, String> {
+    let dry_run = dry_run.unwrap_or(false);
+
+    // 落盘阶段：直接用预检缓存的解析结果，不重新选文件（用户已在预检时选过）。
+    // 无缓存（前端直接 commit / 旧前端）→ 报错要求先预检。
+    if !dry_run {
+        let parsed = lock_or_recover!(preview_state)
+            .take()
+            .ok_or_else(|| "请先进行导入预检".to_string())?;
+        let td = lock_or_recover!(&tools_dir.0).clone();
+        let (count, new_ids) = write_imported_tools(&td, &parsed).await?;
+        // 把导入的新 id 追加到排序索引末尾（新工具排最后，符合预期）
+        if !new_ids.is_empty() {
+            let mut order = tool_io::read_order_index(&td);
+            order.extend(new_ids);
+            let _ = tool_io::write_order_index(&td, &order).await;
+        }
+        // 自动提交：导入会写入多个新工具目录 + order.json，用一个提交涵盖整个 tools/。
+        if count > 0 {
+            let cd = lock_or_recover!(&configs_dir.0).clone();
+            try_auto_commit(&vcs_state, &cd, "tools/", &format!("导入 {} 个工具", count));
+        }
+        return Ok(serde_json::json!({"canceled": false, "count": count}));
+    }
+
+    // 预检阶段：选文件 + 解析 + 扫描风险，返回摘要（不写盘）。
     let file = rfd::AsyncFileDialog::new()
         .set_title("导入工具")
         .add_filter("TermStep 工具包", &["json"])
@@ -365,12 +398,31 @@ pub async fn tools_import(
     if let Some(err) = parsed.error {
         return Ok(serde_json::json!({"canceled": false, "count": 0, "error": err}));
     }
-    let td = lock_or_recover!(&tools_dir.0).clone();
+    let risks: Vec<crate::pure::ToolRiskSummary> =
+        parsed.tools.iter().map(crate::pure::scan_tool_risk).collect();
+    let has_risk = risks.iter().any(|r| !r.is_empty());
+    // 缓存解析结果，供紧随其后的 commit 取用。
+    *lock_or_recover!(preview_state) = Some(parsed);
+    Ok(serde_json::json!({
+        "canceled": false,
+        "dryRun": true,
+        "count": risks.len(),
+        "hasRisk": has_risk,
+        "risks": risks,
+    }))
+}
+
+/// 把已解析的 bundle 工具落盘到 tools_dir，每个工具一个新 UUID 目录。
+/// 返回 (写入数量, 新 id 列表)。失败立即返回 Err（已写入的工具保留在磁盘）。
+async fn write_imported_tools(
+    tools_dir: &Path,
+    parsed: &crate::pure::ParseResult,
+) -> Result<(usize, Vec<String>), String> {
     let mut count = 0;
     let mut new_ids: Vec<String> = vec![];
-    for t in parsed.tools {
+    for t in &parsed.tools {
         let id = tool_io::new_tool_id();
-        let dir = td.join(&id);
+        let dir = tools_dir.join(&id);
         tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
         let mut meta = serde_json::to_value(&t.meta).map_err(|e| e.to_string())?;
         if let Some(o) = meta.as_object_mut() {
@@ -387,18 +439,7 @@ pub async fn tools_import(
         new_ids.push(id);
         count += 1;
     }
-    // 把导入的新 id 追加到排序索引末尾（新工具排最后，符合预期）
-    if !new_ids.is_empty() {
-        let mut order = tool_io::read_order_index(&td);
-        order.extend(new_ids);
-        let _ = tool_io::write_order_index(&td, &order).await;
-    }
-    // 自动提交：导入会写入多个新工具目录 + order.json，用一个提交涵盖整个 tools/。
-    if count > 0 {
-        let cd = lock_or_recover!(&configs_dir.0).clone();
-        try_auto_commit(&vcs_state, &cd, "tools/", &format!("导入 {} 个工具", count));
-    }
-    Ok(serde_json::json!({"canceled": false, "count": count}))
+    Ok((count, new_ids))
 }
 
 // ── quick ───────────────────────────────────────────────────────────────────

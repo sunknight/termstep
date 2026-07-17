@@ -47,7 +47,7 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
 
   const prompt = useParamPrompt();
 
-  const run = (command: string, edit: boolean, params: ButtonParam[], e?: React.MouseEvent) => {
+  const run = (command: string, edit: boolean, params: ButtonParam[] | undefined, e?: React.MouseEvent) => {
     const a = props.activeTool;
     if (!a) return;
     // ⌘/Ctrl + 点击：复制命令到剪贴板，不输入终端。

