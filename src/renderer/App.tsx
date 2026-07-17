@@ -21,6 +21,24 @@ const HELP_MIN_WIDTH = 200;
 const HELP_MAX_WIDTH = 560;
 const HELP_DEFAULT_WIDTH = 340;
 
+// 把导入预检返回的风险摘要格式化成确认对话框里的人类可读明细。
+// 只列含风险项的工具，每项标注风险类型；启动命令逐条列出（最高风险）。
+function formatImportRisks(risks: { name: string; shell?: string; initCommands: string[]; mdUrl?: string; envKeys: string[] }[]): string {
+  const lines: string[] = [];
+  for (const r of risks) {
+    if (r.shell === undefined && r.initCommands.length === 0 && r.mdUrl === undefined && r.envKeys.length === 0) continue;
+    lines.push(`• ${r.name}:`);
+    if (r.shell) lines.push(`    自定义 shell: ${r.shell}`);
+    if (r.initCommands.length > 0) {
+      lines.push('    启动时自动执行:');
+      for (const c of r.initCommands) lines.push(`      $ ${c}`);
+    }
+    if (r.mdUrl) lines.push(`    远程订阅: ${r.mdUrl}`);
+    if (r.envKeys.length > 0) lines.push(`    环境变量: ${r.envKeys.join(', ')}`);
+  }
+  return lines.join('\n');
+}
+
 export default function App() {
   const { tools, errors } = useTools();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -134,9 +152,24 @@ export default function App() {
     else if ('path' in res) await alertDialog(`已导出工具到:\n${res.path}`);
   };
   const importTools = async () => {
-    const res = await api.bundle.import();
-    if (!res || res.canceled) return;
-    if ('error' in res && res.error) await alertDialog(`导入失败: ${res.error}`);
+    // 两阶段导入：preview 选文件 + 解析 + 风险扫描（不写盘）→ 确认 → confirm 落盘。
+    const pre = await api.bundle.importPreview();
+    if (!pre || pre.canceled) return;
+    if ('error' in pre) {
+      await alertDialog(`导入失败: ${pre.error}`);
+      return;
+    }
+    // 有风险字段（自定义 shell / 启动命令 / 远程订阅 / 环境变量）→ 弹确认列出明细。
+    if (pre.hasRisk) {
+      const detail = formatImportRisks(pre.risks);
+      const ok = await confirmDialog(
+        `⚠️ 即将导入 ${pre.count} 个工具，其中含以下风险项：\n\n${detail}\n\n工具可包含启动命令，导入后打开工具即执行。仅导入可信来源。确定继续？`,
+        '导入风险确认',
+      );
+      if (!ok) return;
+    }
+    const res = await api.bundle.importConfirm();
+    if ('error' in res) await alertDialog(`导入失败: ${res.error}`);
     else await alertDialog(`已导入 ${res.count} 个工具。`);
   };
 
@@ -194,6 +227,7 @@ export default function App() {
             <HelpPane
               tool={active}
               activeToolId={active.meta.id}
+              isRemote={!!active.meta.useRemote}
               markdown={
                 active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
               }

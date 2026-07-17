@@ -7,6 +7,7 @@ import type {
   UpdateState,
   CommitEntry,
   VcsDiff,
+  ToolRiskSummary,
 } from '../../shared/types';
 
 // 同构 preload/index.ts 的 api，但底层走 Tauri invoke/listen。
@@ -62,8 +63,22 @@ export const api = {
       invoke<{ canceled: true } | { canceled: false; path: string; error?: string }>('export_one', {
         toolId,
       }),
-    import: () =>
-      invoke<{ canceled: true } | { canceled: false; count: number; error?: string }>('tools_import'),
+    // 两阶段导入：preview 选文件 + 解析 + 风险扫描（不写盘）；confirm 落盘。
+    // preview 返回的风险摘要由前端据此弹确认对话框，用户同意后才调 confirm。
+    importPreview: () =>
+      invoke<
+        | { canceled: true }
+        | {
+            canceled: false;
+            dryRun: true;
+            count: number;
+            hasRisk: boolean;
+            risks: ToolRiskSummary[];
+          }
+        | { canceled: false; count: 0; error: string }
+      >('tools_import', { dryRun: true }),
+    importConfirm: () =>
+      invoke<{ count: number } | { error: string }>('tools_import', { dryRun: false }),
   },
   refreshMd: () => invoke('refresh_md'),
   fetchMdPreview: (url: string) =>

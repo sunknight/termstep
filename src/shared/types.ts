@@ -105,3 +105,13 @@ export interface CommitEntry {
 export interface VcsDiff {
   diff: string;
 }
+
+// --- 导入预检风险摘要（对偶 src-tauri/src/pure.rs ToolRiskSummary）---
+// 导入 bundle 前后端扫描风险字段，前端据此弹确认对话框。
+export interface ToolRiskSummary {
+  name: string;
+  shell?: string;
+  initCommands: string[];
+  mdUrl?: string;
+  envKeys: string[];
+}

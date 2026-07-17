@@ -41,8 +41,41 @@ struct PtyEntry {
     _reader_thread: Option<std::thread::JoinHandle<()>>,
 }
 
+/// RAII 哨兵守卫：spawn 前插入 in_progress 标记，spawn 结束（成功 defuse 或
+/// 失败/panic drop）后移除。保证「检查无哨兵 → 插入哨兵 → spawn → 移除哨兵」
+/// 全过程内，其他并发调用看到哨兵即跳过，不会重复 spawn。
+struct SentinelGuard<'a> {
+    svc: &'a PtyService,
+    tool_id: String,
+    defused: bool,
+}
+
+impl<'a> SentinelGuard<'a> {
+    /// 成功插入 entry 后调用：标记已处理，阻止 drop 再次移除（避免冗余加锁）。
+    fn defuse(&mut self) {
+        self.defused = true;
+    }
+}
+
+impl<'a> Drop for SentinelGuard<'a> {
+    fn drop(&mut self) {
+        if !self.defused {
+            self.svc
+                .in_progress
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&self.tool_id);
+        }
+    }
+}
+
 pub struct PtyService {
     ptys: Mutex<HashMap<String, PtyEntry>>,
+    /// spawn 进行中的 tool_id 哨兵集合：防止「检查无 entry → 释放锁 → spawn」
+    /// 窗口内的并发重复 spawn（两个调用者同时通过 contains_key 检查 → 各自 spawn
+    /// → 后插入者覆盖前者 entry → 前者 child 因 portable-pty Child drop 不杀进程
+    /// 而成为孤儿）。哨兵在 spawn 开始前插入、完成（含失败）后移除。
+    in_progress: Mutex<std::collections::HashSet<String>>,
     desired: Mutex<HashMap<String, (u16, u16)>>,
     next_gen: AtomicU64,
 }
@@ -51,24 +84,35 @@ impl PtyService {
     pub fn new() -> Self {
         PtyService {
             ptys: Mutex::new(HashMap::new()),
+            in_progress: Mutex::new(std::collections::HashSet::new()),
             desired: Mutex::new(HashMap::new()),
             next_gen: AtomicU64::new(1),
         }
     }
 
     /// 生成 shell（若已存在则跳过）。open/write/restart 共用的单一 spawn 路径。
-    /// 持锁时间短：openpty + spawn + insert entry 后立即释放；initCommands 在
-    /// unlock 后写（避免持锁阻塞读线程的 emit/state 访问）。
+    /// 用 in_progress 哨兵消除「检查 → 释放锁 → spawn」窗口内的并发重复 spawn：
+    /// 进入时在锁保护下检查「已有 entry」或「已有哨兵」，任一为真则直接返回；
+    /// 否则插入哨兵，释放锁后 spawn，完成（含失败）后移除哨兵。
     fn ensure(&self, handle: &AppHandle, tool_id: &str, opts: &PtySpawnOpts) {
-        // 双重检查：防止检查与插入之间的窗口内重复 spawn（调用方虽由外层
-        // PtyService Mutex 串行化，但本函数也可能被其它内部路径调用）。
-        // 用一个 in-progress 标记占位：spawn 前插入哨兵，避免并发重复。
+        // 双重检查 + 哨兵：在 ptys 锁与 in_progress 锁同时持有时判定，避免 TOCTOU。
         {
             let ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
             if ptys.contains_key(tool_id) {
                 return;
             }
+            let mut ip = self.in_progress.lock().unwrap_or_else(|e| e.into_inner());
+            if !ip.insert(tool_id.to_string()) {
+                // insert 返回 false = 已存在哨兵 = 另一个调用正在 spawn，跳过。
+                return;
+            }
         }
+        // 哨兵已插入。用 guard 保证 spawn 无论成败都移除它（RAII，panic 也安全）。
+        let mut _guard = SentinelGuard {
+            svc: self,
+            tool_id: tool_id.to_string(),
+            defused: false,
+        };
 
         let shell = opts.shell.clone().unwrap_or_else(default_shell);
         let cwd = opts
@@ -140,7 +184,7 @@ impl PtyService {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("pty openpty failed for {}: {}", tool_id, e);
-                return;
+                return; // _guard drop 移除哨兵
             }
         };
 
@@ -148,26 +192,30 @@ impl PtyService {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("pty spawn failed for {}: {}", tool_id, e);
-                return;
+                return; // _guard drop 移除哨兵
             }
         };
         let pid = child.process_id();
-        let killer = child.clone_killer();
+        let mut killer = child.clone_killer();
         // portable-pty 的 Child drop 不杀进程，进程继续跑；killer 仍可 kill。✓
+        // 但若后续 try_clone_reader/take_writer 失败，必须用 killer 主动 kill
+        // 已 spawn 的 child，否则它会成为孤儿（旧代码在这些 early return 路径泄漏）。
         drop(child);
 
         let reader = match pair.master.try_clone_reader() {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("pty reader failed for {}: {}", tool_id, e);
-                return;
+                let _ = killer.kill();
+                return; // _guard drop 移除哨兵
             }
         };
         let writer = match pair.master.take_writer() {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("pty writer failed for {}: {}", tool_id, e);
-                return;
+                let _ = killer.kill();
+                return; // _guard drop 移除哨兵
             }
         };
 
@@ -218,8 +266,11 @@ impl PtyService {
             _reader_thread: Some(reader_thread),
         };
 
-        // 持锁插入 entry
+        // 持锁插入 entry，并在同一逻辑步骤 defuse 哨兵（移除 in_progress 标记）。
+        // 先插入 entry 再 defuse：若先 defuse，另一个调用方可能在此 entry 插入前
+        // 通过检查并重复 spawn。entry 已在池中即可被复用，哨兵可安全移除。
         self.ptys.lock().unwrap_or_else(|e| e.into_inner()).insert(tool_id.to_string(), entry);
+        _guard.defuse();
 
         // 行为 5: initCommands 写入时机——spawn 后立即 write（缓冲到 shell 就绪）。
         // 在 unlock 后写（ensure 持锁段已结束）。

@@ -6,6 +6,7 @@ import { useParamPrompt } from '../lib/paramPrompt';
 import { substituteParams } from '../../shared/buttonBlock';
 import { api } from '../lib/api';
 import { copyOnModifier } from '../lib/clipboardToast';
+import { confirmDialog } from '../lib/dialog';
 
 interface TipState {
   text: string;
@@ -15,12 +16,21 @@ interface TipState {
   below: boolean;
 }
 
-export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: string }) {
+export function HelpPane(props: {
+  tool: Tool;
+  activeToolId: string;
+  markdown: string;
+  isRemote?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const lastBtn = useRef<HTMLElement | null>(null);
   const [tip, setTip] = useState<TipState | null>(null);
   const prompt = useParamPrompt();
-  const html = useMemo(() => md.render(props.markdown), [props.markdown]);
+  const isRemote = !!props.isRemote;
+  // 已确认过的远程按钮集合（按命令文本去重）：同一命令首次点击弹确认，之后不再打扰。
+  // 仅存在于组件内存——切换工具/刷新页面后重置，保证用户不会被永久静音。
+  const confirmedRemoteCmds = useRef<Set<string>>(new Set());
+  const html = useMemo(() => md.render(props.markdown, { isRemote } as any), [props.markdown, isRemote]);
 
   useEffect(() => {
     // Clear any showing tooltip when the rendered content changes.
@@ -31,7 +41,7 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
     const el = ref.current;
     if (!el) return;
 
-    const onClick = (e: MouseEvent) => {
+    const onClick = async (e: MouseEvent) => {
       // Command buttons: inject into the terminal (with a danger confirm).
       const btn = (e.target as HTMLElement).closest('.cmd-btn') as HTMLButtonElement | null;
       if (btn) {
@@ -50,6 +60,17 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
           tmux: props.tool.meta.tmux,
           initCommands: props.tool.meta.initCommands,
         };
+        // 远程订阅的按钮：首次点击弹确认（不可信内容可能注入危险命令）。
+        // 用户确认后记入集合，同一命令后续点击不再打扰。
+        if (btn.dataset['remote'] === '1' && !confirmedRemoteCmds.current.has(command)) {
+          const verb = edit ? '粘贴' : '执行';
+          const ok = await confirmDialog(
+            `此命令来自远程订阅，可能包含不可信内容：\n\n${command}\n\n确定要${verb}吗？`,
+            '远程命令确认',
+          );
+          if (!ok) return;
+          confirmedRemoteCmds.current.add(command);
+        }
         if (paramsRaw) {
           // Parametrized button: open the form, then run the substituted command.
           let params;
@@ -72,9 +93,12 @@ export function HelpPane(props: { tool: Tool; activeToolId: string; markdown: st
       const anchor = (e.target as HTMLElement).closest('a') as HTMLAnchorElement | null;
       if (anchor) {
         const href = anchor.getAttribute('href') ?? '';
+        // 仅放行 http(s)/mailto，其余 scheme 一律阻止默认导航（防 javascript:/data: 等）。
         if (/^(https?:|mailto:)/i.test(href)) {
           e.preventDefault();
           void api.shell.openExternal(href);
+        } else {
+          e.preventDefault(); // 非 http(s)/mailto：阻止 WebView 导航，忽略点击
         }
       }
     };

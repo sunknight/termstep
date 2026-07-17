@@ -377,6 +377,11 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 .cmd-btn:hover { background: var(--accent-weak); border-color: var(--accent); }
 .cmd-btn[data-edit="1"] { border-style: dashed; }
+/* 远程订阅的按钮：来自不可信源（mdUrl 拉取的 markdown），用醒目左边框 + 警告色调
+   区分，提醒用户点击前留意命令内容。配合 HelpPane 的首次点击确认。 */
+.cmd-btn[data-remote="1"] {
+  border-left: 3px solid #e08a1e;
+}
 /* Plain-text row inside a `buttons` block (a `//`-prefixed line). It deliberately
    inherits the surrounding `.help` body-text style (family / size / color / weight /
    line-height) so it looks identical to a normal paragraph such as "常用命令："

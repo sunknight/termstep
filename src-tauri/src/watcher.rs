@@ -106,7 +106,9 @@ pub fn start_watcher(handle: AppHandle, tools_dir: PathBuf, state: Arc<Mutex<Wat
 async fn refresh(handle: &AppHandle, tools_dir: &std::path::Path, state: &Arc<Mutex<WatcherState>>) -> ScanResult {
     let r = scan_tools(tools_dir).await;
     {
-        let mut s = state.lock().unwrap();
+        // 中毒锁恢复：若其它线程 panic 导致 Mutex 中毒，取出数据继续而非传播 panic，
+        // 避免一处 panic 永久瘫痪整个工具刷新子系统（对齐 commands.rs 的 lock_or_recover）。
+        let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
         s.last_tools = r.tools.clone();
         let now = Instant::now();
         for t in &r.tools {
@@ -122,7 +124,7 @@ async fn refresh(handle: &AppHandle, tools_dir: &std::path::Path, state: &Arc<Mu
 /// 检查是否有 mdUrl 工具的 autoUpdateMinutes 到期。返回是否该重扫。
 async fn maybe_auto_refresh(_handle: &AppHandle, _tools_dir: &std::path::Path, state: &Arc<Mutex<WatcherState>>) -> bool {
     let now = Instant::now();
-    let s = state.lock().unwrap();
+    let s = state.lock().unwrap_or_else(|e| e.into_inner());
     let mut due = false;
     for t in &s.last_tools {
         if t.meta.md_url.is_none() {

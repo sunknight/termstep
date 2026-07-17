@@ -83,6 +83,10 @@ pub fn run() {
             app.manage(commands::UpdateStateFile(Mutex::new(state_file.clone())));
             app.manage(updater_state.clone());
 
+            // 导入预检缓存（两阶段导入：dry_run 预检 → 确认 → commit 落盘）。
+            app.manage(std::sync::Arc::new(std::sync::Mutex::new(None))
+                as commands::ImportPreviewArc);
+
             // PTY 服务池（Arc<Mutex<PtyService>>，读线程通过 try_state 取它做
             // generation guard）。
             let pty_service = Arc::new(Mutex::new(pty::PtyService::new()));
