@@ -15,6 +15,8 @@ pub async fn read_tool_json(dir: &Path) -> serde_json::Value {
 }
 
 /// tool_save：merge tool.json + 写 help.md。对偶 ipc.ts TOOL_SAVE。
+/// 仅当新旧内容不同时才写入（避免无谓的磁盘写，也防止内容未变时触发
+/// 版本控制提交——序列化后的字节差异不该算作"变更"）。
 pub async fn tool_save(
     dir: &Path,
     markdown: &str,
@@ -24,8 +26,17 @@ pub async fn tool_save(
     let merged = merge_tool_json(&existing, &meta_patch);
     let pretty = serde_json::to_string_pretty(&merged)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    tokio::fs::write(dir.join("tool.json"), format!("{}\n", pretty)).await?;
-    tokio::fs::write(dir.join("help.md"), markdown).await?;
+    let tool_json_new = format!("{}\n", pretty);
+    let tool_json_path = dir.join("tool.json");
+    let tool_json_old = tokio::fs::read_to_string(&tool_json_path).await.unwrap_or_default();
+    if tool_json_new != tool_json_old {
+        tokio::fs::write(&tool_json_path, tool_json_new).await?;
+    }
+    let help_path = dir.join("help.md");
+    let help_old = tokio::fs::read_to_string(&help_path).await.unwrap_or_default();
+    if markdown != help_old {
+        tokio::fs::write(&help_path, markdown).await?;
+    }
     Ok(())
 }
 
