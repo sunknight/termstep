@@ -359,6 +359,78 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 
 /* ----------------------------------------------------------------------------
+   长文档：H2 自动折叠 + TOC 导航栏（H2 数 >= 3 才启用）
+   TOC 栏固定在文档滚动区（.help-scroll）上方，不参与滚动；多行 flex-wrap。
+   ------------------------------------------------------------------------- */
+.help-toc {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  /* 按钮与 chip 同属一个 flex 流，一起多行 wrap（按钮不单独成行） */
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+}
+.help-toc-chip {
+  flex: 0 0 auto; max-width: 200px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 3px 10px; font-size: 12px; line-height: 18px; cursor: pointer;
+  color: var(--text-2); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 999px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.help-toc-chip:hover {
+  color: var(--accent-hover); background: var(--accent-subtle); border-color: var(--accent-border);
+}
+/* 已展开 section 的 chip 高亮（跟踪展开状态，非 scrollspy） */
+/* 已展开 section 的 chip：低可视高亮（浅底色 + 浅边框，不加粗） */
+.help-toc-chip.active {
+  color: var(--text); background: var(--accent-weak); border-color: var(--accent-border);
+}
+.help-toc-btn {
+  flex: 0 0 auto;
+  padding: 3px 10px; font-size: 12px; line-height: 18px; cursor: pointer;
+  color: var(--text-2); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  transition: background 0.12s, border-color 0.12s;
+}
+.help-toc-btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
+
+/* 折叠分节：原生 <details>，summary 自定义箭头。 */
+.help details.help-section {
+  margin: 0 0 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+/* 新展开/点击定位的 section：闪动动效。仅背景渐变（无粗边框），
+   1.5s 渐隐回正常。动画结束由 JS 移除 class。 */
+@keyframes help-section-flash {
+  0%   { background: var(--accent-subtle); }
+  60%  { background: var(--accent-subtle); }
+  100% { background: var(--surface); }
+}
+.help details.help-section.help-section-flash {
+  animation: help-section-flash 1.5s ease-out;
+}
+.help details.help-section > summary.help-section-summary {
+  cursor: pointer; list-style: none;
+  padding: 8px 12px; font-size: 1.3em; font-weight: 600; line-height: 1.3;
+  color: var(--text); border-bottom: 1px solid transparent;
+}
+/* 隐藏原生三角标记 */
+.help details.help-section > summary.help-section-summary::-webkit-details-marker { display: none; }
+.help details.help-section > summary.help-section-summary::before {
+  content: '▶'; display: inline-block; margin-right: 8px;
+  font-size: 0.7em; color: var(--text-3);
+  transition: transform 0.15s ease;
+}
+/* 展开时：箭头旋转 + summary 加底边分隔 */
+.help details.help-section[open] > summary.help-section-summary::before { transform: rotate(90deg); }
+.help details.help-section[open] > summary.help-section-summary { border-bottom-color: var(--border); }
+.help .help-section-body { padding: 10px 12px; }
+/* 折叠态下移除 summary 下方的 body margin 防止多余空白 */
+.help details.help-section:not([open]) > .help-section-body { display: none; }
+
+/* ----------------------------------------------------------------------------
    命令按钮块
    ------------------------------------------------------------------------- */
 .cmd-buttons { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 8px 0; }
