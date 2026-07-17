@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TermStep 内嵌浏览器 + 统一 Tab 栏 — 界面结构</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    padding: 32px 24px 80px;
+    line-height: 1.5;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; color: #fff; }
+  .sub { color: #888; font-size: 13px; margin-bottom: 32px; }
+  h2 {
+    font-size: 16px; color: #7cc4ff; margin: 40px 0 12px;
+    border-left: 3px solid #7cc4ff; padding-left: 10px;
+  }
+  h2 .tag {
+    font-size: 11px; background: #2a2a2a; color: #999;
+    padding: 2px 8px; border-radius: 3px; margin-left: 8px; font-weight: normal;
+  }
+  p.desc { color: #999; font-size: 13px; margin-bottom: 14px; max-width: 920px; }
+
+  /* —— 窗口外壳 —— */
+  .win {
+    width: 920px; background: #252526; border-radius: 8px;
+    border: 1px solid #3a3a3a; overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    font-size: 12px;
+  }
+  .win .titlebar {
+    height: 26px; background: #1e1e1e;
+    display: flex; align-items: center; padding: 0 12px;
+    border-bottom: 1px solid #333;
+  }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+  .titlebar .t { color: #777; margin-left: 12px; font-size: 11px; }
+
+  .body { display: flex; height: 300px; }
+
+  /* —— 三栏 —— */
+  .col-sidebar { width: 150px; background: #2d2d2d; border-right: 1px solid #333; padding: 8px 0; flex-shrink: 0; }
+  .col-mid { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .col-help { width: 240px; background: #2a2a2a; border-left: 1px solid #333; padding: 10px; flex-shrink: 0; overflow: hidden; }
+
+  /* —— 侧栏 —— */
+  .side-item {
+    padding: 6px 12px; color: #aaa; font-size: 12px;
+    display: flex; align-items: center; gap: 6px;
+    border-left: 2px solid transparent;
+  }
+  .side-item.active { background: #094771; color: #fff; border-left-color: #0e639c; }
+  .side-item .ic { font-size: 13px; }
+
+  /* —— 顶栏 —— */
+  .term-header {
+    height: 34px; background: #2d2d2d; border-bottom: 1px solid #333;
+    display: flex; align-items: center; padding: 0 10px; gap: 10px; font-size: 11px;
+    flex-shrink: 0;
+  }
+  .term-header .cwd { color: #888; display: flex; align-items: center; gap: 4px; }
+  .term-header .spacer { flex: 1; }
+  .term-header .btn { color: #999; font-size: 11px; padding: 2px 8px; border: 1px solid #444; border-radius: 3px; }
+  .term-header .tg { color: #888; cursor: pointer; }
+
+  /* —— tab 栏（新组件，高亮） —— */
+  .tabbar {
+    height: 32px; background: #1e1e1e; border-bottom: 1px solid #333;
+    display: flex; align-items: flex-end; padding: 0 6px;
+    position: relative;
+  }
+  .tabbar.new::before {
+    content: "新组件 TabBar";
+    position: absolute; top: -18px; left: 6px;
+    font-size: 10px; color: #ffd479; background: #3a2a00;
+    padding: 1px 6px; border-radius: 2px;
+  }
+  .tab {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 10px; font-size: 11px; color: #888;
+    border-right: 1px solid #2a2a2a; cursor: pointer;
+    max-width: 150px;
+  }
+  .tab.active { background: #252526; color: #fff; border-top: 2px solid #0e639c; }
+  .tab .ic { font-size: 11px; }
+  .tab .x { color: #666; font-size: 13px; margin-left: 2px; }
+  .tab .x:hover { color: #fff; }
+  .tab.term { font-weight: 500; }
+  .tab .lock { color: #555; font-size: 9px; }
+
+  /* —— 内容区 —— */
+  .pane-wrap { flex: 1; position: relative; background: #1e1e1e; overflow: hidden; }
+  .terminal {
+    padding: 10px 12px; font-family: "SF Mono", Menlo, monospace; font-size: 12px;
+    color: #d4d4d4; height: 100%;
+  }
+  .terminal .prompt { color: #6a9955; }
+  .terminal .cmd { color: #d4d4d4; }
+  .terminal .out { color: #888; }
+
+  /* —— WebPane —— */
+  .webpane { display: flex; flex-direction: column; height: 100%; }
+  .web-toolbar {
+    height: 32px; background: #2d2d2d; border-bottom: 1px solid #333;
+    display: flex; align-items: center; padding: 0 10px; gap: 8px; font-size: 11px;
+    flex-shrink: 0;
+  }
+  .web-toolbar .url { color: #aaa; display: flex; align-items: center; gap: 4px; flex: 1; }
+  .web-toolbar .ext-btn {
+    color: #7cc4ff; padding: 2px 8px; border: 1px solid #3a5a7a; border-radius: 3px;
+    font-size: 11px;
+  }
+  .iframe-area {
+    flex: 1; background: #fff; margin: 0; display: flex; align-items: center;
+    justify-content: center; color: #333; font-size: 13px;
+  }
+  .iframe-area .fake-content { text-align: center; padding: 20px; }
+  .iframe-area .fake-content h3 { color: #222; margin-bottom: 6px; }
+  .iframe-area .fake-content p { color: #666; font-size: 11px; }
+
+  /* —— 拒绝嵌入提示卡片 —— */
+  .rejected-card {
+    flex: 1; background: #2a2a2a; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 20px;
+  }
+  .rejected-card .icon { font-size: 36px; margin-bottom: 10px; opacity: 0.6; }
+  .rejected-card .title { color: #ddd; font-size: 14px; margin-bottom: 6px; }
+  .rejected-card .reason { color: #888; font-size: 11px; margin-bottom: 16px; max-width: 320px; }
+  .rejected-card .actions { display: flex; gap: 10px; }
+  .rejected-card .act {
+    padding: 6px 14px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  }
+  .rejected-card .act.primary { background: #0e639c; color: #fff; border: none; }
+  .rejected-card .act.ghost { background: transparent; color: #ccc; border: 1px solid #555; }
+
+  /* —— 帮助栏 —— */
+  .help-content { color: #ccc; font-size: 12px; }
+  .help-content h4 { color: #fff; font-size: 13px; margin-bottom: 8px; }
+  .help-content p { margin-bottom: 6px; }
+  .help-content a { color: #7cc4ff; text-decoration: underline; cursor: pointer; }
+  .help-content a.hl { background: #3a2a00; padding: 1px 3px; border-radius: 2px; }
+  .help-content .btn-demo {
+    display: inline-block; background: #0e639c; color: #fff; padding: 3px 10px;
+    border-radius: 3px; font-size: 11px; margin: 2px;
+  }
+  .help-content .code {
+    background: #1e1e1e; padding: 6px 8px; border-radius: 3px; font-family: monospace;
+    color: #d4d4d4; font-size: 11px; margin: 6px 0;
+  }
+
+  /* —— 标注 —— */
+  .annotate {
+    position: relative;
+  }
+  .annotate .callout {
+    position: absolute; background: #3a2a00; color: #ffd479;
+    font-size: 10px; padding: 2px 7px; border-radius: 2px;
+    white-space: nowrap;
+  }
+  .annotate .callout::after {
+    content: ""; position: absolute;
+  }
+
+  /* —— 流程图 —— */
+  .flow { display: flex; align-items: center; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
+  .flow-step {
+    background: #2d2d2d; border: 1px solid #444; border-radius: 6px;
+    padding: 10px 14px; font-size: 12px; color: #ccc; text-align: center;
+    min-width: 140px;
+  }
+  .flow-step .num { color: #ffd479; font-size: 10px; display: block; margin-bottom: 4px; }
+  .flow-arrow { color: #666; font-size: 18px; }
+  .flow-step.highlight { border-color: #0e639c; background: #1a2f44; color: #fff; }
+
+  /* —— 对比行 —— */
+  .compare { display: flex; gap: 24px; flex-wrap: wrap; }
+  .compare .col { flex: 1; min-width: 420px; }
+  .compare-label { font-size: 12px; color: #888; margin-bottom: 6px; text-align: center; }
+  .compare-label.old { color: #ff8b8b; }
+  .compare-label.new { color: #8bff9e; }
+
+  .legend {
+    display: flex; gap: 18px; flex-wrap: wrap; margin: 16px 0;
+    font-size: 12px; color: #999;
+  }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend .sw { width: 14px; height: 14px; border-radius: 2px; display: inline-block; }
+
+  .note {
+    background: #1f2a1f; border-left: 3px solid #6a9955; padding: 10px 14px;
+    margin: 14px 0; font-size: 12px; color: #b8d8b8; max-width: 920px;
+    border-radius: 0 4px 4px 0;
+  }
+  .note.warn { background: #2a221f; border-left-color: #d19a66; color: #e0c4a8; }
+</style>
+</head>
+<body>
+
+<h1>TermStep · 内嵌浏览器 + 统一 Tab 栏</h1>
+<div class="sub">界面结构图 · 用于直观评估 · 2026-07-17</div>
+
+<!-- ===== 图例 ===== -->
+<div class="legend">
+  <span><span class="sw" style="background:#094771;border:1px solid #0e639c"></span> 当前选中/激活</span>
+  <span><span class="sw" style="background:#1e1e1e;border:1px solid #333"></span> 未激活 tab / 后台</span>
+  <span><span class="sw" style="background:#3a2a00"></span> 新增/改动（标注）</span>
+  <span><span class="sw" style="background:#0e639c"></span> 可点按钮</span>
+</div>
+
+<!-- ============================================================ -->
+<h2>一、整体对比：现有布局 <span class="tag">现状</span> → 新布局 <span class="tag">目标</span></h2>
+<p class="desc">改动只在中间区域：顶栏下方新增一个 <b>TabBar</b>。侧栏、帮助栏、顶栏完全不动。终端从「独占中间」变成「第一个 tab」。</p>
+
+<div class="compare">
+  <div class="col">
+    <div class="compare-label old">▼ 现状：中间 = 终端独占</div>
+    <div class="win">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><span class="t">TermStep</span></div>
+      <div class="body">
+        <div class="col-sidebar">
+          <div class="side-item active"><span class="ic">📦</span> myapp</div>
+          <div class="side-item"><span class="ic">🐍</span> serve</div>
+          <div class="side-item"><span class="ic">⚙️</span> build</div>
+        </div>
+        <div class="col-mid">
+          <div class="term-header">
+            <span class="tg">☰</span>
+            <span class="cwd">📂 ~/code/myapp</span>
+            <span class="spacer"></span>
+            <span class="btn">↻ 重启终端</span>
+            <span class="tg">📖</span>
+          </div>
+          <div class="pane-wrap">
+            <div class="terminal">
+              <div><span class="prompt">➜</span> <span class="cmd">npm run dev</span></div>
+              <div class="out">  Local: http://localhost:5173</div>
+              <div><span class="prompt">➜</span> </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-help">
+          <div class="help-content">
+            <h4>myapp 帮助</h4>
+            <p>开发文档：<a>localhost:5173</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="compare-label new">▼ 目标：中间顶部多一行 TabBar</div>
+    <div class="win">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div><span class="t">TermStep</span></div>
+      <div class="body">
+        <div class="col-sidebar">
+          <div class="side-item active"><span class="ic">📦</span> myapp</div>
+          <div class="side-item"><span class="ic">🐍</span> serve</div>
+          <div class="side-item"><span class="ic">⚙️</span> build</div>
+        </div>
+        <div class="col-mid">
+          <div class="term-header">
+            <span class="tg">☰</span>
+            <span class="cwd">📂 ~/code/myapp</span>
+            <span class="spacer"></span>
+            <span class="btn">↻ 重启终端</span>
+            <span class="tg">📖</span>
+          </div>
+          <div class="tabbar new">
+            <div class="tab term active"><span class="ic">💻</span> 终端 <span class="lock">🔒</span></div>
+          </div>
+          <div class="pane-wrap">
+            <div class="terminal">
+              <div><span class="prompt">➜</span> <span class="cmd">npm run dev</span></div>
+              <div class="out">  Local: http://localhost:5173</div>
+              <div><span class="prompt">➜</span> </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-help">
+          <div class="help-content">
+            <h4>myapp 帮助</h4>
+            <p>开发文档：<a>localhost:5173</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note">终端 tab 带 🔒 表示<b>不可关闭</b>——它是固定的第一个 tab，跟随左侧工具切换内容。当前只有 1 个 tab 时，TabBar 视觉上仍然显示（让用户知道"这里可以有多 tab"）。</div>
+
+<!-- ============================================================ -->
+<h2>二、核心流程：点链接 → 新建网页 tab <span class="tag">交互</span></h2>
+<p class="desc">在右侧帮助页点击 http(s) 链接，不再跳系统浏览器，而是在中间区域新建一个网页 tab 并自动切过去。</p>
+
+<div class="flow">
+  <div class="flow-step"><span class="num">① 用户操作</span>在帮助页点链接</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-step"><span class="num">② 拦截</span>HelpPane 拦截点击<br>不再调 openExternal</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-step"><span class="num">③ 建tab</span>新建 WebTab<br>push 到当前工具</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-step highlight"><span class="num">④ 切换</span>终端 display:none<br>iframe 显示</div>
+</div>
+
+<div class="compare">
+  <div class="col">
+    <div class="compare-label">▼ 步骤①：在帮助页点链接（链接高亮）</div>
+    <div class="win">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div></div>
+      <div class="body" style="height:260px">
+        <div class="col-mid">
+          <div class="term-header"><span class="cwd">📂 ~/code/myapp</span><span class="spacer"></span><span class="tg">📖</span></div>
+          <div class="tabbar new">
+            <div class="tab term active"><span class="ic">💻</span> 终端 <span class="lock">🔒</span></div>
+          </div>
+          <div class="pane-wrap"><div class="terminal"><div><span class="prompt">➜</span> </div></div></div>
+        </div>
+        <div class="col-help">
+          <div class="help-content">
+            <h4>myapp 帮助</h4>
+            <p>常用命令：</p>
+            <div class="code">npm run dev</div>
+            <p>参考文档：</p>
+            <p>· <a class="hl">vitejs.dev/guide</a> ← 点击</p>
+            <p>· <a>react.dev</a></p>
+            <p>· <a>tailwindcss.com</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="compare-label new">▼ 步骤④：新网页 tab 已创建并激活</div>
+    <div class="win">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div></div>
+      <div class="body" style="height:260px">
+        <div class="col-mid">
+          <div class="term-header"><span class="cwd">📂 ~/code/myapp</span><span class="spacer"></span><span class="tg">📖</span></div>
+          <div class="tabbar new">
+            <div class="tab term"><span class="ic">💻</span> 终端 <span class="lock">🔒</span></div>
+            <div class="tab active"><span class="ic">🌐</span> vitejs.dev <span class="x">×</span></div>
+          </div>
+          <div class="pane-wrap">
+            <div class="webpane">
+              <div class="web-toolbar">
+                <span class="url">🔗 vitejs.dev/guide</span>
+                <span class="ext-btn">↗ 在浏览器打开</span>
+              </div>
+              <div class="iframe-area">
+                <div class="fake-content">
+                  <h3>Vite Guide</h3>
+                  <p>（iframe 实际加载的网页内容）</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-help">
+          <div class="help-content">
+            <h4>myapp 帮助</h4>
+            <p>参考文档：</p>
+            <p>· <a class="hl">vitejs.dev/guide</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>三、多网页 tab + 切回终端 <span class="tag">tab 切换</span></h2>
+<p class="desc">可以同时开多个网页 tab。点终端 tab 切回终端（网页 tab 保留在 DOM 隐藏，不重新加载）。点 × 关闭网页 tab。</p>
+
+<div class="compare">
+  <div class="col">
+    <div class="compare-label new">▼ 多网页 tab：终端在后台</div>
+    <div class="win">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div></div>
+      <div class="body" style="height:240px">
+        <div class="col-mid">
+          <div class="term-header"><span class="cwd">📂 ~/code/myapp</span><span class="spacer"></span><span class="tg">📖</span></div>
+          <div class="tabbar new">
+            <div class="tab term"><span class="ic">💻</span> 终端 <span class="lock">🔒</span></div>
+            <div class="tab"><span class="ic">🌐</span> vitejs.dev <span class="x">×</span></div>
+            <div class="tab active"><span class="ic">🌐</span> react.dev <span class="x">×</span></div>
+          </div>
+          <div class="pane-wrap">
+            <div class="webpane">
+              <div class="web-toolbar"><span class="url">🔗 react.dev</span><span class="ext-btn">↗ 在浏览器打开</span></div>
+              <div class="iframe-area"><div class="fake-content"><h3>React Docs</h3></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="compare-label new">▼ 切回终端 tab：网页 tab 后台保留</div>
+    <div class="win">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div></div>
+      <div class="body" style="height:240px">
+        <div class="col-mid">
+          <div class="term-header"><span class="cwd">📂 ~/code/myapp</span><span class="spacer"></span><span class="tg">📖</span></div>
+          <div class="tabbar new">
+            <div class="tab term active"><span class="ic">💻</span> 终端 <span class="lock">🔒</span></div>
+            <div class="tab"><span class="ic">🌐</span> vitejs.dev <span class="x">×</span></div>
+            <div class="tab"><span class="ic">🌐</span> react.dev <span class="x">×</span></div>
+          </div>
+          <div class="pane-wrap">
+            <div class="terminal">
+              <div><span class="prompt">➜</span> <span class="cmd">npm run build</span></div>
+              <div class="out">  ✓ built in 1.2s</div>
+              <div><span class="prompt">➜</span> </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note">切回终端 tab 时，两个网页 tab 的 iframe <b>不从 DOM 移除</b>，只是隐藏——再切回去时不用重新加载，保留滚动位置。仅点 × 关闭时才卸载。</div>
+
+<!-- ============================================================ -->
+<h2>四、切换工具：网页 tab 绑定工具 <span class="tag">状态隔离</span></h2>
+<p class="desc">每个工具维护自己的网页 tab 列表。从 myapp 切到 serve，看到的是 serve 的 tab（没有网页 tab → 默认显终端）；切回 myapp，之前开的 vite/react 网页 tab 原样恢复。</p>
+
+<div class="compare">
+  <div class="col">
+    <div class="compare-label new">▼ 工具 = myapp：有 2 个网页 tab</div>
+    <div class="win">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div></div>
+      <div class="body" style="height:230px">
+        <div class="col-sidebar">
+          <div class="side-item active"><span class="ic">📦</span> myapp</div>
+          <div class="side-item"><span class="ic">🐍</span> serve</div>
+        </div>
+        <div class="col-mid">
+          <div class="term-header"><span class="cwd">📂 ~/code/myapp</span><span class="spacer"></span></div>
+          <div class="tabbar new">
+            <div class="tab term active"><span class="ic">💻</span> 终端 <span class="lock">🔒</span></div>
+            <div class="tab"><span class="ic">🌐</span> vitejs.dev <span class="x">×</span></div>
+            <div class="tab"><span class="ic">🌐</span> react.dev <span class="x">×</span></div>
+          </div>
+          <div class="pane-wrap"><div class="terminal"><div><span class="prompt">➜</span> </div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="compare-label new">▼ 切到 serve：serve 自己的 tab（无网页）</div>
+    <div class="win">
+      <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div></div>
+      <div class="body" style="height:230px">
+        <div class="col-sidebar">
+          <div class="side-item"><span class="ic">📦</span> myapp</div>
+          <div class="side-item active"><span class="ic">🐍</span> serve</div>
+        </div>
+        <div class="col-mid">
+          <div class="term-header"><span class="cwd">📂 ~/serve</span><span class="spacer"></span></div>
+          <div class="tabbar new">
+            <div class="tab term active"><span class="ic">💻</span> 终端 <span class="lock">🔒</span></div>
+          </div>
+          <div class="pane-wrap"><div class="terminal"><div><span class="prompt">➜</span> <span class="cmd">python -m http.server</span></div><div class="out">Serving HTTP on 0.0.0.0 port 8000</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note">myapp 的网页 tab 在内存中保留（后台 iframe 也保留）。再点回 myapp，vite/react 两个网页 tab 原样回来。重启应用则全部清空（不持久化）。</div>
+
+<!-- ============================================================ -->
+<h2>五、iframe 被拒绝嵌入 <span class="tag">兜底</span></h2>
+<p class="desc">GitHub / Google 等站点通过 X-Frame-Options / CSP 拒绝被 iframe，会显示空白。按设计：不做自动检测，<b>「在浏览器打开」按钮始终常驻</b>。用户发现打不开时，直接点按钮转默认浏览器。</p>
+
+<div class="win" style="width:600px">
+  <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div></div>
+  <div class="body" style="height:280px">
+    <div class="col-mid" style="flex:1">
+      <div class="term-header"><span class="cwd">📂 ~/code/myapp</span><span class="spacer"></span></div>
+      <div class="tabbar new">
+        <div class="tab term"><span class="ic">💻</span> 终端 <span class="lock">🔒</span></div>
+        <div class="tab active"><span class="ic">🌐</span> github.com <span class="x">×</span></div>
+      </div>
+      <div class="pane-wrap">
+        <div class="rejected-card">
+          <div class="icon">🚫</div>
+          <div class="title">此站点可能无法内嵌显示</div>
+          <div class="reason">GitHub 设置了 X-Frame-Options / CSP frame-ancestors，禁止被嵌入 iframe。<br>（iframe 跨源无法可靠自动检测，故以空白呈现 + 常驻按钮兜底）</div>
+          <div class="actions">
+            <div class="act primary">↗ 在默认浏览器打开</div>
+            <div class="act ghost">复制链接</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note warn"><b>关于这张图：</b>提示卡片是 spec §4.3 描述的「备选增强项」（v2）——首版<b>不做自动检测</b>，只是 iframe 显示空白 + 工具栏常驻「在浏览器打开」按钮。这里画出来是为了让你看到「被拒时用户体验」的两种可能形态，供你决定首版是否要加黑名单提示。</div>
+
+<!-- ============================================================ -->
+<h2>六、关键组件标注 <span class="tag">改动面</span></h2>
+<p class="desc">下图标出新增组件（黄）和改动点。注意改动全部在渲染端 + 一行 CSP，不动 Rust 后端。</p>
+
+<div class="win" style="width:760px">
+  <div class="titlebar"><div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div></div>
+  <div class="body" style="height:320px">
+    <div class="col-sidebar">
+      <div class="side-item active">侧栏（不动）</div>
+    </div>
+    <div class="col-mid">
+      <div class="term-header" style="background:#2a2222">
+        <span style="color:#ff8b8b">term-header（不动）</span>
+      </div>
+      <div class="tabbar new" style="background:#3a2a00">
+        <div style="color:#ffd479;font-size:11px;width:100%;text-align:center">★ 新组件 TabBar.tsx</div>
+      </div>
+      <div class="pane-wrap" style="background:#1f1f1f">
+        <div style="padding:12px;font-size:11px;color:#999">
+          <div style="color:#8bff9e;margin-bottom:6px">● TerminalPane（不动，display:none 切换）</div>
+          <div style="color:#ffd479;margin-bottom:6px">★ 新组件 WebPane.tsx（极简工具栏 + iframe）</div>
+          <hr style="border-color:#333;margin:10px 0">
+          <div style="color:#aaa">状态由 App.tsx 管理：<br>
+          <code style="background:#000;padding:2px 5px">webTabsByTool: Record&lt;toolId, WebTab[]&gt;</code><br>
+          <code style="background:#000;padding:2px 5px">activeTabId: Record&lt;toolId, 'terminal'|webTabId&gt;</code>
+          </div>
+          <hr style="border-color:#333;margin:10px 0">
+          <div style="color:#ff8b8b;margin-bottom:4px">改动点：</div>
+          <div style="color:#ccc">· HelpPane.tsx:187 → 调 onOpenLink 而非 openExternal</div>
+          <div style="color:#ccc">· tauri.conf.json CSP → 加 frame-src 'self' https: http:</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-help" style="background:#2a2222">
+      <div style="color:#ff8b8b;font-size:11px">HelpPane（仅改链接拦截）</div>
+    </div>
+  </div>
+</div>
+
+<div class="note" style="margin-top:24px">
+<b>总结一句话：</b>在 <code>.term-header</code> 和 <code>.term-pane-wrap</code> 之间插入一行 TabBar；
+tab 栏把"显示终端"还是"显示某个 iframe"的决定权统一收口到 <code>activeTabId</code>；
+终端/iframe 的显隐继续用现有的 <code>display:none</code> 模式，零后端改动。
+</div>
+
+</body>
+</html>
