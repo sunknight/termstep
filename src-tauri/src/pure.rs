@@ -205,6 +205,7 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
         auto_update_minutes: None,
         use_remote: None,
         source_id: None,
+        group: None,
     };
     if let Some(cwd) = trim_str_field(o, "cwd") {
         meta.cwd = Some(cwd);

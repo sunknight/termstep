@@ -30,6 +30,10 @@ pub struct ToolMeta {
     /// 工具决定更新 vs 新建，而非每次生成新目录。区别于 `id`（物理目录名）。
     #[serde(skip_serializing_if = "Option::is_none", rename = "sourceId")]
     pub source_id: Option<String>,
+    /// 分组名（用户赋值，自由文本）。空/None = 未分组。仅用于侧栏展示分区，
+    /// 不影响执行。对偶 src/shared/types.ts 的 meta.group。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +58,10 @@ pub struct ScanError {
 pub struct ScanResult {
     pub tools: Vec<Tool>,
     pub errors: Vec<ScanError>,
+    /// 分组展示顺序（来自 tools/order.json 的 groups 数组）。渲染端据此按
+    /// 索引顺序画分组标题；工具引用但未在此列表里的分组追加其后。
+    #[serde(default)]
+    pub groups: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -184,6 +184,7 @@ pub async fn tool_delete(
         let _ = handle.emit("tools:changed", &crate::types::ScanResult {
             tools: s.last_tools.clone(),
             errors: vec![],
+            groups: vec![],
         });
     }
     // 自动提交：分别记录删除目录和排序更新（各自独立提交，消息清晰）。
@@ -261,6 +262,7 @@ fn emit_reordered(
     let result = crate::types::ScanResult {
         tools,
         errors: vec![],
+        groups: vec![],
     };
     let _ = handle.emit("tools:changed", &result);
 }
