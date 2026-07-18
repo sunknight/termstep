@@ -32,3 +32,14 @@ src-tauri/icons/
 src-tauri/gen/
 # Rust build artifacts
 src-tauri/target/
+
+# TermStep 工具生成器（termstep-tool-gen skill）的运行时产物——
+# 每次为当前项目重新生成，是给 TermStep 工具消费的，非项目源码
+termstep-help.md
+termstep-tool.json
+
+# ZCode 本地工作区（agent 缓存/会话等，机具本机相关）
+.zcode/
+
+# TermStep 用户数据软链（指向 ~/Library/Application Support/TermStep，仅本机调试用）
+ln_library_data
