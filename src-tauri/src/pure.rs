@@ -23,7 +23,7 @@ pub fn merge_tool_json(existing: &Value, patch: &Value) -> Value {
         }
     }
     // 裁掉被清空的 optional 字段（空字符串 = 清空）
-    for k in &["cwd", "tmux", "mdUrl", "group"] {
+    for k in &["cwd", "rootDir", "tmux", "mdUrl", "group"] {
         if merged.get(*k).and_then(|v| v.as_str()) == Some("") {
             merged.remove(*k);
         }
@@ -197,6 +197,7 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
         icon,
         order,
         cwd: None,
+        root_dir: None,
         shell: None,
         env: None,
         tmux: None,
@@ -209,6 +210,9 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
     };
     if let Some(cwd) = trim_str_field(o, "cwd") {
         meta.cwd = Some(cwd);
+    }
+    if let Some(root_dir) = trim_str_field(o, "rootDir") {
+        meta.root_dir = Some(root_dir);
     }
     if let Some(shell) = trim_str_field(o, "shell") {
         meta.shell = Some(shell);
@@ -448,6 +452,55 @@ mod tests {
         let t = bundle_with(json!({}));
         let r = scan_tool_risk(&t);
         assert_eq!(r.name, "test-id"); // 缺 name → 用 id
+    }
+
+    // ── rootDir（对偶 src/shared/toolConfig.ts / toolJson.ts）──────────────────
+    #[test]
+    fn merge_prunes_cleared_rootdir() {
+        let existing = json!({"rootDir":"/srv/api"});
+        let patch = json!({"rootDir":""});
+        let m = merge_tool_json(&existing, &patch);
+        assert!(m.get("rootDir").is_none(), "cleared rootDir must be pruned");
+    }
+
+    #[test]
+    fn merge_keeps_rootdir_when_set() {
+        let existing = json!({"name":"A"});
+        let patch = json!({"rootDir":"/srv/api"});
+        let m = merge_tool_json(&existing, &patch);
+        assert_eq!(m["rootDir"], "/srv/api");
+    }
+
+    #[test]
+    fn meta_parses_rootdir() {
+        let m = parse_tool_meta(&json!({"name":"A","rootDir":"/srv/api"}), "x");
+        assert_eq!(m.root_dir.as_deref(), Some("/srv/api"));
+    }
+
+    #[test]
+    fn meta_drops_blank_rootdir() {
+        let m = parse_tool_meta(&json!({"name":"A","rootDir":"   "}), "x");
+        assert_eq!(m.root_dir, None);
+    }
+
+    #[test]
+    fn meta_rootdir_defaults_none() {
+        let m = parse_tool_meta(&json!({"name":"A"}), "x");
+        assert_eq!(m.root_dir, None);
+    }
+
+    #[test]
+    fn meta_rootdir_with_tilde_kept_verbatim() {
+        let m = parse_tool_meta(&json!({"name":"A","rootDir":"~/api"}), "x");
+        assert_eq!(m.root_dir.as_deref(), Some("~/api"));
+    }
+
+    #[test]
+    fn risk_ignores_rootdir() {
+        // rootDir 不列入风险字段（只是路径配置，不执行、无注入风险）
+        let t = bundle_with(json!({"name":"E","rootDir":"/srv/api"}));
+        let r = scan_tool_risk(&t);
+        assert!(r.is_empty(), "rootDir must not be a risk field");
     }
 
 }
