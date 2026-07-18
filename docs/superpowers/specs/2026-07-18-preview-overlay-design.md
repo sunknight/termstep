@@ -1,21 +1,23 @@
 # 弹层式网页浏览 + 文档预览 设计
 
-> 日期：2026-07-18
-> 状态：设计待评审
+> 日期：2026-07-18（定稿）
+> 状态：待实施
 > 版本目标：0.9.3+
 > **本方案替代** `2026-07-17-embedded-browser-tabs-design.md`（tab 方案，搁置）。
 
 ## 1. 目标
 
-用**弹层（modal overlay）**方式实现两类预览，复用现有 `.modal-overlay` + `.modal` 模式：
+用**弹层（modal overlay）**方式实现预览，复用现有 `.modal-overlay` + `.modal` 模式。**入口统一为工具文档（help.md）里的标准 markdown 链接**——零新语法，用户在 help.md 里正常写 `[文本](url或路径)`，点击时按链接类型自动路由到弹层预览：
 
-1. **网页浏览**：帮助页点 http(s) 链接 → 弹层内用 iframe 打开，不再跳系统浏览器。
-2. **文档预览**：预览本地 md / txt 文件（首版）；docx / pdf 作为后续增强。
+1. **网页浏览**：http(s) 链接（非文档后缀）→ 弹层 iframe 打开。
+2. **文档预览**：
+   - 远程文档（http(s) 且 `.md`/`.markdown`/`.txt` 结尾）→ 复用 `fetch_md_preview`（已有）→ md 渲染。
+   - 本地文档（相对/绝对路径，文档后缀结尾）→ 新 IPC `read_doc_file` → md 渲染 / `<pre>`。
 
 核心需求：
-- 弹层形态（全屏居中大卡，非中间区域改造，非独立浮动窗口）；
-- 「在默认浏览器打开」按钮（网页场景的兜底）；
-- md + txt 起步，docx / pdf 后续。
+- 弹层形态（全屏居中大卡，非中间区域改造，非独立浮动窗口）。
+- 「在默认浏览器打开」按钮（网页场景的兜底）。
+- md + txt 起步，docx / pdf 作为后续增强。
 
 ## 2. 关键决策与权衡
 
@@ -29,11 +31,11 @@
 | B 独立 Tauri 窗口 webview | ✅ | ❌ 浮动窗口 | 中 | ❌ |
 | C 主窗口内嵌 child webview | ✅ | ✅ | **unstable API，排除** | ✅ |
 
-**选定 A**。B 虽然能力最强（真 WKWebView，能开 GitHub/Google），但它**不是弹层**——是带标题栏、进 dock、可独立最小化的浮动窗口，违背"弹层"语义，且与文档预览的弹层机制割裂。C 是 unstable feature，生产级应用风险过高（macOS 定位受限、white-on-load bug），已排除。
+**选定 A**。B 虽能力最强（真 WKWebView，能开 GitHub/Google），但**不是弹层**——是带标题栏、进 dock、可独立最小化的浮动窗口，违背"弹层"语义，且与文档预览割裂。C 是 unstable feature，生产级风险过高，排除。
 
-**A 的固有权衡（已知情接受）**：部分网站通过 `X-Frame-Options` / CSP `frame-ancestors` 拒绝嵌入 iframe（典型：GitHub、Google、带登录态站点）。这些站点在弹层里显示空白，靠弹层工具栏常驻的「在默认浏览器打开」按钮兜底。
+**A 的固有权衡（已知情接受）**：部分网站通过 `X-Frame-Options` / CSP `frame-ancestors` 拒绝嵌入 iframe（典型：GitHub、Google、带登录态站点）。这些站点在弹层显示空白，靠工具栏常驻「在默认浏览器打开」按钮兜底。
 
-iframe 跨源限制：读不到内部 URL / 标题 / DOM，无后退 / 地址栏。因此网页预览工具栏**极简**。
+iframe 跨源限制：读不到内部 URL / 标题 / DOM，无后退 / 地址栏。因此网页工具栏**极简**。
 
 ### 2.2 文档预览首版 md + txt，docx / pdf 后续
 
@@ -44,61 +46,95 @@ iframe 跨源限制：读不到内部 URL / 标题 / DOM，无后退 / 地址栏
 | docx | `mammoth.js`（渲染端） | 后续 |
 | pdf | `pdf.js`（~2MB） | 后续 |
 
-文档预览**不受 iframe/webview 之争影响**——内容是本地渲染后塞进弹层，无拒嵌问题。
+文档预览不受 iframe/webview 之争影响——内容本地渲染后塞进弹层，无拒嵌问题。
+
+### 2.3 入口：标准 markdown 链接，零新语法
+
+不在 help.md 引入新围栏/语法。用户直接写标准链接，类型由 href 形式自动判断（见 §3.2）。这样 help.md 保持纯 markdown，可移植、可读。
+
+### 2.4 本地路径相对工具 cwd 解析
+
+相对路径（如 `./README.md`、`docs/guide.md`）**相对于工具的 cwd**（工具配置的工作目录，`tool.cwd`）解析。理由：TermStep 工具常针对某项目，引用项目内 README/文档是高频场景。
+
+- 绝对路径（`/` 或 `~` 开头）按绝对路径处理。
+- 远程（http(s)）路径不受此规则影响。
 
 ## 3. 架构
 
 ### 3.1 一个统一的预览弹层组件
 
-新增 `PreviewOverlay`（覆盖 z-index 300，与现有 modal 同层）。它根据传入内容类型切换 body：
+新增 `PreviewOverlay`（覆盖 z-index 300，与现有 modal 同层）。根据传入内容类型切换 body：
 
 ```
 PreviewOverlay
 ├── kind: 'web'   → 工具栏(仅 URL + 在浏览器打开) + <iframe src=url>
-├── kind: 'md'    → md.render(content) 渲染（复用 HelpPane 的 markdown 渲染逻辑）
+├── kind: 'md'    → md.render(content)（复用 markdown.ts）
 └── kind: 'txt'   → <pre>{content}</pre>
 ```
 
-不一次预览多个：弹层是单视图（不像 tab 方案的多 tab）。关掉再开下一个。
+单视图，一次预览一个内容。关掉再开下一个。
 
-### 3.2 状态
+### 3.2 链接类型自动判断（核心路由逻辑）
 
-在 `App.tsx` 加一个顶层 state（与现有 `helpOpen`/`recordsToolId` 同模式）：
+在 `HelpPane` 的点击拦截里，对 `http(s)` 和本地路径链接做分流。判断顺序：
+
+| href 形式 | 判断依据 | 行为 |
+|-----------|----------|------|
+| `mailto:` | scheme | 系统（现有，不动） |
+| `http(s)` 且 URL pathname 以 `.md`/`.markdown`/`.txt` 结尾 | 后缀 | **远程文档预览**：`fetch_md_preview`（已有）→ md.render |
+| `http(s)` 其他 | scheme | **网页预览**：iframe |
+| 本地路径（非 http(s)）且以文档后缀结尾 | 后缀 | **本地文档预览**：`read_doc_file`（新 IPC，相对 cwd 解析）→ md.render / `<pre>` |
+| 本地路径其他后缀 | 后缀 | 弹层提示"暂不支持该类型" |
+| 其他 scheme | — | 阻止（现有，防 `javascript:`/`data:`） |
+
+文档后缀白名单（首版）：`md` / `markdown` / `txt`。
+
+### 3.3 状态
+
+在 `App.tsx` 加顶层 state（与现有 `helpOpen`/`recordsToolId` 同模式）：
 
 ```ts
 type PreviewState =
-  | { kind: 'web'; url: string; title: string }   // 网页
-  | { kind: 'md' | 'txt'; path: string; content: string; title: string }  // 本地文档
-  | null;                                          // 关闭
+  | { kind: 'web'; url: string; title: string }
+  | { kind: 'md' | 'txt'; title: string; content: string; error?: string }
+  | null;
 
 const [preview, setPreview] = useState<PreviewState>(null);
 ```
 
-弹层挂载在 App 末尾（与现有 modal 同位置），`preview` 为 null 时不渲染。
+弹层挂载在 App 末尾（与现有 modal 同位置），`null` 时不渲染。
 
-### 3.3 数据流
+### 3.4 数据流
 
 **网页**：
 ```
-HelpPane 点 http(s) 链接
+HelpPane 点 http(s) 链接（非文档后缀）
   → e.preventDefault()
-  → setPreview({ kind:'web', url:href, title:host })   // 替换原来的 openExternal
+  → setPreview({ kind:'web', url:href, title:host })
   → 弹层渲染 iframe
 ```
 
-**文档预览**（入口：工具栏「预览文件」按钮，或可选拖拽）：
+**远程文档**：
 ```
-点「预览文件」
-  → api.fs.pickDocFile()                    // 复用 rfd，过滤 md/txt
-  → 返回 path
-  → api.fs.readDocFile(path)                // 新 IPC，读内容（过安全守卫）
-  → setPreview({ kind: ext, path, content, title: filename })
-  → 弹层渲染 md 或 pre
+HelpPane 点 http(s) 链接（.md/.txt 后缀）
+  → e.preventDefault()
+  → api.tools.fetchMdPreview(url)            // 已有 IPC
+  → setPreview({ kind:'md', content, error })
+  → 弹层渲染 md
 ```
 
-### 3.4 不改的
+**本地文档**：
+```
+HelpPane 点本地路径链接（文档后缀）
+  → e.preventDefault()
+  → api.fs.readDocFile({ toolId, path })     // 新 IPC：后端相对该工具 cwd 解析 + 读内容
+  → setPreview({ kind:'md'|'txt', content, error })
+  → 弹层渲染
+```
 
-- 中间终端区域完全不动（这是相对 tab 方案最大的简化）。
+### 3.5 不改的
+
+- 中间终端区域完全不动（相对 tab 方案最大的简化）。
 - 终端懒加载、pty 生命周期、generation guard（§6.3）全部保留。
 - 「在默认浏览器打开」复用现有 `open_external` 命令（`commands.rs:565`）。
 - 现有 modal 模式（`.modal-overlay` + `.modal` + Esc 关闭 + 背景点击关闭）照搬。
@@ -112,82 +148,101 @@ HelpPane 点 http(s) 链接
 │ 🔗 example.com/path              ↗ 在浏览器打开  ✕   │ ← 工具栏（极简）
 ├──────────────────────────────────────────────────────┤
 │                                                      │
-│                                                      │
 │            <iframe> 或 md 渲染 或 <pre>               │
-│                                                      │
 │                                                      │
 └──────────────────────────────────────────────────────┘
 ```
 
 尺寸：`.preview-modal { width: 95vw; max-width: 1400px; height: 90vh }`。大屏沉浸式预览。
 
-工具栏统一：左侧标题/URL（只读），右侧动作按钮。
+工具栏统一：左侧标题（web=URL host，doc=文件名），右侧动作。
 - web：右侧「↗ 在浏览器打开」（调 `api.shell.openExternal(url)`）+ ✕。
-- md/txt：右侧仅 ✕（无外部打开需求；可后续加「在 Finder 显示」）。
+- md/txt：右侧仅 ✕。加载中显示 spinner，出错显示错误信息（如本地文件不存在/被安全守卫拒绝/超过大小上限）。
 
 ### 4.2 iframe 拒绝嵌入的处理
 
-**与 tab 方案一致：不做自动检测**（iframe 跨源正常加载与被拒无法可靠区分）。改为**工具栏常驻「在浏览器打开」按钮**作为兜底。用户发现打不开时点按钮转系统浏览器。
+**不做自动检测**（iframe 跨源正常加载与被拒无法可靠区分）。改为**工具栏常驻「在浏览器打开」按钮**兜底。用户发现打不开时点按钮转系统浏览器。
 
-> 备选（v2 增强）：维护已知拒嵌 host 黑名单（GitHub、Google 等少数大站），命中时在 iframe 区显示提示卡。首版不做。
+> 备选（v2 增强）：维护已知拒嵌 host 黑名单（GitHub、Google 等），命中时显示提示卡。首版不做。
 
 ### 4.3 `HelpPane` 链接拦截改动
 
-`HelpPane.tsx:185-187` 现有逻辑：
+`HelpPane.tsx:181-191` 现有：
 
 ```ts
-if (/^(https?:|mailto:)/i.test(href)) {
-  e.preventDefault();
-  void api.shell.openExternal(href);  // ← 改这里
+const anchor = (e.target as HTMLElement).closest('a') as HTMLAnchorElement | null;
+if (anchor) {
+  const href = anchor.getAttribute('href') ?? '';
+  if (/^(https?:|mailto:)/i.test(href)) {
+    e.preventDefault();
+    void api.shell.openExternal(href);
+  } else {
+    e.preventDefault();
+  }
 }
 ```
 
-改为调用 `App.tsx` 注入的 `onOpenLink` 回调：
+改为按类型路由，调用 `App.tsx` 注入的 `onOpenLink(href)`（具体路由逻辑可在 `App` 内或 `HelpPane` 内，推荐 `HelpPane` 内做判断后调对应回调）：
 
 ```ts
 if (/^https?:/i.test(href)) {
   e.preventDefault();
-  props.onOpenLink(href);              // 打开预览弹层
+  if (/\.(md|markdown|txt)(\?|#|$)/i.test(new URL(href).pathname)) {
+    props.onOpenRemoteDoc(href);   // 远程文档预览
+  } else {
+    props.onOpenWeb(href);         // 网页预览
+  }
 } else if (/^mailto:/i.test(href)) {
   e.preventDefault();
-  void api.shell.openExternal(href);   // mailto 仍走系统
+  void api.shell.openExternal(href);  // mailto 仍走系统
+} else if (looksLikeLocalDocPath(href)) {
+  e.preventDefault();
+  props.onOpenLocalDoc(href);      // 本地文档预览
+} else {
+  e.preventDefault();              // 其余阻止导航
 }
 ```
+
+`looksLikeLocalDocPath`：非 http(s)/mailto，且以 `md`/`markdown`/`txt` 结尾（忽略尾部 `#anchor`/`?query`）。
 
 ## 5. 新增 IPC：读本地文档
 
 ### 5.1 缺口
 
-现有 `pick_md_file`（`commands.rs:278`）只返回路径不读内容；`fetch_md_preview` 只走远程。预览本地文档需要**新建「读本地文件内容」IPC**。
+现有 `pick_md_file`（`commands.rs:278`）只返回路径不读内容；`fetch_md_preview` 只走远程。预览本地文档需**新建「按工具 cwd 解析路径 + 读内容」IPC**。
 
 ### 5.2 安全设计（必须复用现有姿态）
 
-新命令 `read_doc_file(path)`：
+新命令 `read_doc_file(tool_id, path)`：
 
-1. **扩展名白名单**：复用 `allowed_md_extensions()`（`tools.rs:62-64`，当前 `["md","markdown","txt"]`）。docx/pdf 增强时再扩充白名单。
-2. **敏感文件守卫**：复用 `sensitive_path_reason`（`tools.rs:39-57` 的黑名单 + `.ssh`/`.aws`/`.kube`/`.gnupg`/`Library/Keychains` 等目录）。
-3. **路径穿越校验**：拒绝空串、`/`、`\`、`..`、NUL（与 `validate_tool_id` 同套校验思路）。
-4. **大小上限**：读取前 `metadata().len()` 检查，超过如 2 MiB 拒绝（防 OOM；md/txt 极少超此）。
-5. **不放宽现有命令**：`fetch_md_preview` 的远程白名单不动，新命令独立。
+1. **路径解析**：`path` 相对该工具的 `tool.json` 的 `cwd` 字段解析为绝对路径（`~` 展开、相对转绝对）。需从 `tools_dir` 读对应 tool 的 meta。
+2. **扩展名白名单**：复用 `allowed_md_extensions()`（`tools.rs:62-64`，`["md","markdown","txt"]`）。docx/pdf 增强时再扩充。
+3. **敏感文件守卫**：复用 `sensitive_path_reason`（`tools.rs:39-57` 黑名单 + `.ssh`/`.aws`/`.kube`/`.gnupg`/`Library/Keychains` 等目录）。解析后的绝对路径必须过守卫。
+4. **路径穿越校验**：拒绝空串、`/`、`\`、`..`（注意：相对路径含 `..` 是合法的，需在解析后判断最终绝对路径是否越出可读范围——保守做法：解析后仍过敏感守卫即可，不额外限制目录）。
+5. **大小上限**：读取前 `metadata().len()` 检查，超过 2 MiB 拒绝（防 OOM；md/txt 极少超此）。
+6. **tool_id 校验**：复用 `validate_tool_id`（拒空/`/`/`\`/`..`/NUL）。
 
 ### 5.3 IPC 契约（遵循 §5.1 四步）
 
-1. `src/shared/types.ts` 加 `IPC.fs.readDocFile: 'fs:readDocFile'`、`IPC.fs.pickDocFile: 'fs:pickDocFile'`。
-2. `commands.rs` 加 `#[tauri::command] read_doc_file(path) -> {content, error}`、`pick_doc_file() -> {canceled, path}`。
+1. `src/shared/types.ts` 加 `IPC.fs.readDocFile: 'fs:readDocFile'`。
+2. `commands.rs` 加 `#[tauri::command] read_doc_file(tool_id, path) -> {content, kind, error}`（kind ∈ md/markdown/txt）。
 3. `lib.rs` `generate_handler!` 注册。
-4. `api.ts` 加 `api.fs.readDocFile` / `api.fs.pickDocFile`。
+4. `api.ts` 加 `api.fs.readDocFile({ toolId, path })`。
+
+返回 `kind` 让前端决定用 md 渲染还是 `<pre>`（txt 用 pre，md/markdown 用 render）。
 
 ## 6. 交互细节
 
 | 场景 | 行为 |
 |------|------|
-| 帮助页点 http(s) 链接 | 弹层打开，iframe 加载该 URL |
-| 点弹层 ✕ / Esc / 点背景 | 关闭弹层，iframe 卸载 |
+| 点 http(s) 文档后缀链接 | 弹层打开，显示加载中 → fetch_md_preview → md 渲染 |
+| 点 http(s) 网页链接 | 弹层打开，iframe 加载 |
+| 点本地文档链接 | 弹层打开，加载中 → read_doc_file → md/pre 渲染 |
+| 点弹层 ✕ / Esc / 点背景 | 关闭弹层，iframe/内容卸载 |
 | 点「在浏览器打开」 | `api.shell.openExternal(url)`，弹层不关 |
-| 点「预览文件」按钮（位置待定，顶栏或侧栏） | 弹原生文件选择器（md/txt 过滤）→ 读取 → 弹层渲染 |
 | iframe 被拒嵌 | 空白 + 工具栏常驻「在浏览器打开」兜底 |
-
-一次只预览一个内容（web 或 doc）。要换就关掉再开。
+| 本地文件不存在 / 超大 / 被守卫拒 | 弹层显示错误信息 |
+| 一次只预览一个内容 | 换内容先关再开 |
 
 ## 7. 安全
 
@@ -203,42 +258,42 @@ frame-src 'self' https: http:;
 
 ### 7.2 URL 不限制
 
-iframe 加载不经 Rust fetch（浏览器直接请求），SSRF 守卫不适用。`javascript:`/`data:` 仍由 HelpPane 现有拦截挡住（只放行 `http(s)`）。iframe 跨源读不到内容，诱导访问内网风险有限。
+iframe 加载不经 Rust fetch（浏览器直接请求），SSRF 守卫不适用。`javascript:`/`data:` 由 HelpPane 拦截挡住（只放行 http(s) 和本地文档路径）。iframe 跨源读不到内容，诱导访问内网风险有限。
 
 ### 7.3 本地文档读取的安全姿态
 
-见 §5.2，复用现有全套守卫。
+见 §5.2，复用全套守卫。远程文档复用现有 `fetch_remote_markdown`（已含 SSRF 守卫 + 大小上限 + 禁重定向）。
 
 ## 8. 模块改动清单
 
 | 文件 | 改动 |
 |------|------|
-| `src/renderer/App.tsx` | 加 `preview` state + 末尾渲染 `PreviewOverlay`；顶栏加「预览文件」按钮；向 `HelpPane` 注入 `onOpenLink` |
-| `src/renderer/components/PreviewOverlay.tsx`（新） | 统一预览弹层：web(md/txt) 三种 body |
-| `src/renderer/components/HelpPane.tsx` | `HelpPane.tsx:185-187` 改为 `props.onOpenLink(href)` |
-| `src/renderer/lib/api.ts` | 加 `api.fs.readDocFile` / `api.fs.pickDocFile` |
-| `src/shared/types.ts` | 加 `IPC.fs.readDocFile` / `IPC.fs.pickDocFile` |
-| `src-tauri/src/commands.rs` | 加 `read_doc_file` / `pick_doc_file` 命令（复用 rfd + 安全守卫） |
-| `src-tauri/src/tools.rs` | 复用 `allowed_md_extensions` / `sensitive_path_reason`（可能需小重构为 pub） |
-| `src-tauri/src/lib.rs` | `generate_handler!` 注册两个新命令 |
+| `src/renderer/App.tsx` | 加 `preview` state + 末尾渲染 `PreviewOverlay`；向 `HelpPane` 注入 `onOpenWeb`/`onOpenRemoteDoc`/`onOpenLocalDoc` |
+| `src/renderer/components/PreviewOverlay.tsx`（新） | 统一预览弹层：web/md/txt 三种 body + 极简工具栏 + 加载/错误态 |
+| `src/renderer/components/HelpPane.tsx` | `HelpPane.tsx:181-191` 改为按类型路由（http 文档/http 网页/mailto/本地文档） |
+| `src/renderer/lib/api.ts` | 加 `api.fs.readDocFile` |
+| `src/shared/types.ts` | 加 `IPC.fs.readDocFile` |
+| `src-tauri/src/commands.rs` | 加 `read_doc_file` 命令（解析 cwd + 安全守卫 + 读内容） |
+| `src-tauri/src/tools.rs` | 可能需把 `allowed_md_extensions`/`sensitive_path_reason` 改为 `pub(crate)` 供 commands 复用 |
+| `src-tauri/src/lib.rs` | `generate_handler!` 注册 `read_doc_file` |
 | `src/renderer/styles.css` | `.preview-modal` 尺寸 + iframe/md/pre body 样式 |
 | `src-tauri/tauri.conf.json` | CSP 加 `frame-src 'self' https: http:` |
 
-**不动**：`pty.rs`、`TerminalView.tsx`、`termRegistry.ts`、中间终端区域任何代码、终端切换逻辑。
+**不动**：`pty.rs`、`TerminalView.tsx`、`termRegistry.ts`、中间终端区域、终端切换逻辑、`fetch_md_preview`（远程文档直接复用）。
 
 ## 9. 与被替代的 tab 方案的对比
 
-| 维度 | tab 方案（已搁置） | 本弹层方案 |
-|------|--------------------|-----------|
+| 维度 | tab 方案（搁置） | 本弹层方案 |
+|------|------------------|-----------|
 | 改中间区域 | ✅ 大改（引入 tab 抽象） | ❌ 不改 |
 | 改终端切换逻辑 | ✅（统一 tab 收口） | ❌ |
-| 新抽象 | tab 模型 + webTabsByTool 状态 | 单个 preview state |
+| 新抽象 | tab 模型 + webTabsByTool | 单个 preview state |
+| 入口 | 点帮助页链接 | 点帮助页链接（同） |
+| 文档预览 | 无 | ✅ md/txt 起步，远程+本地 |
 | 网页能力 | iframe（同） | iframe（同） |
-| 文档预览 | 无 | ✅ md/txt 起步 |
-| 改动文件数 | ~5 | ~10（含 IPC 四步） |
-| Rust 改动 | 仅 CSP | CSP + 新 IPC + 安全守卫复用 |
+| Rust 改动 | 仅 CSP | CSP + 1 新 IPC（read_doc_file） |
 
-弹层方案改动面虽略多（因加了文档预览的 IPC），但**不碰核心终端架构**，风险更低。
+弹层方案改动面集中在边缘增量（新 modal + 1 IPC），**不碰核心终端架构**，风险更低；且额外获得文档预览能力。
 
 ## 10. 不做（YAGNI）
 
@@ -246,6 +301,8 @@ iframe 加载不经 Rust fetch（浏览器直接请求），SSRF 守卫不适用
 - 网页的后退/前进/地址栏（iframe 跨源受限）。
 - docx / pdf 首版（后续增强）。
 - 已知拒嵌 host 黑名单（v2 增强）。
-- 拖拽文件预览（入口先用文件选择器）。
+- 顶栏「预览文件」按钮 + 文件选择器（入口改为 markdown 链接，更自然）。
+- 拖拽文件预览。
 - 多个内容同时预览。
 - 预览历史 / 最近文档列表。
+- 新 markdown 语法/围栏（用标准链接，类型自动判断）。
