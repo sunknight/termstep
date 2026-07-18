@@ -676,6 +676,37 @@ mod tests {
         assert!(read_groups(dir).is_empty());
     }
 
+    // ── 端到端：保存工具时 group 字段进入 order.json.groups 并被 scan 返回 ───────
+    #[tokio::test]
+    async fn save_tool_with_group_registers_group_and_scan_returns_it() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        let id = "11111111-1111-4111-8111-111111111111";
+        let tool_dir = dir.join(id);
+        tokio::fs::create_dir_all(&tool_dir).await.unwrap();
+        // 初始无 order.json
+        tool_save(
+            &tool_dir,
+            "# Test",
+            serde_json::json!({"name":"A","icon":"★","group":"前端"}),
+        )
+        .await
+        .unwrap();
+        append_group_if_new(dir, Some("前端")).await.unwrap();
+
+        let idx = read_order_index(dir);
+        // tool_save 不写 order；append_group_if_new 只登记 group，order 保持原样（空）
+        assert!(idx.order.is_empty());
+        assert_eq!(idx.groups, vec!["前端".to_string()]);
+
+        let r = crate::tools::scan_tools(dir).await;
+        assert_eq!(r.groups, vec!["前端".to_string()]);
+        assert_eq!(r.tools.len(), 1);
+        assert_eq!(r.tools[0].meta.group.as_deref(), Some("前端"));
+        // 不在 order 索引里的工具兜底排末尾（order = i64::MAX）
+        assert_eq!(r.tools[0].meta.order, i64::MAX);
+    }
+
     #[tokio::test]
     async fn write_order_index_is_atomic_no_tmp_left() {
         let _dir = tmp();
