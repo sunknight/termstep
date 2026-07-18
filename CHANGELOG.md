@@ -3,30 +3,27 @@
 > 版本变动说明。条目按版本倒序（最新在上），日期为该版本号引入提交的日期。
 > 历史版本（v0.1.0 ~ v0.9.2）当时无 git tag，边界依据 `package.json` 的 `version` 字段首次出现的提交切分；此后新版本以 git tag 为准。
 
+## [0.9.5] - 2026-07-18
+### Added
+- 工具可在分组之间拖拽移动：把工具拖到其他分组的标题或工具行上即可改变它所属分组，排序也会相应调整。
+- 拖动工具时，落点指示更清晰：相邻工具之间只显示一个落点，拖到工具自身原位上下方不再出现多余的落点。
+
 ## [0.9.4] - 2026-07-18
 ### Added
-- Sidebar 分组渲染 + 折叠 + 同组拖拽守卫；编辑器分组输入
-- buildGroupedView 纯函数（分组视图构建）
-- shared 层加 group 字段（types/toolConfig/toolJson）
-- append_group_if_new + tool_save 登记 group 到索引
-- order.json 扩展 OrderIndex 结构，新增 groups 键（向后兼容）
-- parse_tool_meta/merge_tool_json 支持 group 字段
-- ToolMeta/ScanResult 增加 group/groups 字段
-- 导入按 sourceId 去重，避免同一 bundle 重复新建工具
-
-### Changed
-- 端到端验证保存 group → 索引登记 → scan 返回 groups
+- 工具分组：可在编辑工具时选择已有分组或新建分组，左侧工具列表按分组分区展示，分组可点击折叠/展开。
+- 同一分组内可拖动工具调整顺序。
+- 导入工具包时，重复导入同一份文件不再重复创建工具，而是更新已有工具。
 
 ### Fixed
-- tool_delete/reorder 的 emit 保留 groups，避免分组索引闪失
+- 删除或重排工具后分组标题偶发消失的问题。
 
 ## [0.9.3] - 2026-07-18
 ### Added
-- 弹层式网页浏览+文档预览 (0.9.3)
-- `version:set` 自动生成 CHANGELOG 条目 + `--tag` 一键发布（改版本文件 + commit + 打 tag）。
+- 帮助文档里的网页链接和本地文档可以在弹层里直接打开预览，不必离开当前工具。
+- 新增一键发布命令：自动同步版本号、提交、打版本 tag。
 
 ### Fixed
-- 本地文档预览展开 ~ 路径（文件系统不识别 ~）
+- 本地文档预览现在能正确识别 `~` 开头的路径（如 `~/Documents/readme.md`）。
 
 ## [0.9.2] - 2026-07-17
 ### Added
