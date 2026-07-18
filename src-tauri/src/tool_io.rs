@@ -237,6 +237,29 @@ pub async fn write_order_index(tools_dir: &Path, ordered_ids: &[String]) -> std:
     Ok(())
 }
 
+/// 若 group 非空且不在 order.json 的 groups 数组中，追加。已存在则 no-op。
+/// 由 tool_save 在写完 tool.json 后调用：编辑器保存工具时若指定了新分组名，
+/// 把它登记到 groups 索引里（展示顺序）。失败只返回 Err，由调用方决定降级。
+pub async fn append_group_if_new(tools_dir: &Path, group: Option<&str>) -> std::io::Result<()> {
+    let name = match group.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(g) => g,
+        None => return Ok(()), // 未分组：不动 groups
+    };
+    let mut idx = read_order_index(tools_dir);
+    if idx.groups.iter().any(|g| g == name) {
+        return Ok(()); // 已登记 → no-op
+    }
+    idx.groups.push(name.to_string());
+    let obj = serde_json::json!({ "order": idx.order, "groups": idx.groups });
+    let pretty = serde_json::to_string_pretty(&obj)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let final_path = tools_dir.join(ORDER_INDEX_FILE);
+    let tmp = tools_dir.join(format!(".{}.tmp", ORDER_INDEX_FILE));
+    tokio::fs::write(&tmp, format!("{}\n", pretty)).await?;
+    tokio::fs::rename(&tmp, &final_path).await?;
+    Ok(())
+}
+
 /// 把旧「每个 tool.json 各存一个 order 字段」迁移到单一的 order.json 索引，
 /// 并清理 tool.json 里的 order 字段。幂等：order.json 已存在则跳过。
 ///
@@ -577,6 +600,55 @@ mod tests {
         let idx = read_order_index(dir);
         assert_eq!(idx.order, vec!["b".to_string(), "a".into()]);
         assert_eq!(idx.groups, vec!["前端".to_string()], "groups must be preserved");
+    }
+
+    #[tokio::test]
+    async fn append_group_if_new_appends_when_absent() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 初始 order.json 无 groups
+        std::fs::write(dir.join("order.json"), r#"{"order":["a"]}"#).unwrap();
+        append_group_if_new(dir, Some("前端")).await.unwrap();
+        let idx = read_order_index(dir);
+        assert_eq!(idx.groups, vec!["前端".to_string()]);
+        // order 不受影响
+        assert_eq!(idx.order, vec!["a".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn append_group_if_new_noop_when_present() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(
+            dir.join("order.json"),
+            r#"{"order":["a"],"groups":["前端"]}"#,
+        )
+        .unwrap();
+        append_group_if_new(dir, Some("前端")).await.unwrap();
+        let idx = read_order_index(dir);
+        assert_eq!(idx.groups, vec!["前端".to_string()], "no duplicate");
+    }
+
+    #[tokio::test]
+    async fn append_group_if_new_ignores_empty_and_none() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(dir.join("order.json"), r#"{"order":["a"]}"#).unwrap();
+        append_group_if_new(dir, Some("   ")).await.unwrap();
+        append_group_if_new(dir, None).await.unwrap();
+        let idx = read_order_index(dir);
+        assert!(idx.groups.is_empty(), "empty/None group must not be appended");
+    }
+
+    #[tokio::test]
+    async fn append_group_if_new_appends_multiple_in_order() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        append_group_if_new(dir, Some("前端")).await.unwrap();
+        append_group_if_new(dir, Some("后端")).await.unwrap();
+        append_group_if_new(dir, Some("前端")).await.unwrap(); // 重复 → no-op
+        let idx = read_order_index(dir);
+        assert_eq!(idx.groups, vec!["前端".to_string(), "后端".into()]);
     }
 
     #[tokio::test]

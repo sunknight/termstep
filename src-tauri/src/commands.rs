@@ -96,6 +96,13 @@ pub async fn tool_save(
     tool_io::tool_save(&td.join(&tool_id), &markdown, meta_patch.clone())
         .await
         .map_err(|e| e.to_string())?;
+    // 分组登记：若 patch 带了 group 字段（非空），把它登记到 order.json 的 groups
+    // 索引（展示顺序）。失败只 eprintln! 不阻断——保存是首要功能，分组索引是附加。
+    if let Some(g) = meta_patch.get("group").and_then(|v| v.as_str()) {
+        if let Err(e) = tool_io::append_group_if_new(&td, Some(g)).await {
+            eprintln!("tool_save: append_group_if_new failed: {}", e);
+        }
+    }
     // 自动提交：工具名取 meta_patch.name，缺省用 id。
     let name = meta_patch
         .get("name")
