@@ -204,6 +204,7 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
         md_url: None,
         auto_update_minutes: None,
         use_remote: None,
+        source_id: None,
     };
     if let Some(cwd) = trim_str_field(o, "cwd") {
         meta.cwd = Some(cwd);
@@ -232,6 +233,9 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
     }
     if o.and_then(|m| m.get("useRemote")) == Some(&Value::Bool(true)) {
         meta.use_remote = Some(true);
+    }
+    if let Some(sid) = trim_str_field(o, "sourceId") {
+        meta.source_id = Some(sid);
     }
     meta
 }

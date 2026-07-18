@@ -366,19 +366,30 @@ pub async fn tools_import(
             .take()
             .ok_or_else(|| "请先进行导入预检".to_string())?;
         let td = lock_or_recover!(&tools_dir.0).clone();
-        let (count, new_ids) = write_imported_tools(&td, &parsed).await?;
-        // 把导入的新 id 追加到排序索引末尾（新工具排最后，符合预期）
-        if !new_ids.is_empty() {
+        let stats = write_imported_tools(&td, &parsed).await?;
+        // 仅新建的工具追加到排序索引末尾（更新的保持原位）。
+        if !stats.created.is_empty() {
             let mut order = tool_io::read_order_index(&td);
-            order.extend(new_ids);
+            order.extend(stats.created.iter().cloned());
             let _ = tool_io::write_order_index(&td, &order).await;
         }
-        // 自动提交：导入会写入多个新工具目录 + order.json，用一个提交涵盖整个 tools/。
-        if count > 0 {
+        // 自动提交：导入会写新工具目录 + 可能的 order.json + 被更新的工具，一个提交涵盖 tools/。
+        if stats.total() > 0 {
             let cd = lock_or_recover!(&configs_dir.0).clone();
-            try_auto_commit(&vcs_state, &cd, "tools/", &format!("导入 {} 个工具", count));
+            let msg = format!(
+                "导入 {} 个工具（新建 {}，更新 {}）",
+                stats.total(),
+                stats.created.len(),
+                stats.updated
+            );
+            try_auto_commit(&vcs_state, &cd, "tools/", &msg);
         }
-        return Ok(serde_json::json!({"canceled": false, "count": count}));
+        return Ok(serde_json::json!({
+            "canceled": false,
+            "count": stats.total(),
+            "created": stats.created.len(),
+            "updated": stats.updated,
+        }));
     }
 
     // 预检阶段：选文件 + 解析 + 扫描风险，返回摘要（不写盘）。
@@ -412,34 +423,89 @@ pub async fn tools_import(
     }))
 }
 
-/// 把已解析的 bundle 工具落盘到 tools_dir，每个工具一个新 UUID 目录。
-/// 返回 (写入数量, 新 id 列表)。失败立即返回 Err（已写入的工具保留在磁盘）。
+/// 导入统计：区分新建与更新（同一 bundle 多次导入时，按 sourceId 命中已有工具则
+/// 更新而非重复新建）。`created` 是新建的目录 UUID 列表（需追加到 order.json）。
+#[derive(Debug, Default)]
+struct ImportStats {
+    created: Vec<String>,
+    updated: usize,
+}
+
+impl ImportStats {
+    fn total(&self) -> usize {
+        self.created.len() + self.updated
+    }
+}
+
+/// 把已解析的 bundle 工具落盘到 tools_dir。**upsert 语义**：按 bundle 工具的
+/// `sourceId` 匹配现有工具——命中则覆盖该目录（全量覆盖 tool.json + help.md），
+/// 未命中才新建一个 UUID 目录。这样同一 bundle 多次导入不会重复生成工具。
+///
+/// 覆盖规则（全量覆盖）：
+/// - tool.json：用 bundle 的 meta 序列化，剥掉 id（目录名）和 order（order.json）。
+///   sourceId 确保落盘：bundle 无则新建时用目录 UUID，命中时保留现有的。
+/// - help.md：直接用 bundle 内容覆盖。
+/// 失败立即返回 Err（已写入的工具保留在磁盘）。
 async fn write_imported_tools(
     tools_dir: &Path,
     parsed: &crate::pure::ParseResult,
-) -> Result<(usize, Vec<String>), String> {
-    let mut count = 0;
-    let mut new_ids: Vec<String> = vec![];
-    for t in &parsed.tools {
-        let id = tool_io::new_tool_id();
-        let dir = tools_dir.join(&id);
-        tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
-        let mut meta = serde_json::to_value(&t.meta).map_err(|e| e.to_string())?;
-        if let Some(o) = meta.as_object_mut() {
-            o.remove("id"); // id 在目录名，不存进 json
-            o.remove("order"); // 排序由 order.json 索引管理，不存进各 tool.json
+) -> Result<ImportStats, String> {
+    // 1. 扫现有工具，建 sourceId → 目录 UUID 映射（命中判定）。
+    let existing = crate::tools::scan_tools(tools_dir).await;
+    let mut by_source: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for t in &existing.tools {
+        if let Some(sid) = &t.meta.source_id {
+            by_source.insert(sid.clone(), t.meta.id.clone());
         }
-        let pretty = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
+    }
+
+    let mut stats = ImportStats::default();
+    for t in &parsed.tools {
+        // 2. 决定目标目录：bundle 的 sourceId 命中现有 → 复用；否则新建。
+        let (target_id, is_new) = match t.meta.source_id.as_ref().and_then(|sid| by_source.get(sid)) {
+            Some(existing_id) => (existing_id.clone(), false),
+            None => (tool_io::new_tool_id(), true),
+        };
+        let dir = tools_dir.join(&target_id);
+        tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
+
+        // 3. tool.json：全量覆盖（bundle meta），剥掉 id/order，确保 sourceId 落盘。
+        let mut meta_v = serde_json::to_value(&t.meta).map_err(|e| e.to_string())?;
+        if let Some(o) = meta_v.as_object_mut() {
+            o.remove("id"); // id 体现在目录名
+            o.remove("order"); // 排序由 order.json 索引管理
+            // bundle 无 sourceId 时兜底：新建→用目录UUID；命中→保留现有的。
+            if o.get("sourceId").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).is_none() {
+                let sid = if is_new {
+                    target_id.clone()
+                } else {
+                    // 命中现有（by_source 命中说明现有有 sourceId），取回现有的。
+                    existing
+                        .tools
+                        .iter()
+                        .find(|e| e.meta.id == target_id)
+                        .and_then(|e| e.meta.source_id.clone())
+                        .unwrap_or_else(tool_io::new_source_id)
+                };
+                o.insert("sourceId".into(), serde_json::json!(sid));
+            }
+        }
+        let pretty = serde_json::to_string_pretty(&meta_v).map_err(|e| e.to_string())?;
         tokio::fs::write(dir.join("tool.json"), format!("{}\n", pretty))
             .await
             .map_err(|e| e.to_string())?;
+        // 4. help.md：全量覆盖。
         tokio::fs::write(dir.join("help.md"), &t.help_markdown)
             .await
             .map_err(|e| e.to_string())?;
-        new_ids.push(id);
-        count += 1;
+
+        if is_new {
+            stats.created.push(target_id);
+        } else {
+            stats.updated += 1;
+        }
     }
-    Ok((count, new_ids))
+    Ok(stats)
 }
 
 // ── quick ───────────────────────────────────────────────────────────────────
@@ -691,7 +757,7 @@ pub async fn pty_cwd(
 
 #[cfg(test)]
 mod tests {
-    use super::validate_tool_id;
+    use super::*;
 
     #[test]
     fn tool_id_accepts_normal_slug() {
@@ -719,5 +785,166 @@ mod tests {
     #[test]
     fn tool_id_rejects_empty() {
         assert!(validate_tool_id("").is_err());
+    }
+
+    // ── write_imported_tools upsert 语义 ─────────────────────────────────────
+    // 用 ParseResult + BundleTool 直接构造，绕过文件对话框。
+
+    /// 构造一个带 sourceId 的 ParseResult（单工具）。
+    fn bundle_with(source_id: Option<&str>, name: &str, help: &str) -> crate::pure::ParseResult {
+        let mut meta_json = serde_json::json!({ "name": name, "icon": "★" });
+        if let Some(sid) = source_id {
+            meta_json["sourceId"] = serde_json::json!(sid);
+        }
+        let meta = crate::pure::parse_tool_meta(&meta_json, "bundle-id");
+        crate::pure::ParseResult {
+            tools: vec![crate::types::BundleTool {
+                meta,
+                help_markdown: help.into(),
+            }],
+            error: None,
+        }
+    }
+
+    /// 在 tools_dir 下预置一个已有工具目录（含 tool.json + help.md）。
+    async fn seed_tool(tools_dir: &Path, dir_id: &str, source_id: Option<&str>, name: &str) {
+        let dir = tools_dir.join(dir_id);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let mut json = serde_json::json!({ "name": name, "icon": "★" });
+        if let Some(sid) = source_id {
+            json["sourceId"] = serde_json::json!(sid);
+        }
+        let pretty = serde_json::to_string_pretty(&json).unwrap();
+        tokio::fs::write(dir.join("tool.json"), format!("{}\n", pretty))
+            .await
+            .unwrap();
+        tokio::fs::write(dir.join("help.md"), "# old\n").await.unwrap();
+    }
+
+    fn tmp() -> tempfile::TempDir {
+        tempfile::TempDir::new().unwrap()
+    }
+
+    #[tokio::test]
+    async fn import_creates_when_no_match() {
+        let _d = tmp();
+        let dir = _d.path();
+        // 空 tools_dir + bundle（带 sourceId="src-1"）
+        let parsed = bundle_with(Some("src-1"), "Git", "# Git");
+        let stats = write_imported_tools(dir, &parsed).await.unwrap();
+        assert_eq!(stats.created.len(), 1, "no match → create");
+        assert_eq!(stats.updated, 0);
+        assert_eq!(stats.total(), 1);
+        // 工具目录被创建，help.md 与 tool.json 落盘
+        let new_id = &stats.created[0];
+        let help = tokio::fs::read_to_string(dir.join(new_id).join("help.md"))
+            .await
+            .unwrap();
+        assert_eq!(help, "# Git");
+        // bundle 自带 sourceId 时保留（这是匹配键，下次导入靠它命中）
+        let json: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(dir.join(new_id).join("tool.json")).await.unwrap())
+                .unwrap();
+        assert_eq!(json["sourceId"], serde_json::json!("src-1"));
+    }
+
+    #[tokio::test]
+    async fn import_updates_when_source_id_matches() {
+        let _d = tmp();
+        let dir = _d.path();
+        // 预置一个已有工具，sourceId="src-1"，目录 UUID = "existing-uuid"
+        seed_tool(dir, "existing-uuid", Some("src-1"), "OldName").await;
+        // bundle 同 sourceId="src-1"，但 name/help 变了
+        let parsed = bundle_with(Some("src-1"), "NewName", "# new help");
+        let stats = write_imported_tools(dir, &parsed).await.unwrap();
+        assert_eq!(stats.created.len(), 0, "match → no new dir");
+        assert_eq!(stats.updated, 1);
+        // 目录数不变（仍是 existing-uuid，未新建第二个）
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+            .collect();
+        entries.sort();
+        assert_eq!(entries, vec!["existing-uuid".to_string()]);
+        // tool.json 的 name 被全量覆盖为 NewName
+        let json: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(dir.join("existing-uuid").join("tool.json")).await.unwrap())
+                .unwrap();
+        assert_eq!(json["name"], "NewName");
+        // help.md 被覆盖
+        let help = tokio::fs::read_to_string(dir.join("existing-uuid").join("help.md"))
+            .await
+            .unwrap();
+        assert_eq!(help, "# new help");
+        // sourceId 保留为现有值 src-1
+        assert_eq!(json["sourceId"], "src-1");
+    }
+
+    #[tokio::test]
+    async fn import_mixed_create_and_update() {
+        let _d = tmp();
+        let dir = _d.path();
+        // 预置 sourceId="src-1" 的工具
+        seed_tool(dir, "existing-uuid", Some("src-1"), "OldName").await;
+        // bundle 两工具：src-1（匹配）+ src-2（不匹配）
+        let mut parsed = bundle_with(Some("src-1"), "NewName", "# a");
+        parsed.tools.push(crate::types::BundleTool {
+            meta: crate::pure::parse_tool_meta(
+                &serde_json::json!({ "name": "B", "icon": "★", "sourceId": "src-2" }),
+                "bundle-id-b",
+            ),
+            help_markdown: "# b".into(),
+        });
+        let stats = write_imported_tools(dir, &parsed).await.unwrap();
+        assert_eq!(stats.created.len(), 1, "src-2 not found → create");
+        assert_eq!(stats.updated, 1, "src-1 found → update");
+        assert_eq!(stats.total(), 2);
+    }
+
+    #[tokio::test]
+    async fn import_bundle_without_source_id_creates_and_assigns_one() {
+        // bundle 工具无 sourceId（首次导入老 bundle）→ 新建，并兜底生成 sourceId。
+        let _d = tmp();
+        let dir = _d.path();
+        let parsed = bundle_with(None, "Git", "# Git");
+        let stats = write_imported_tools(dir, &parsed).await.unwrap();
+        assert_eq!(stats.created.len(), 1);
+        let new_id = &stats.created[0];
+        let json: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(dir.join(new_id).join("tool.json")).await.unwrap())
+                .unwrap();
+        // 无 sourceId 时兜底用目录 UUID（非空、合法值）
+        assert_eq!(json["sourceId"], serde_json::json!(new_id));
+    }
+
+    #[tokio::test]
+    async fn import_same_bundle_twice_does_not_duplicate() {
+        // 端到端回归：同一 bundle 导两次 → 第二次命中第一次建的（sourceId）→ 更新。
+        let _d = tmp();
+        let dir = _d.path();
+        let parsed1 = bundle_with(Some("src-1"), "Git", "# v1");
+        let stats1 = write_imported_tools(dir, &parsed1).await.unwrap();
+        assert_eq!(stats1.created.len(), 1);
+        let first_id = stats1.created[0].clone();
+
+        // 第二次：同 sourceId="src-1"，help 变了
+        let parsed2 = bundle_with(Some("src-1"), "Git", "# v2");
+        let stats2 = write_imported_tools(dir, &parsed2).await.unwrap();
+        assert_eq!(stats2.created.len(), 0, "second import must not create");
+        assert_eq!(stats2.updated, 1, "second import must update");
+        // 仍是同一个目录，help 被刷新
+        let help = tokio::fs::read_to_string(dir.join(&first_id).join("help.md"))
+            .await
+            .unwrap();
+        assert_eq!(help, "# v2");
+        // 全局只有一个工具目录
+        let count = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .count();
+        assert_eq!(count, 1);
     }
 }

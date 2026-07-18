@@ -199,7 +199,7 @@ export default function App() {
     }
     const res = await api.bundle.importConfirm();
     if ('error' in res) await alertDialog(`导入失败: ${res.error}`);
-    else await alertDialog(`已导入 ${res.count} 个工具。`);
+    else await alertDialog(`已导入 ${res.count} 个工具（新建 ${res.created}，更新 ${res.updated}）。`);
   };
 
   // Each panel's element is built once and used in exactly one place: docked

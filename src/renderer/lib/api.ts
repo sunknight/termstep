@@ -78,7 +78,10 @@ export const api = {
         | { canceled: false; count: 0; error: string }
       >('tools_import', { dryRun: true }),
     importConfirm: () =>
-      invoke<{ count: number } | { error: string }>('tools_import', { dryRun: false }),
+      invoke<{ count: number; created: number; updated: number } | { error: string }>(
+        'tools_import',
+        { dryRun: false },
+      ),
   },
   refreshMd: () => invoke('refresh_md'),
   fetchMdPreview: (url: string) =>

@@ -37,5 +37,6 @@ export function parseToolMeta(raw: unknown, id: string): ToolMeta {
     meta.autoUpdateMinutes = o.autoUpdateMinutes;
   }
   if (o.useRemote === true) meta.useRemote = true;
+  if (typeof o.sourceId === 'string' && o.sourceId.trim()) meta.sourceId = o.sourceId.trim();
   return meta;
 }

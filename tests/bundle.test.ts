@@ -37,6 +37,20 @@ describe('serializeTools / parseToolsBundle round-trip', () => {
     const res = parseToolsBundle(JSON.stringify(serializeTools(original, 'now')));
     expect(res.tools[0].meta.useRemote).toBe(true);
   });
+
+  it('round-trips sourceId (跨导入去重的稳定匹配键)', () => {
+    const original = [tool('git', 'Git', '# Git', { sourceId: 'src-abc-123' })];
+    const res = parseToolsBundle(JSON.stringify(serializeTools(original, 'now')));
+    expect(res.tools[0].meta.sourceId).toBe('src-abc-123');
+  });
+
+  it('sourceId 缺省时不出现（undefined 字段不序列化）', () => {
+    const original = [tool('git', 'Git', '# Git')];
+    const json = JSON.stringify(serializeTools(original, 'now'));
+    expect(json).not.toContain('sourceId');
+    const res = parseToolsBundle(json);
+    expect(res.tools[0].meta.sourceId).toBeUndefined();
+  });
 });
 
 describe('parseToolsBundle — error handling', () => {

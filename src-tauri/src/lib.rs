@@ -51,6 +51,9 @@ pub fn run() {
                 // （索引存的是迁移后的 UUID 目录名）。
                 let _ = tool_io::migrate_to_uuid_ids_blocking(&tools_dir);
                 let _ = tool_io::migrate_order_to_index_blocking(&tools_dir);
+                // 给存量工具补 sourceId（跨导入去重的稳定匹配键）。只动 tool.json
+                // 内容，放最后，UUID/order 迁移之后。
+                let _ = tool_io::migrate_add_source_id_blocking(&tools_dir);
                 let td = tools_dir.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Ok(mut entries) = tokio::fs::read_dir(&td).await {

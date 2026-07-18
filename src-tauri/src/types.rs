@@ -26,6 +26,10 @@ pub struct ToolMeta {
     pub auto_update_minutes: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_remote: Option<bool>,
+    /// 稳定来源标识（UUID v4）。跨导入不变：同一 bundle 再次导入时按它匹配已有
+    /// 工具决定更新 vs 新建，而非每次生成新目录。区别于 `id`（物理目录名）。
+    #[serde(skip_serializing_if = "Option::is_none", rename = "sourceId")]
+    pub source_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

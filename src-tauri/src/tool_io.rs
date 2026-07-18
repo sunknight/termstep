@@ -59,6 +59,13 @@ pub fn new_tool_id() -> String {
     Uuid::new_v4().to_string()
 }
 
+/// 生成稳定来源标识（sourceId）：UUID v4。与 `id`（物理目录名）解耦——
+/// 目录可因迁移/重命名/导入而换名，但 sourceId 跨导入不变，是「同一个工具」
+/// 的匹配键。语义独立，便于将来 decouple（例如 sourceId 与目录名不同）。
+pub fn new_source_id() -> String {
+    Uuid::new_v4().to_string()
+}
+
 /// 把 tools_dir 下所有"非 UUID"目录就地重命名为 UUID。
 /// 幂等：已是合法 UUID（含版本位校验）的跳过；单个 rename 失败只跳过并告警，
 /// 不阻断其它迁移或启动。返回是否至少改了一个目录。
@@ -285,6 +292,56 @@ pub fn migrate_order_to_index_blocking(tools_dir: &Path) -> bool {
         }
     }
     false
+}
+
+/// 给所有缺失 `sourceId` 的工具补一个（幂等）。sourceId 是跨导入的稳定匹配键：
+/// 有了它，同一 bundle 再次导入时按 sourceId 命中已有工具→更新，而非每次新建。
+///
+/// 时序：在 UUID / order 迁移之后调用（只读改 tool.json 内容，不碰目录名/索引）。
+/// 幂等：已有 sourceId 的工具跳过。单个 tool.json 读写失败只跳过并告警，不阻断。
+/// 返回是否至少改了一个文件。
+pub fn migrate_add_source_id_blocking(tools_dir: &Path) -> bool {
+    let entries = match std::fs::read_dir(tools_dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    let mut changed = false;
+    for entry in entries.flatten() {
+        let filetype = match entry.file_type() {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        if !filetype.is_dir() {
+            continue;
+        }
+        let json_path = entry.path().join("tool.json");
+        let raw = match std::fs::read_to_string(&json_path) {
+            Ok(s) => s,
+            Err(_) => continue, // 无 tool.json 的目录跳过
+        };
+        let mut v: serde_json::Value = match serde_json::from_str(&raw) {
+            Ok(v) => v,
+            Err(_) => continue, // 损坏的 tool.json 跳过，不破坏
+        };
+        let already_has = v
+            .get("sourceId")
+            .and_then(|s| s.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        if already_has {
+            continue;
+        }
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert("sourceId".into(), serde_json::json!(new_source_id()));
+            if let Ok(pretty) = serde_json::to_string_pretty(&v) {
+                match std::fs::write(&json_path, format!("{}\n", pretty)) {
+                    Ok(()) => changed = true,
+                    Err(e) => eprintln!("migrate_add_source_id: write {} failed: {}", json_path.display(), e),
+                }
+            }
+        }
+    }
+    changed
 }
 
 /// 迁移完成标志文件名（相对 configs_dir）。存在即代表迁移已成功完成，可安全跳过。
@@ -719,5 +776,89 @@ mod tests {
             dir.join("configs").join(MIGRATION_MARKER).exists(),
             "marker written even when nothing to move"
         );
+    }
+
+    // ── new_source_id ──────────────────────────────────────────────────────────
+    #[test]
+    fn new_source_id_is_uuid() {
+        assert!(is_uuid(&new_source_id()));
+    }
+
+    #[test]
+    fn new_source_id_is_unique() {
+        assert_ne!(new_source_id(), new_source_id());
+    }
+
+    // ── migrate_add_source_id_blocking ─────────────────────────────────────────
+    fn write_tool_json(dir: &Path, id: &str, json: &str) {
+        let t = dir.join(id);
+        std::fs::create_dir_all(&t).unwrap();
+        std::fs::write(t.join("tool.json"), json).unwrap();
+    }
+
+    #[test]
+    fn migrate_add_source_id_adds_for_missing() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 两个工具都无 sourceId
+        write_tool_json(dir, "11111111-1111-4111-8111-111111111111", r#"{"name":"A"}"#);
+        write_tool_json(dir, "22222222-2222-4222-8222-222222222222", r#"{"name":"B"}"#);
+
+        let changed = migrate_add_source_id_blocking(dir);
+        assert!(changed, "should report it added sourceId");
+
+        for id in ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"] {
+            let v: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(dir.join(id).join("tool.json")).unwrap()).unwrap();
+            let sid = v.get("sourceId").and_then(|s| s.as_str()).unwrap();
+            assert!(is_uuid(sid), "sourceId must be a UUID: {}", sid);
+            assert_eq!(v["name"], if id.starts_with("1111") { "A" } else { "B" });
+        }
+    }
+
+    #[test]
+    fn migrate_add_source_id_is_idempotent() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        let existing = "33333333-3333-4333-8333-333333333333";
+        // 已有 sourceId 的工具
+        write_tool_json(dir, existing, r#"{"name":"A","sourceId":"src-already"}"#);
+
+        let changed = migrate_add_source_id_blocking(dir);
+        assert!(!changed, "already has sourceId → skip");
+        // sourceId 不被覆盖
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join(existing).join("tool.json")).unwrap()).unwrap();
+        assert_eq!(v["sourceId"], "src-already");
+    }
+
+    #[test]
+    fn migrate_add_source_id_skips_empty_value() {
+        // sourceId 存在但是空串 → 视为缺失，补一个新的。
+        let _dir = tmp();
+        let dir = _dir.path();
+        write_tool_json(dir, "44444444-4444-4444-8444-444444444444", r#"{"name":"A","sourceId":""}"#);
+
+        let changed = migrate_add_source_id_blocking(dir);
+        assert!(changed, "empty sourceId → treat as missing");
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.join("44444444-4444-4444-8444-444444444444").join("tool.json")).unwrap(),
+        )
+        .unwrap();
+        let sid = v.get("sourceId").and_then(|s| s.as_str()).unwrap();
+        assert!(!sid.is_empty(), "must be refilled with non-empty UUID");
+        assert!(is_uuid(sid));
+    }
+
+    #[test]
+    fn migrate_add_source_id_skips_dir_without_tool_json() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 一个只有 help.md 没有 tool.json 的目录（损坏/手工建）→ 跳过不崩
+        std::fs::create_dir_all(dir.join("stray")).unwrap();
+        std::fs::write(dir.join("stray").join("help.md"), "x").unwrap();
+
+        let changed = migrate_add_source_id_blocking(dir);
+        assert!(!changed, "no tool.json → nothing to do");
     }
 }

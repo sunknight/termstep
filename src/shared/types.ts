@@ -52,6 +52,10 @@ export interface ToolMeta {
   // fetched remote copy (requires mdUrl), false/omitted = the local help.md.
   // Set by the editor's 本地/远程 tab (the checked one is the effective source).
   useRemote?: boolean;
+  // 稳定来源标识（UUID v4）。跨导入不变：同一 bundle 再次导入时按它匹配已有
+  // 工具决定更新 vs 新建。区别于 `id`（物理目录名=存储位置）。由后端在首次
+  // 导入/迁移时生成并写进 tool.json，前端只读不写。
+  sourceId?: string;
 }
 
 export interface Tool {
