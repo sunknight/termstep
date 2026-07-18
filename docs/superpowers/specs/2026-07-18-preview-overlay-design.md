@@ -10,9 +10,10 @@
 用**弹层（modal overlay）**方式实现预览，复用现有 `.modal-overlay` + `.modal` 模式。**入口统一为工具文档（help.md）里的标准 markdown 链接**——零新语法，用户在 help.md 里正常写 `[文本](url或路径)`，点击时按链接类型自动路由到弹层预览：
 
 1. **网页浏览**：http(s) 链接（非文档后缀）→ 弹层 iframe 打开。
-2. **文档预览**：
-   - 远程文档（http(s) 且 `.md`/`.markdown`/`.txt` 结尾）→ 复用 `fetch_md_preview`（已有）→ md 渲染。
-   - 本地文档（相对/绝对路径，文档后缀结尾）→ 新 IPC `read_doc_file` → md 渲染 / `<pre>`。
+2. **文档预览**（远程与本地统一复用现有 `fetch_md_preview`）：
+   - 远程文档（http(s) 且 `.md`/`.markdown`/`.txt` 结尾）→ 直接传 URL。
+   - 本地文档（相对/绝对路径，文档后缀结尾）→ 前端基于工具 cwd 解析为绝对路径后传入。
+   - `fetch_md_preview`（后端 `fetch_remote_markdown`）已内置：本地路径分支 + 敏感守卫 + 扩展名白名单 + 2 MiB 上限，无需新 IPC。
 
 核心需求：
 - 弹层形态（全屏居中大卡，非中间区域改造，非独立浮动窗口）。
@@ -83,7 +84,7 @@ PreviewOverlay
 | `mailto:` | scheme | 系统（现有，不动） |
 | `http(s)` 且 URL pathname 以 `.md`/`.markdown`/`.txt` 结尾 | 后缀 | **远程文档预览**：`fetch_md_preview`（已有）→ md.render |
 | `http(s)` 其他 | scheme | **网页预览**：iframe |
-| 本地路径（非 http(s)）且以文档后缀结尾 | 后缀 | **本地文档预览**：`read_doc_file`（新 IPC，相对 cwd 解析）→ md.render / `<pre>` |
+| 本地路径（非 http(s)）且以文档后缀结尾 | 后缀 | **本地文档预览**：前端基于 cwd 解析为绝对路径 → `fetch_md_preview`（复用）→ md.render |
 | 本地路径其他后缀 | 后缀 | 弹层提示"暂不支持该类型" |
 | 其他 scheme | — | 阻止（现有，防 `javascript:`/`data:`） |
 
@@ -123,11 +124,12 @@ HelpPane 点 http(s) 链接（.md/.txt 后缀）
   → 弹层渲染 md
 ```
 
-**本地文档**：
+**本地文档**（复用现有 `fetch_md_preview`，前端解析 cwd）：
 ```
 HelpPane 点本地路径链接（文档后缀）
   → e.preventDefault()
-  → api.fs.readDocFile({ toolId, path })     // 新 IPC：后端相对该工具 cwd 解析 + 读内容
+  → 前端把相对路径基于 tool.cwd 解析为绝对路径（~ 展开、相对转绝对）
+  → api.tools.fetchMdPreview(absPath)        // 复用现有 IPC（后端走 is_local_path 分支）
   → setPreview({ kind:'md'|'txt', content, error })
   → 弹层渲染
 ```
@@ -205,31 +207,39 @@ if (/^https?:/i.test(href)) {
 
 `looksLikeLocalDocPath`：非 http(s)/mailto，且以 `md`/`markdown`/`txt` 结尾（忽略尾部 `#anchor`/`?query`）。
 
-## 5. 新增 IPC：读本地文档
+## 5. 复用现有 `fetch_md_preview`，后端零改动
 
-### 5.1 缺口
+### 5.1 关键发现：本地路径已被支持
 
-现有 `pick_md_file`（`commands.rs:278`）只返回路径不读内容；`fetch_md_preview` 只走远程。预览本地文档需**新建「按工具 cwd 解析路径 + 读内容」IPC**。
+`fetch_remote_markdown`（`tools.rs:235`）已内置本地路径分支（`is_local_path`）：
+- **敏感文件守卫**：`sensitive_path_reason`（`tools.rs:179`）挡凭据/系统文件。
+- **扩展名白名单**：`is_allowed_local_md`（`tools.rs:67`，`["md","markdown","txt"]`）。
+- **本地读取**：`tokio::fs::read_to_string`。
+- 远程另含 SSRF 守卫 + 禁重定向 + 2 MiB 上限 + 8s 超时。
 
-### 5.2 安全设计（必须复用现有姿态）
+因此本地文档预览**无需新 IPC**。前端只需把相对路径基于工具 cwd 解析为绝对路径（含 `~` 展开），传入 `api.tools.fetchMdPreview`。
 
-新命令 `read_doc_file(tool_id, path)`：
+### 5.2 路径解析（前端）
 
-1. **路径解析**：`path` 相对该工具的 `tool.json` 的 `cwd` 字段解析为绝对路径（`~` 展开、相对转绝对）。需从 `tools_dir` 读对应 tool 的 meta。
-2. **扩展名白名单**：复用 `allowed_md_extensions()`（`tools.rs:62-64`，`["md","markdown","txt"]`）。docx/pdf 增强时再扩充。
-3. **敏感文件守卫**：复用 `sensitive_path_reason`（`tools.rs:39-57` 黑名单 + `.ssh`/`.aws`/`.kube`/`.gnupg`/`Library/Keychains` 等目录）。解析后的绝对路径必须过守卫。
-4. **路径穿越校验**：拒绝空串、`/`、`\`、`..`（注意：相对路径含 `..` 是合法的，需在解析后判断最终绝对路径是否越出可读范围——保守做法：解析后仍过敏感守卫即可，不额外限制目录）。
-5. **大小上限**：读取前 `metadata().len()` 检查，超过 2 MiB 拒绝（防 OOM；md/txt 极少超此）。
-6. **tool_id 校验**：复用 `validate_tool_id`（拒空/`/`/`\`/`..`/NUL）。
+```ts
+function resolveDocPath(href: string, cwd: string | undefined): string {
+  if (href.startsWith('~/') || href === '~') {
+    return href;  // 后端 sensitive_path_reason 会展开 ~（但 ~ 通常非文档后缀，会被拒；约定不用 ~）
+  }
+  if (href.startsWith('/')) return href;  // 绝对路径原样
+  // 相对路径：基于 cwd 拼接
+  const base = cwd || '';
+  if (!base) return href;  // 无 cwd 无法解析，原样传（大概率读不到，报错）
+  // 简单拼接 + 规整 ./ ../（避免引入 path 库，用 URL 或手写）
+  ...
+}
+```
 
-### 5.3 IPC 契约（遵循 §5.1 四步）
+约定：不处理 `~`（文档极少放 home 根，且后端守卫会拒）。绝对路径原样。相对路径基于 cwd 拼接。
 
-1. `src/shared/types.ts` 加 `IPC.fs.readDocFile: 'fs:readDocFile'`。
-2. `commands.rs` 加 `#[tauri::command] read_doc_file(tool_id, path) -> {content, kind, error}`（kind ∈ md/markdown/txt）。
-3. `lib.rs` `generate_handler!` 注册。
-4. `api.ts` 加 `api.fs.readDocFile({ toolId, path })`。
+### 5.3 不新增 IPC 契约
 
-返回 `kind` 让前端决定用 md 渲染还是 `<pre>`（txt 用 pre，md/markdown 用 render）。
+无需改 `types.ts` / `commands.rs` / `lib.rs` 的 IPC 契约。仅 `tauri.conf.json` 的 CSP 改动（§7.1）。
 
 ## 6. 交互细节
 
@@ -268,18 +278,13 @@ iframe 加载不经 Rust fetch（浏览器直接请求），SSRF 守卫不适用
 
 | 文件 | 改动 |
 |------|------|
-| `src/renderer/App.tsx` | 加 `preview` state + 末尾渲染 `PreviewOverlay`；向 `HelpPane` 注入 `onOpenWeb`/`onOpenRemoteDoc`/`onOpenLocalDoc` |
+| `src/renderer/App.tsx` | 加 `preview` state + 末尾渲染 `PreviewOverlay`；向 `HelpPane` 注入 `onOpenWeb`/`onOpenDoc` |
 | `src/renderer/components/PreviewOverlay.tsx`（新） | 统一预览弹层：web/md/txt 三种 body + 极简工具栏 + 加载/错误态 |
-| `src/renderer/components/HelpPane.tsx` | `HelpPane.tsx:181-191` 改为按类型路由（http 文档/http 网页/mailto/本地文档） |
-| `src/renderer/lib/api.ts` | 加 `api.fs.readDocFile` |
-| `src/shared/types.ts` | 加 `IPC.fs.readDocFile` |
-| `src-tauri/src/commands.rs` | 加 `read_doc_file` 命令（解析 cwd + 安全守卫 + 读内容） |
-| `src-tauri/src/tools.rs` | 可能需把 `allowed_md_extensions`/`sensitive_path_reason` 改为 `pub(crate)` 供 commands 复用 |
-| `src-tauri/src/lib.rs` | `generate_handler!` 注册 `read_doc_file` |
+| `src/renderer/components/HelpPane.tsx` | `HelpPane.tsx:181-191` 改为按类型路由（http 文档/http 网页/mailto/本地文档），本地路径基于 cwd 解析 |
 | `src/renderer/styles.css` | `.preview-modal` 尺寸 + iframe/md/pre body 样式 |
 | `src-tauri/tauri.conf.json` | CSP 加 `frame-src 'self' https: http:` |
 
-**不动**：`pty.rs`、`TerminalView.tsx`、`termRegistry.ts`、中间终端区域、终端切换逻辑、`fetch_md_preview`（远程文档直接复用）。
+**不动**：`pty.rs`、`TerminalView.tsx`、`termRegistry.ts`、中间终端区域、终端切换逻辑、`commands.rs`、`tools.rs`、`lib.rs`、`types.ts`、`api.ts`（本地/远程文档完全复用 `fetch_md_preview`）。
 
 ## 9. 与被替代的 tab 方案的对比
 
