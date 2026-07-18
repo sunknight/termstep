@@ -23,7 +23,7 @@ pub fn merge_tool_json(existing: &Value, patch: &Value) -> Value {
         }
     }
     // 裁掉被清空的 optional 字段（空字符串 = 清空）
-    for k in &["cwd", "tmux", "mdUrl"] {
+    for k in &["cwd", "tmux", "mdUrl", "group"] {
         if merged.get(*k).and_then(|v| v.as_str()) == Some("") {
             merged.remove(*k);
         }
@@ -238,6 +238,9 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
     if let Some(sid) = trim_str_field(o, "sourceId") {
         meta.source_id = Some(sid);
     }
+    if let Some(g) = trim_str_field(o, "group") {
+        meta.group = Some(g);
+    }
     meta
 }
 
@@ -304,6 +307,22 @@ mod tests {
         assert!(m.get("useRemote").is_none());
     }
 
+    #[test]
+    fn merge_prunes_cleared_group() {
+        let existing = json!({"name":"A","group":"前端"});
+        let patch = json!({"group":""});
+        let m = merge_tool_json(&existing, &patch);
+        assert!(m.get("group").is_none(), "cleared group must be pruned");
+    }
+
+    #[test]
+    fn merge_keeps_group_when_set() {
+        let existing = json!({"name":"A"});
+        let patch = json!({"group":"后端"});
+        let m = merge_tool_json(&existing, &patch);
+        assert_eq!(m["group"], "后端");
+    }
+
     // ── build_md_append（对偶 buttonBlock append 行为，body 原样追加不再包裹）──
     #[test]
     fn append_empty_body_is_noop() {
@@ -362,6 +381,25 @@ mod tests {
     fn meta_drops_blank_init_commands() {
         let m = parse_tool_meta(&json!({"initCommands":["","","  "]}), "x");
         assert_eq!(m.init_commands, None);
+    }
+
+    #[test]
+    fn meta_parses_group() {
+        let m = parse_tool_meta(&json!({"name":"A","group":"前端"}), "x");
+        assert_eq!(m.group.as_deref(), Some("前端"));
+    }
+
+    #[test]
+    fn meta_drops_blank_group() {
+        // 空串/纯空白 group 视为缺失 → None
+        let m = parse_tool_meta(&json!({"name":"A","group":"   "}), "x");
+        assert_eq!(m.group, None);
+    }
+
+    #[test]
+    fn meta_group_defaults_none() {
+        let m = parse_tool_meta(&json!({"name":"A"}), "x");
+        assert_eq!(m.group, None);
     }
 
     // ── scan_tool_risks（导入预检）──────────────────────────────────────────────
