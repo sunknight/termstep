@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock, buildMdAppend } from '../src/shared/buttonBlock';
+import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock, buildMdAppend, substituteCwd } from '../src/shared/buttonBlock';
 
 describe('parseButtonLine', () => {
   it('command only -> label is the command', () => {
@@ -363,5 +363,67 @@ describe('buttons comment lines (# at line start)', () => {
     const html = renderButtonsBlock('// a visible note\nls');
     expect(html).toContain('class="cmd-text"');
     expect(html).toContain('a visible note');
+  });
+});
+
+describe('substituteCwd', () => {
+  it('replaces @/ with cwd when rootDir absent', () => {
+    expect(substituteCwd('cd @/a', undefined, '/p')).toBe('cd /p/a');
+  });
+
+  it('replaces multiple @/ occurrences', () => {
+    expect(substituteCwd('ls @/x @/y', undefined, '/p')).toBe('ls /p/x /p/y');
+  });
+
+  it('trailing @/ keeps the slash from original', () => {
+    expect(substituteCwd('cd @/', undefined, '/p')).toBe('cd /p/');
+  });
+
+  it('does not replace standalone @ (git HEAD shorthand)', () => {
+    expect(substituteCwd('git show @', undefined, '/p')).toBe('git show @');
+  });
+
+  it('does not replace @~1 (git rebase)', () => {
+    expect(substituteCwd('git rebase @~1', undefined, '/p')).toBe('git rebase @~1');
+  });
+
+  it('does not replace @ not followed by /', () => {
+    expect(substituteCwd('npm --prefix @ run build', undefined, '/p')).toBe('npm --prefix @ run build');
+  });
+
+  it('does not replace @/ in the middle of a word', () => {
+    expect(substituteCwd('echo me@/x', undefined, '/p')).toBe('echo me@/x');
+  });
+
+  it('rootDir takes priority over cwd', () => {
+    expect(substituteCwd('cd @/a', '/srv/api', '/p')).toBe('cd /srv/api/a');
+  });
+
+  it('empty string rootDir falls back to cwd', () => {
+    expect(substituteCwd('cd @/a', '', '/p')).toBe('cd /p/a');
+  });
+
+  it('whitespace-only rootDir falls back to cwd', () => {
+    expect(substituteCwd('cd @/a', '  ', '/p')).toBe('cd /p/a');
+  });
+
+  it('both empty -> ~', () => {
+    expect(substituteCwd('cd @/a', undefined, undefined)).toBe('cd ~/a');
+  });
+
+  it('both empty string -> ~', () => {
+    expect(substituteCwd('cd @/a', '', '')).toBe('cd ~/a');
+  });
+
+  it('cwd with ~ kept verbatim for shell to expand', () => {
+    expect(substituteCwd('cd @/a', undefined, '~/proj')).toBe('cd ~/proj/a');
+  });
+
+  it('rootDir with ~ kept verbatim', () => {
+    expect(substituteCwd('cd @/a', '~/api', '/p')).toBe('cd ~/api/a');
+  });
+
+  it('trailing slash on anchor is trimmed', () => {
+    expect(substituteCwd('cd @/a', '/srv/', undefined)).toBe('cd /srv/a');
   });
 });

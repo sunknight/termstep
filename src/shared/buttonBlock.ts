@@ -223,3 +223,24 @@ export function renderButtonsJsonBlock(code: string, opts?: { isRemote?: boolean
     .join('');
   return `<div class="cmd-buttons">${items}</div>`;
 }
+
+// 解析 @/ 占位符的锚点：优先级 rootDir > cwd > ~。
+// 返回不含尾斜杠的锚点（或 ~）；@/ 自带一个 /，拼接不重复。
+// 不展开 ~：锚点可能是 ~/proj，原样交给目标 shell 展开（远端工具时为远端家目录）。
+function resolveAnchor(rootDir?: string, cwd?: string): string {
+  const r = rootDir?.trim();
+  if (r) return r.replace(/\/+$/, '');
+  const c = cwd?.trim();
+  if (c) return c.replace(/\/+$/, '');
+  return '~';
+}
+
+// 把命令里的「工具根」占位符 @/ 替换成工具锚点（rootDir > cwd > ~）。
+// 只替换 @ 这一个字符：@/ 里的 / 由原文保留，故尾部 @/ 会变成 {anchor}/。
+// 触发规则：@ 紧跟一个 /（排除独立 @、@~1、@ 后接空格等 git 语义），且 @ 左侧
+// 非字母/数字/下划线（排除 me@/x 这类紧贴单词的 @）。锚点为空时吐 ~，让 shell
+// 自己展开家目录（远程工具时为远端家目录）。
+export function substituteCwd(command: string, rootDir?: string, cwd?: string): string {
+  const base = resolveAnchor(rootDir, cwd);
+  return command.replace(/(?<![A-Za-z0-9_])@(?=\/)/g, base);
+}
