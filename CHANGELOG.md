@@ -1,0 +1,123 @@
+# Changelog
+
+> 版本变动说明。条目按版本倒序（最新在上），日期为该版本号引入提交的日期。
+> 历史版本（v0.1.0 ~ v0.9.2）当时无 git tag，边界依据 `package.json` 的 `version` 字段首次出现的提交切分；此后新版本以 git tag 为准。
+
+## [0.9.3] - 2026-07-18
+### Added
+- 弹层式网页浏览+文档预览 (0.9.3)
+- `version:set` 自动生成 CHANGELOG 条目 + `--tag` 一键发布（改版本文件 + commit + 打 tag）。
+
+### Fixed
+- 本地文档预览展开 ~ 路径（文件系统不识别 ~）
+
+## [0.9.2] - 2026-07-17
+### Added
+- 工具文档长内容分节折叠 + TOC 导航：帮助页长文档自动按 H2 分节折叠，配目录跳转。
+### Changed
+- 折叠 H2 去边框/padding，与未折叠文档样式一致，加大顶部留白。
+### Fixed
+- 工具保存内容无变化时跳过写入，避免无意义的版本控制提交。
+
+## [0.9.1] - 2026-07-16
+### Added
+- 配置版本控制（git）：在 `configs/` 上做本地 git 快照，每次保存自动提交；每工具有独立配置记录历史。
+### Changed
+- 去掉工具详情工具栏按钮的图标，节省宽度。
+### Fixed
+- 深度安全审查修复：SSRF 防护 / 越权 / 竞态 / 注入防护。
+
+## [0.9.0] - 2026-07-16
+### Added
+- 界面现代化重新设计：深浅主题切换 + 全新应用图标。
+
+## [0.8.3] - 2026-07-14
+- 版本号整理，无面向用户的新功能。
+
+## [0.8.2] - 2026-07-14
+### Added
+- ⌘/Ctrl+点击命令按钮复制到剪贴板。
+### Fixed
+- `scan_tools` 不再读取 `useRemote:false` 的 mdUrl，修复 macOS「访问下载文件夹」弹窗。
+
+## [0.8.1] - 2026-07-13
+### Added
+- 添加帮助按钮与应用内帮助文档。
+
+## [0.8.0] - 2026-07-13
+### Changed
+- 快速添加改为任意 markdown 块原样追加。
+
+## [0.7.3] - 2026-07-07
+### Added
+- 工具排序功能。
+### Fixed
+- 触控板手势下的拖拽排序与 peek 关闭问题。
+
+## [0.7.2] - 2026-07-07
+### Changed
+- 使用 UUID 生成工具 ID（解决导入同名冲突）。
+
+## [0.7.1] - 2026-07-07
+### Fixed
+- 路径穿越漏洞；增强 Mutex 容错处理（中毒锁跳过）。
+
+## [0.7.0] - 2026-07-07
+### Added
+- 通用应用打包脚本（universal dmg）。
+
+## [0.5.0] - 2026-07-07
+### Changed
+- 移除 Electron（src/main、src/preload、configs、依赖全部清理），Tauri 迁移完成。
+### Fixed
+- userData 路径 + 更新检查 TLS（迁移后修复）。
+- 为所有 HTTP 请求加浏览器 User-Agent（Cloudflare 403）。
+- 「检查更新」按钮无反应。
+
+## [0.4.0] - 2026-07-06
+### Added
+- 浮动工具列表去掉管理按钮；支持读取本地 mdUrl 文件、右侧栏宽度可调。
+- Tauri v2 后端从零搭建（4 个阶段）：
+  - 阶段1：scaffold（Cargo.toml / tauri.conf.json / Vite 接线 / 图标源纳入 git）。
+  - 阶段2：低风险模块（types/pure/updater/tools/cwd/tool_io/watcher/seed + 注册 24 命令 + 渲染端 IPC 层，34 个调用点改造）。
+  - 阶段3：PTY 服务（portable-pty，6 个微妙行为 + generation guard 解决重启竞态）+ tmux 模块。
+  - 阶段4：原生 macOS 菜单 + 检查更新菜单项。
+
+## [0.3.0] - 2026-07-06
+### Added
+- 快速添加按钮、剪贴板 IPC、错误边界。
+- 检查更新功能（全栈）：semver 比较 + manifest 解析 + 状态机（超时/防重入/去重）+ UpdateBadge 徽章/popover + sidebar 底部「检查更新」按钮。
+
+## [0.2.0] - 2026-07-02
+### Changed
+- 正式改名为 TermStep。
+- buttons 块支持 `// text` 作为纯文本标签。
+- 优化折叠内容。
+
+## [0.1.0] - 2026-06-30
+### Added
+- 核心 MVP（Electron 架构）：
+  - 工具配置解析器（带默认值与校验）+ 工具目录扫描器。
+  - buttons / buttons-json markdown 扩展：` ```buttons ` 围栏渲染可点击命令按钮。
+  - buttons-json 参数化按钮：`{{name}}` 占位符弹表单，参数值 POSIX shell 转义，支持 hint/options/default/required。
+  - 持久化 xterm 终端（每工具一个，懒加载 spawn + 输出流）。
+  - 工具文件监听（ToolManager）+ IPC handlers / preload api / seed。
+  - 侧栏工具列表（切换）+ 应用内编辑器（help markdown + tool 元数据）+ 新建/删除/排序。
+  - 帮助 markdown 渲染 + 可点击命令按钮 + 快捷命令下拉。
+- 应用打磨：自定义应用图标（终端提示符）+ `npm run icon` 脚本 + 原生应用菜单 + About 面板。
+- 左右栏可折叠。
+### Fixed
+- 打包修复：登录 shell `-l` 启动（修复打包版 PATH 缺失）/ 未设 locale 回退 UTF-8（修复中文问号）/ 补全 TERM=xterm-256color、COLORTERM。
+
+---
+
+## 说明
+
+- **没有 v0.6.0**：版本号直接从 0.5.0 跳到 0.7.0。
+- **无 git tag**：版本边界完全依据 `package.json` 的 `version` 字段首次出现的提交切分，已逐个核对一致。
+- 仅列用户可感知的功能/修复，略去纯文档与内部 chore 提交。
+
+## 维护约定
+
+- 每次升版本号（`npm run version:set <x.y.z>`）或打 git tag 时，脚本自动在顶部追加新版本条目（从 git log 提取并分类）；加 `--tag` 时同时执行 git commit + 打 tag。
+- 版本号切分依据：以最近 git tag 为下界，无 tag 时回退到上一个版本号的引入提交。
