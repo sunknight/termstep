@@ -306,7 +306,23 @@ npm run deploy
 
 ### 4.2 链接与外部资源
 
-普通 markdown 链接 `[文档](https://...)` 可用（TermStep 会用系统浏览器打开）。适合放：项目 wiki、API 文档、设计文档、issue tracker 链接。
+帮助页里**两种可点的东西职责不同**：`buttons`/`buttons-json` 围栏 = shell 命令（粘进终端执行）；普通 markdown 链接 `[文字](href)` = 文档/网页/邮件（按 href 形式在应用内预览或打开）。**不要把 URL 放进 buttons 围栏**——那只把 URL 当 shell 命令粘进终端（报 "command not found"）。
+
+markdown 链接的点击行为由 href 形式自动判断（v0.9.3+，零新语法）：
+
+| href 形式 | 行为 |
+|-----------|------|
+| `http(s)://...` + `.md`/`.markdown`/`.txt` | 应用内**文档预览**（拉取并渲染成 md；`.txt` 以纯文本 `<pre>` 显示）|
+| `http(s)://...` 其他 | 应用内**网页预览**（iframe 弹层）；站点拒绝内嵌（GitHub/Google 等 `X-Frame-Options`）时用弹层上「↗ 在浏览器打开」走系统浏览器 |
+| 本地路径 + `.md`/`.markdown`/`.txt`（如 `docs/arch.md`）| 应用内**本地文档预览**，**相对路径基于工具 cwd（= 项目根）解析** |
+| `file://...` + 文档后缀 | 同上，本地文档预览 |
+| `mailto:` | 系统**邮件客户端** |
+| 本地非文档后缀（`.pdf`/`.png`...） | 不支持（点击被忽略）|
+| 其他 scheme（`javascript:`/`data:`/`tel:`...）| 阻止（安全）|
+
+适合用 markdown 链接放进帮助页的：项目文档（README/AGENTS.md/设计文档/CHANGELOG）、API 文档（本地或线上）、issue tracker / wiki、部署 runbook。**文档后缀白名单**：`.md`/`.markdown`/`.txt`；远程文档走 SSRF/大小/超时守卫，本地文档走敏感路径守卫（`.ssh`/`.aws` 等被拒），所以文档放项目根或 `docs/` 下最安全。
+
+> 注意：预览是「读」的——链接进去的文档用于阅读，**可交互的命令按钮只放在主帮助页**（预览弹层里的 buttons 不可执行）。
 
 ---
 

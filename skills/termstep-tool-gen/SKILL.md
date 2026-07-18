@@ -1,6 +1,6 @@
 ---
 name: termstep-tool-gen
-description: "Generate TermStep artifacts for the current project: a help page (.md with buttons/buttons-json fenced blocks) AND/OR an importable tool bundle JSON (TermStep 导入格式) that can be one-click imported. Triggers when user asks to create TermStep tool config, generate command buttons for a project, write a clickable command cheatsheet, or '为这个项目生成 TermStep 工具/帮助页/命令按钮'. 两类产物：(a) termstep-help.md 帮助页片段；(b) termstep-tool.json 可直接导入 TermStep 的工具 bundle（默认走远程配置模式，mdUrl 指向 help.md 绝对路径）。必须把项目的主要脚本（package.json scripts / Makefile targets 等）及其使用方法写进帮助文档主体。"
+description: "Generate TermStep artifacts for the current project: a help page (.md with buttons/buttons-json fenced blocks) AND/OR an importable tool bundle JSON (TermStep 导入格式) that can be one-click imported. Triggers when user asks to create TermStep tool config, generate command buttons for a project, write a clickable command cheatsheet, or '为这个项目生成 TermStep 工具/帮助页/命令按钮'. 两类产物：(a) termstep-help.md 帮助页片段；(b) termstep-tool.json 可直接导入 TermStep 的工具 bundle（默认走远程配置模式，mdUrl 指向 help.md 绝对路径）。必须把项目的主要脚本（package.json scripts / Makefile targets 等）及其使用方法写进帮助文档主体。帮助页也支持用 markdown 链接 `[文字](href)` 把项目需关注的文档（README/AGENTS.md/specs 等）和网页放进去，点击在应用内预览（buttons 只跑 shell 命令，URL/文档一律走 markdown 链接，绝不放进 buttons 围栏）。"
 ---
 
 # TermStep 工具生成器
@@ -29,7 +29,7 @@ description: "Generate TermStep artifacts for the current project: a help page (
 1. **确定项目根的绝对路径**（`pwd` / `git rev-parse --show-toplevel`）。bundle 里 cwd 和 mdUrl 都用绝对路径。
 2. **扫描项目**，按下面「命令挖掘规则」找命令、提炼脚本说明。**绝不编造没有证据的命令，也不编造脚本不存在的参数/行为。**
 3. **分类**命令（构建/测试/部署/数据库/Git...），缺失的分类直接省略。
-4. **生成 `termstep-help.md`**：每个分类一节，markdown 主体写脚本说明 + buttons/button-json 围栏做按钮。
+4. **生成 `termstep-help.md`**：每个分类一节，markdown 主体写脚本说明 + buttons/button-json 围栏做按钮；再加一节 `## 相关文档`，用 markdown 链接放项目需关注的文档（见「文档与网页预览」与「项目文档挖掘」）。
 5. **生成 `termstep-tool.json`**，按下文「Bundle 格式」。**关键：必须写 `sourceId`**（步骤见下「sourceId 生成与复用」）——没有它，同一 bundle 每次导入都会新建重复工具。
 6. 告诉用户两种落地方式（见「落地提示」）。
 
@@ -98,6 +98,36 @@ uuidgen    # macOS 生成 UUID，如 E1B2C3D4-5678-90AB-CDEF-1234567890AB
 
 - **buttons**：固定命令、无参数。
 - **buttons-json**：需用户填参（分支名、commit 信息、环境、文件名）。
+
+## 文档与网页预览（markdown 链接）
+
+**关键区分**：TermStep 帮助页里有两种可点的东西，职责完全不同——
+
+| 写法 | 是什么 | 点击行为 |
+|------|--------|----------|
+| `buttons` / `buttons-json` 围栏 | **shell 命令** | 粘进终端执行 |
+| 普通 markdown 链接 `[文字](href)` | **文档 / 网页 / 邮件** | 按 href 形式路由预览或打开 |
+
+**绝不把 URL 放进 buttons 围栏**——那只会把 URL 当 shell 命令粘进终端（报 "command not found"）。要打开网页/文档就用 markdown 链接。
+
+### 链接路由（由 href 形式自动判断，零新语法）
+
+| href 形式 | 行为 |
+|-----------|------|
+| `http(s)://...` 且后缀 `.md`/`.markdown`/`.txt` | 应用内**文档预览**（拉取并渲染成 md；`.txt` 以纯文本 `<pre>` 显示）|
+| `http(s)://...` 其他 | 应用内**网页预览**（iframe 弹层）；站点拒绝内嵌（GitHub/Google 等 `X-Frame-Options`）时用弹层上的「↗ 在浏览器打开」按钮走系统浏览器 |
+| 本地路径 + `.md`/`.markdown`/`.txt`（如 `docs/arch.md`）| 应用内**本地文档预览**。**相对路径基于工具 cwd（= 项目根）解析** |
+| `file://...` + 文档后缀 | 同上，本地文档预览 |
+| `mailto:` | 系统**邮件客户端** |
+| 本地非文档后缀（`.pdf`/`.png`...） | 不支持（点击被忽略）|
+| 其他 scheme（`javascript:`/`data:`/`tel:`...）| 阻止（安全）|
+
+**文档后缀白名单**：`.md` / `.markdown` / `.txt`（与后端一致）。其他后缀不会被当文档预览。
+
+**注意**：
+- 预览是「读」的——链接进去的文档用于阅读/参考，**交互按钮只放在主帮助页**（预览弹层里的 buttons 不可执行）。
+- 远程文档走 SSRF/大小/超时守卫；本地文档走敏感路径守卫（`.ssh`/`.aws` 等被拒）。文档放项目根或 `docs/` 下最安全。
+- href 带 `#anchor` 锚点不影响后缀判断，可正常用。
 
 ## Bundle 格式（生成 `termstep-tool.json`）
 
@@ -216,6 +246,28 @@ TermStep 导入格式（`src/shared/bundle.ts` 的 `ToolsBundle`）。导入后�
 - 不要编造脚本不支持的参数（如 `--force`、`--verbose`）。不确定就不写。
 - 不要给每条脚本都写一大段——常用、有坑、有参数的详写，`npm install` 这种不言自明的简写或省略。
 
+### 项目文档挖掘（链接进帮助页）
+
+TermStep 支持在帮助页里用 markdown 链接预览网页/远程文档/本地文档（见上「文档与网页预览」）。所以生成帮助页时，除了命令按钮，**还要把项目里值得关注的文档作为 markdown 链接放进一个 `## 相关文档` 节**，让用户在 TermStep 里一键打开阅读。**只链接真实存在的文档**（能 `ls`/读到的本地文件，或项目里写明的真实 URL），绝不编造链接。
+
+扫描这些来源：
+
+| 来源 | 链接形式 |
+|------|----------|
+| `README.md` / `CONTRIBUTING.md` / `CHANGELOG.md`（项目根或 `docs/`）| `[README](README.md)` —— 相对路径，基于 cwd 解析 |
+| `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` 等 agent/编辑器上下文 | `[项目约定](AGENTS.md)` |
+| `docs/` 下的设计文档 / specs / architecture | `[架构设计](docs/architecture.md)` |
+| API 文档（本地 `docs/api.md`，或项目内 OpenAPI/生成的站点 URL）| 本地用相对路径；线上站点用 http(s) 链接（网页预览）|
+| 项目 wiki / issue tracker / 官方文档站点（README 里写明的）| http(s) 链接 → 网页预览 |
+| CI / 部署说明（`.github/`、`ops/` 下的 runbook md）| 相对路径 |
+
+**怎么放**：新建一节 `## 相关文档`，用普通 markdown 列表 + 链接。不必每条都加说明，但重要的（架构、约定、runbook）加一句用途。
+
+**不要**：
+- 不要把远程文档的全文复制进帮助页——用链接让用户在应用内预览即可，避免双份维护。
+- 不要链接敏感文件（凭据、`.env`、`id_*` 等）——后端守卫会拒，且本就不该放进帮助页。
+- 不要在「相关文档」里塞 buttons——那节是阅读用的，按钮放各自的职能节。
+
 ## 生成原则
 
 1. **分节**：每个职能一个 `##` 标题（会进 TOC），每节包含「markdown 说明 + 一个 buttons 围栏」。别把所有命令堆一个围栏。
@@ -224,6 +276,7 @@ TermStep 导入格式（`src/shared/bundle.ts` 的 `ToolsBundle`）。导入后�
 4. **危险命令**（`reset --hard`、`clean -fd`、force push）：加 ` // edit`，前面放 `// ⚠️ 危险` 文本。
 5. **模板命令**（`-m ""`、需改参数）：加 ` // edit`，或用 buttons-json 让用户填参。
 6. **顶层一个 `#` 标题**，可跟一句简介（技术栈/项目类型）。
+7. **相关文档用 markdown 链接**：单独一节 `## 相关文档`，用 `[文字](href)` 链接项目文档/网页（**不是 buttons**）。本地文档用相对路径（基于 cwd），线上站点用 http(s)。见「文档与网页预览」。
 
 ## 完整示例
 
@@ -269,6 +322,16 @@ npm run typecheck   # 类型检查
 ]
 ```
 
+## 相关文档
+
+用 markdown 链接（不是 buttons），点击在应用内预览：本地文档渲染成 md、网页走 iframe。相对路径基于工具 cwd（= 项目根）解析。
+
+- [README](README.md) —— 项目介绍与快速上手
+- [AGENTS.md](AGENTS.md) —— 项目约定与历史坑点（agent 必读）
+- [架构设计](docs/architecture.md)
+- [变更记录](CHANGELOG.md)
+- [官方文档](https://example.com/docs)
+
 ## 紧急操作
 
 ```buttons
@@ -290,6 +353,9 @@ git clean -fd           // edit   # 删除未跟踪文件
 - [ ] 危险命令有 `// edit` + `// ⚠️`
 - [ ] 中文标签、动词开头、简短
 - [ ] 按职能分多个 `##` 节
+- [ ] **没有把 URL 放进 buttons 围栏**（网页/文档一律走 markdown 链接 `[文字](href)`）
+- [ ] **项目需关注的文档（README/AGENTS.md/specs 等）已作为 markdown 链接放进 `## 相关文档`**
+- [ ] 本地文档链接是相对路径（基于项目根 cwd），真实存在未编造
 
 **bundle JSON**：
 - [ ] `version: 1`、`app: "TermStep"`、`tools` 是数组
