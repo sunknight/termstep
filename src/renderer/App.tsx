@@ -11,6 +11,8 @@ import { QuickCommands } from './components/QuickCommands';
 import { Notifications } from './components/Notifications';
 import { HoverTip } from './components/HoverTip';
 import { PanelToggle } from './components/PanelToggle';
+import { PreviewOverlay } from './components/PreviewOverlay';
+import type { PreviewState, PreviewRequest } from './components/PreviewOverlay';
 import { termRegistry } from './lib/termRegistry';
 import { api } from './lib/api';
 import { confirmDialog, alertDialog } from './lib/dialog';
@@ -47,6 +49,8 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   // 配置记录 modal：null=关闭；string=per-tool（工具 id）；'__global__'=全部配置记录。
   const [recordsToolId, setRecordsToolId] = useState<string | null>(null);
+  // 预览弹层：null=关闭；否则展示网页/文档/加载中/错误态之一。
+  const [preview, setPreview] = useState<PreviewState | null>(null);
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
   const [liveCwd, setLiveCwd] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
@@ -61,6 +65,31 @@ export default function App() {
     const v = Number(localStorage.getItem('termstep:help-width'));
     return v >= HELP_MIN_WIDTH && v <= HELP_MAX_WIDTH ? v : HELP_DEFAULT_WIDTH;
   });
+
+  // 打开预览弹层。web 直接展示；doc 先 loading 再 fetch_md_preview（远程/本地统一复用）。
+  // 本地路径已由 HelpPane 基于工具 cwd 解析为绝对路径后传入 url。
+  const openPreview = async (req: PreviewRequest) => {
+    if (req.type === 'web') {
+      setPreview({ kind: 'web', url: req.url, title: req.title });
+      return;
+    }
+    setPreview({ kind: 'loading', title: req.title });
+    try {
+      const r = await api.fetchMdPreview(req.url);
+      if (r.error) {
+        setPreview({ kind: 'error', title: req.title, message: r.error });
+      } else {
+        setPreview(
+          req.isTxt
+            ? { kind: 'txt', title: req.title, content: r.markdown }
+            : { kind: 'md', title: req.title, content: r.markdown },
+        );
+      }
+    } catch (e) {
+      setPreview({ kind: 'error', title: req.title, message: String(e) });
+    }
+  };
+
   const startHelpDrag = (e: React.MouseEvent) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -214,7 +243,7 @@ export default function App() {
               <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>导出</button>
               <button title="该工具的配置记录" onClick={() => setRecordsToolId(active.meta.id)}>记录</button>
               {active.meta.useRemote && (
-                <button title="重新读取远程内容" onClick={() => api.refreshMd()}>重新读取</button>
+                <button title="重新拉取远程内容" onClick={() => api.refreshMd()}>重载</button>
               )}
               {!active.meta.useRemote && (
                 <button title="快速添加命令（追加到末尾）" onClick={() => setQuickAddOpen(true)}>添加</button>
@@ -230,6 +259,7 @@ export default function App() {
             markdown={
               active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
             }
+            onPreview={openPreview}
           />
         </>
       ) : (
@@ -320,6 +350,7 @@ export default function App() {
           toolId={recordsToolId === '__global__' ? undefined : recordsToolId}
         />
       )}
+      {preview && <PreviewOverlay state={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

@@ -7,6 +7,8 @@ import { substituteParams } from '../../shared/buttonBlock';
 import { api } from '../lib/api';
 import { copyOnModifier } from '../lib/clipboardToast';
 import { confirmDialog } from '../lib/dialog';
+import { classifyLink, isTxtPath } from '../../shared/previewLink';
+import type { PreviewRequest } from './PreviewOverlay';
 
 interface TipState {
   text: string;
@@ -24,11 +26,30 @@ interface TocEntry {
 // H2 数量达到此阈值才启用自动折叠 + TOC，避免短文档被折叠得支离破碎。
 const COLLAPSE_THRESHOLD = 3;
 
+// 预览弹层的标题：优先用链接可见文本；否则从 URL/路径取最后一段（文件名或 host）。
+function titleFor(href: string, text: string): string {
+  if (text && text !== href) return text;
+  // 取 path 最后一段；URL 取 pathname，本地路径取末段
+  try {
+    if (/^https?:\/\//i.test(href)) {
+      const u = new URL(href);
+      const seg = u.pathname.split('/').filter(Boolean).pop();
+      return seg || u.host;
+    }
+  } catch {
+    /* 非 URL，走下面 */
+  }
+  const seg = href.split('/').filter(Boolean).pop();
+  return seg || href;
+}
+
 export function HelpPane(props: {
   tool: Tool;
   activeToolId: string;
   markdown: string;
   isRemote?: boolean;
+  /** 点链接时打开预览弹层。由 App 注入；HelpPane 负责 href 分类后调对应分支。 */
+  onPreview?: (req: PreviewRequest) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastBtn = useRef<HTMLElement | null>(null);
@@ -176,17 +197,32 @@ export function HelpPane(props: {
         void runCommandChecked(props.activeToolId, command, edit, opts);
         return;
       }
-      // Markdown links: open http(s)/mailto in the system browser instead of
-      // trying to navigate the renderer.
+      // Markdown 链接：按 href 形式分类路由到预览弹层。
+      //   http(s) 文档 → 远程文档预览；http(s) 网页 → iframe 预览；
+      //   本地文档 → 基于 cwd 解析后预览；mailto → 系统；其余阻止导航。
       const anchor = (e.target as HTMLElement).closest('a') as HTMLAnchorElement | null;
       if (anchor) {
         const href = anchor.getAttribute('href') ?? '';
-        // 仅放行 http(s)/mailto，其余 scheme 一律阻止默认导航（防 javascript:/data: 等）。
-        if (/^(https?:|mailto:)/i.test(href)) {
-          e.preventDefault();
-          void api.shell.openExternal(href);
-        } else {
-          e.preventDefault(); // 非 http(s)/mailto：阻止 WebView 导航，忽略点击
+        const text = (anchor.textContent ?? '').trim() || href;
+        e.preventDefault(); // 一律阻止 WebView 默认导航
+        const c = classifyLink(href, props.tool.meta.cwd);
+        switch (c.kind) {
+          case 'web':
+            props.onPreview?.({ type: 'web', url: c.url, title: titleFor(c.url, text) });
+            return;
+          case 'remoteDoc':
+            props.onPreview?.({ type: 'doc', url: c.url, title: titleFor(c.url, text), isTxt: isTxtPath(c.url) });
+            return;
+          case 'localDoc':
+            props.onPreview?.({ type: 'doc', url: c.path, title: titleFor(c.path, text), isTxt: isTxtPath(c.path) });
+            return;
+          case 'mailto':
+            void api.shell.openExternal(href); // mailto 仍走系统邮件客户端
+            return;
+          case 'unsupported':
+          case 'blocked':
+          default:
+            return; // 已 preventDefault，忽略点击
         }
       }
     };

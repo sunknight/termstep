@@ -369,6 +369,11 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   background: var(--surface);
   /* 按钮与 chip 同属一个 flex 流，一起多行 wrap（按钮不单独成行） */
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  /* 最多 4 行，超出滚动，避免长 TOC（如某工具 8 个 H2）挤占文档区。
+     chip 行高 ≈ 26px（padding 3+3 + line-height 18 + border 2）+ 行间距 6px：
+     4 行 = 8 + 4*26 + 3*6 + 8 = 138px。 */
+  max-height: 138px;
+  overflow-y: auto;
 }
 .help-toc-chip {
   flex: 0 0 auto; max-width: 200px;
@@ -453,11 +458,8 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 .cmd-btn:hover { background: var(--accent-weak); border-color: var(--accent); }
 .cmd-btn[data-edit="1"] { border-style: dashed; }
-/* 远程订阅的按钮：来自不可信源（mdUrl 拉取的 markdown），用醒目左边框 + 警告色调
-   区分，提醒用户点击前留意命令内容。配合 HelpPane 的首次点击确认。 */
-.cmd-btn[data-remote="1"] {
-  border-left: 3px solid #e08a1e;
-}
+/* 远程订阅按钮（mdUrl 拉取的 markdown，来自不可信源）保留 data-remote 属性，
+   由 HelpPane 的首次点击确认机制负责安全提示，不再加视觉左边框。 */
 /* Plain-text row inside a `buttons` block (a `//`-prefixed line). It deliberately
    inherits the surrounding `.help` body-text style (family / size / color / weight /
    line-height) so it looks identical to a normal paragraph such as "常用命令："
@@ -821,6 +823,51 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .modal-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .modal-actions button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .modal-actions button:disabled { opacity: 0.6; cursor: default; }
+
+/* PreviewOverlay: 弹层式网页/文档预览。比其他 modal 更宽更高，沉浸式预览。
+   复用 .modal-overlay / .modal，仅增加尺寸 + 自定义工具栏/body。
+   web 用 iframe；md 复用 .help 排版（缩小字号适配弹层）；txt 用 <pre>。 */
+.preview-modal { width: 95vw; max-width: 1400px; max-height: 90vh; height: 90vh; }
+.preview-toolbar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.preview-title {
+  flex: 1 1 auto; min-width: 0; color: var(--text-2); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono);
+}
+.preview-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+.preview-ext {
+  padding: 4px 10px; font-size: 11px; cursor: pointer; color: var(--accent);
+  border: 1px solid var(--accent-border); border-radius: var(--radius-sm);
+  background: var(--surface); transition: background 0.12s, border-color 0.12s;
+}
+.preview-ext:hover { background: var(--surface-2); }
+.preview-close {
+  width: 26px; height: 26px; padding: 0; font-size: 13px; cursor: pointer;
+  color: var(--text-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); transition: background 0.12s, border-color 0.12s;
+}
+.preview-close:hover { background: var(--surface-2); color: var(--text); }
+.preview-body { flex: 1 1 auto; position: relative; overflow: hidden; min-height: 0; }
+.preview-iframe { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+.preview-scroll { width: 100%; height: 100%; overflow-y: auto; padding: 16px 20px; }
+.preview-scroll .help { font-size: 13px; }
+.preview-pre {
+  width: 100%; height: 100%; overflow: auto; margin: 0; padding: 16px 20px;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--text);
+  background: var(--surface-inset); white-space: pre-wrap; word-break: break-word;
+}
+.preview-status {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  color: var(--text-2); font-size: 13px;
+}
+.preview-error { flex-direction: column; gap: 12px; padding: 24px; }
+.preview-error-icon { font-size: 36px; opacity: 0.7; }
+.preview-error-msg {
+  max-width: 560px; text-align: center; line-height: 1.6; color: var(--text-2);
+  font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; word-break: break-word;
+}
 
 /* ParamPromptModal (reuses .modal / .modal-overlay / .modal-actions). */
 .param-modal { width: 420px; }
