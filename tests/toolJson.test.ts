@@ -50,3 +50,20 @@ describe('mergeToolJson', () => {
     expect(merged.cwd).toBe('/b');
   });
 });
+
+describe('mergeToolJson rootDir', () => {
+  it('prunes cleared rootDir (empty string)', () => {
+    const merged = mergeToolJson({ rootDir: '/srv/api' }, { rootDir: '' });
+    expect(merged.rootDir).toBeUndefined();
+  });
+
+  it('keeps rootDir when set', () => {
+    const merged = mergeToolJson({ name: 'A' }, { rootDir: '/srv/api' });
+    expect(merged.rootDir).toBe('/srv/api');
+  });
+
+  it('keeps existing rootDir when patch does not touch it', () => {
+    const merged = mergeToolJson({ name: 'A', rootDir: '/srv/api' }, { name: 'B' });
+    expect(merged.rootDir).toBe('/srv/api');
+  });
+});
