@@ -224,9 +224,10 @@ export function renderButtonsJsonBlock(code: string, opts?: { isRemote?: boolean
   return `<div class="cmd-buttons">${items}</div>`;
 }
 
-// 解析 @/ 占位符的锚点：优先级 rootDir > cwd > ~。
-// 返回不含尾斜杠的锚点（或 ~）；@/ 自带一个 /，拼接不重复。
-// 不展开 ~：锚点可能是 ~/proj，原样交给目标 shell 展开（远端工具时为远端家目录）。
+// Resolve the anchor for the @/ placeholder: priority rootDir > cwd > ~.
+// Returns the anchor without a trailing slash (or ~); @/ carries its own /, so
+// joining never doubles it. ~ is NOT expanded: the anchor may be ~/proj, which
+// is passed verbatim to the target shell (for a remote tool, that shell's home).
 function resolveAnchor(rootDir?: string, cwd?: string): string {
   const r = rootDir?.trim();
   if (r) return r.replace(/\/+$/, '');
@@ -235,12 +236,17 @@ function resolveAnchor(rootDir?: string, cwd?: string): string {
   return '~';
 }
 
-// 把命令里的「工具根」占位符 @/ 替换成工具锚点（rootDir > cwd > ~）。
-// 只替换 @ 这一个字符：@/ 里的 / 由原文保留，故尾部 @/ 会变成 {anchor}/。
-// 触发规则：@ 紧跟一个 /（排除独立 @、@~1、@ 后接空格等 git 语义），且 @ 左侧
-// 非字母/数字/下划线（排除 me@/x 这类紧贴单词的 @）。锚点为空时吐 ~，让 shell
-// 自己展开家目录（远程工具时为远端家目录）。
+// Replace the "tool root" placeholder @/ in a command with the tool anchor
+// (rootDir > cwd > ~). Only the @ character is matched and replaced; the / in
+// @/ is kept from the original, so a trailing @/ becomes {anchor}/.
+// Trigger rule: @ immediately followed by a / (this excludes standalone @,
+// @~1, @ followed by space, and other git semantics), AND @ not preceded by a
+// letter/digit/underscore (excludes me@/x where @ clings to a word). When the
+// anchor is empty, emit ~ and let the shell expand the home directory itself
+// (for remote tools, the remote home). Uses a function replacement so that $ in
+// the anchor (e.g. /tmp/$$) is inserted literally rather than being interpreted
+// as a replacement pattern ($&, $1, ...) — same reason substituteParams does.
 export function substituteCwd(command: string, rootDir?: string, cwd?: string): string {
   const base = resolveAnchor(rootDir, cwd);
-  return command.replace(/(?<![A-Za-z0-9_])@(?=\/)/g, base);
+  return command.replace(/(?<![A-Za-z0-9_])@(?=\/)/g, () => base);
 }

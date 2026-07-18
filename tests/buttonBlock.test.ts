@@ -426,4 +426,8 @@ describe('substituteCwd', () => {
   it('trailing slash on anchor is trimmed', () => {
     expect(substituteCwd('cd @/a', '/srv/', undefined)).toBe('cd /srv/a');
   });
+
+  it('anchor containing $ is inserted literally (no replacement-pattern interpretation)', () => {
+    expect(substituteCwd('cd @/a', '/tmp/$$', undefined)).toBe('cd /tmp/$$/a');
+  });
 });
