@@ -81,3 +81,30 @@ describe('parseToolMeta', () => {
     expect(m.group).toBeUndefined();
   });
 });
+
+describe('parseToolMeta rootDir', () => {
+  it('parses rootDir when present', () => {
+    const m = parseToolMeta({ name: 'A', rootDir: '/srv/api' }, 'x');
+    expect(m.rootDir).toBe('/srv/api');
+  });
+
+  it('trims rootDir whitespace', () => {
+    const m = parseToolMeta({ name: 'A', rootDir: '  /srv/api  ' }, 'x');
+    expect(m.rootDir).toBe('/srv/api');
+  });
+
+  it('drops blank rootDir', () => {
+    const m = parseToolMeta({ name: 'A', rootDir: '   ' }, 'x');
+    expect(m.rootDir).toBeUndefined();
+  });
+
+  it('rootDir absent -> undefined', () => {
+    const m = parseToolMeta({ name: 'A' }, 'x');
+    expect(m.rootDir).toBeUndefined();
+  });
+
+  it('rootDir with ~ kept verbatim', () => {
+    const m = parseToolMeta({ name: 'A', rootDir: '~/api' }, 'x');
+    expect(m.rootDir).toBe('~/api');
+  });
+});

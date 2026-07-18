@@ -38,6 +38,7 @@ export function EditorPane(props: {
   const [name, setName] = useState(meta.name);
   const [icon, setIcon] = useState(meta.icon);
   const [cwd, setCwd] = useState(meta.cwd ?? '');
+  const [rootDir, setRootDir] = useState(meta.rootDir ?? '');
   const [tmux, setTmux] = useState(meta.tmux ?? '');
   const [initCommands, setInitCommands] = useState((meta.initCommands ?? []).join('\n'));
   const [mdUrl, setMdUrl] = useState(meta.mdUrl ?? '');
@@ -112,6 +113,7 @@ export function EditorPane(props: {
       name,
       icon,
       cwd: cwd.trim(),
+      rootDir: rootDir.trim(),
       tmux: tmux.trim(),
       mdUrl: mdUrl.trim(),
       group: group.trim(),
@@ -206,6 +208,12 @@ export function EditorPane(props: {
           <label className="field">
             <span className="field-label">起始目录 (cwd)</span>
             <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="~" />
+          </label>
+          <label className="field">
+            <span className="field-label">
+              工具根目录 (@/) <em>留空同 cwd；按钮里 @/ 锚定此目录</em>
+            </span>
+            <input value={rootDir} onChange={(e) => setRootDir(e.target.value)} placeholder="留空同 cwd" />
           </label>
           <label className="field">
             <span className="field-label">

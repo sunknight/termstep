@@ -10,14 +10,14 @@
 
 | 主题 | 决策 |
 |---|---|
-| 语法 | `@/` —— 后跟 `/` 或行尾时触发替换（前缀形态）。对标 `~/`，记忆负担为零：`~`=家，`@`=工具根 |
+| 语法 | `@/` —— `@` 在词首位置且紧跟 `/` 时触发替换（对标 `~/`，记忆负担为零：`~`=家，`@`=工具根）。只替换 `@`，原文 `/` 保留 |
 | 锚点来源 | 新增可选 `ToolMeta.rootDir` 字段。**优先级 `rootDir > cwd > ~`**：配了 rootDir 用它，否则用 cwd，都空则吐 `~` |
 | 字段命名 | `rootDir`（明确语义：「工具根」，区别于「启动目录 cwd」） |
 | 替换层 | 渲染端 `shared/buttonBlock.ts` 新增 `substituteCwd()`；在点击执行链路上调用一次。后端**不新增 IPC** |
-| 触发条件 | **严格 `@/` 前缀形态**：`@/` 紧跟 `/`，或 `@/` 在命令末尾。孤立 `@`（如 `git show @`、`git rebase @`、`echo @file`）不替换 |
+| 触发条件 | **严格 `@/` 前缀形态**：`@` 在词首位置（左侧非字母/数字/下划线）且紧跟 `/`。孤立 `@`（如 `git show @`、`git rebase @~1`、`echo @file`）不替换 |
 | 空 rootDir + 空 cwd | 吐 `~`，让 shell 自己展开家目录（远程工具时为远端家目录） |
 | 引号内 `@/` | 无脑替换（与 `{{name}}` 参数占位符行为一致）。作者要打印字面 `@/` 就避开此写法 |
-| 替换顺序 | `substituteParams`（参数）→ 危险命令检测 → `substituteCwd`（工具根）。避免参数值里的 `@/` 被二次处理 |
+| 替换顺序 | `substituteParams`（参数）→ `substituteCwd`（工具根）→ `runCommandChecked`（内含危险命令检测）。详见 §4.6 |
 | 调用点 | `HelpPane.tsx`（2 处）+ `QuickCommands.tsx`（2 处），共 4 个 `runCommandChecked` 调用前 |
 | 后端改动 | `types.rs` + `pure.rs`（merge/serialize/parse/scan_tool_risk）加 `rootDir` 字段透传。**不涉及执行期**：pty spawn 仍用 cwd，rootDir 只给渲染端替换用 |
 | 编辑器 UI | `EditorPane` 终端 fieldset 加一个「工具根目录 (@/)」输入框，placeholder 提示「留空同 cwd」 |
@@ -56,13 +56,13 @@
 
 ## 2. 触发规则（精确）
 
-用一个正则定义「需要替换的 `@/`」：
+用一个正则定义「需要替换的 `@`」：
 
 ```
-@/   且左侧非 [A-Za-z0-9_]   且   右侧是 / 或 字符串结尾
+@   且左侧非 [A-Za-z0-9_]   且   右侧紧跟 /
 ```
 
-等价于：`@/` 出现在「词首」位置（前一个字符是空白、命令起始、或无前缀），且紧跟斜杠或位于末尾。
+只替换 `@` 这一个字符；`@/` 里的 `/` 由原文保留（故尾部 `@/` 会变成 `{anchor}/`，词中 `@/a` 会变成 `{anchor}/a`）。等价于：`@` 出现在「词首」位置（前一个字符是空白、命令起始、或无前缀），且紧跟斜杠。
 
 **替换例**（设锚点 = `/Users/x/proj`，即 rootDir 或 cwd 解析后的值）：
 
@@ -177,11 +177,13 @@ export interface ToolMeta {
 
 ```ts
 // 把命令里的「工具根」占位符 @/ 替换成工具锚点（rootDir > cwd > ~）。
-// 触发规则：@/ 紧跟斜杠或位于字符串末尾，且 @ 左侧非 [A-Za-z0-9_]。
+// 只替换 @ 这一个字符：@/ 里的 / 由原文保留，故尾部 @/ 会变成 {anchor}/。
+// 触发规则：@ 紧跟一个 /（排除独立 @、@~1、@ 后接空格等 git 语义），且 @ 左侧
+// 非字母/数字/下划线（排除 me@/x 这类紧贴单词的 @）。
 // 锚点为空时吐 ~，让 shell 自己展开家目录（远程工具时为远端家目录）。
 export function substituteCwd(command: string, rootDir?: string, cwd?: string): string {
   const base = resolveAnchor(rootDir, cwd);
-  return command.replace(/(?<![A-Za-z0-9_])@\/(?=\/|$)/g, base);
+  return command.replace(/(?<![A-Za-z0-9_])@(?=\/)/g, base);
 }
 
 function resolveAnchor(rootDir?: string, cwd?: string): string {
@@ -195,10 +197,10 @@ function resolveAnchor(rootDir?: string, cwd?: string): string {
 
 正则解释：
 - `(?<![A-Za-z0-9_])` —— `@` 左侧不能是字母/数字/下划线（排除 `foo@/x`）
-- `@\/` —— 字面 `@/`
-- `(?=\/|$)` —— 右侧必须是 `/` 或字符串结尾（即 `@/` 后要么紧跟路径分隔符，要么命令结束）
+- `@` —— 只匹配 `@` 一个字符（不消耗 `/`）
+- `(?=\/)` —— 右侧紧跟 `/`（排除 `git show @`、`@~1`、`@file` 等）
 
-注意：`@/` 自带一个 `/`，所以 `base` 去尾斜杠后拼接结果 = `base + / + ...`，不会重复。
+注意：只替换 `@`，原文的 `/` 保留，所以 `base` 去尾斜杠后 = `base + /（原文）+ ...`，不会重复。
 
 **不展开 `~`**：锚点可能是 `~/proj`，原样吐回让 shell 展开。渲染端不实现 `expand_home`（后端 `pty.rs:19` 已有对偶，无需重复）。`substituteCwd` 是纯字符串替换，不依赖任何 IPC。
 
@@ -233,9 +235,10 @@ state：`const [rootDir, setRootDir] = useState(meta.rootDir ?? '');`
 
 - `buttonBlock.ts` 的 `parseButtonLine` / `renderButtonsBlock`：`@/` 是执行期概念，按钮 label/tooltip 显示原样 `cd @/a` 即可（短、可读）。
 - `pty.rs`：拿到的是已替换好的绝对路径，无感知；spawn 仍用 cwd。
-- `dangerous.ts` 的危险命令检测：**替换前**检测原文。理由：危险模式（`rm -rf @/`）在替换前后风险一致；若替换后检测，`rm -rf @/` 变成 `rm -rf /srv/api/` 反而可能误判为「删项目目录」触发不必要的 confirm。保持替换前检测，作者写什么就检测什么。
+- `ParamPromptModal` 的实时预览：仍只过 `substituteParams`，显示作者原文（含 `@/`）。理由：与按钮 label/tooltip 一致（都显示作者写的原文），且解析后的绝对路径冗长、会喧宾夺主盖过用户正在填的参数值。预览展示作者意图，执行展示展开结果。
+- `dangerous.ts` 的危险命令检测：检测发生在 `substituteCwd` **之后**（`isDangerousCommand` 在 `runCommandChecked` 内部，而 `substituteCwd` 在调用 `runCommandChecked` 前包了一层）。**为何安全**：`isDangerousCommand` 的根级删除拦截名单是 `['/', '/*', '.', '..', '*', '~', '~/', ...]`，`@/` 与替换后的普通子路径（如 `/srv/api/`）都不在名单里，故 `rm -rf @/` 在替换前后**都不会**被误判或漏判。无需为「替换前检测」而在 4 个调用点重复 `runCommandChecked` 内的逻辑（YAGNI）。
 
-> 顺序：`substituteParams` → `isDangerousCommand` 检测 → `substituteCwd` → `runCommand`。
+> 实际顺序：`substituteParams` → `substituteCwd` → `runCommandChecked`（内含 `isDangerousCommand` 检测）→ `runCommand`。
 
 ---
 

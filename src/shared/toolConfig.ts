@@ -27,6 +27,7 @@ export function parseToolMeta(raw: unknown, id: string): ToolMeta {
   const order = Number.isFinite(orderNum) ? orderNum : 0;
   const meta: ToolMeta = { id, name, icon, order };
   if (typeof o.cwd === 'string' && o.cwd.trim()) meta.cwd = o.cwd.trim();
+  if (typeof o.rootDir === 'string' && o.rootDir.trim()) meta.rootDir = o.rootDir.trim();
   if (typeof o.shell === 'string' && o.shell.trim()) meta.shell = o.shell.trim();
   if (o.env && typeof o.env === 'object') meta.env = o.env as Record<string, string>;
   if (typeof o.tmux === 'string' && o.tmux.trim()) meta.tmux = o.tmux.trim();

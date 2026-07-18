@@ -36,6 +36,10 @@ export interface ToolMeta {
   icon: string;
   order: number;
   cwd?: string;
+  /** `@/` placeholder anchor (tool root directory). Priority rootDir > cwd > ~.
+   *  When empty/absent, @/ falls back to cwd, then to ~ (shell-expands).
+   *  Does NOT affect pty spawn (spawn still uses cwd). */
+  rootDir?: string;
   shell?: string;
   env?: Record<string, string>;
   // tmux session name — when set, the shell execs `tmux new -A -s <name>`

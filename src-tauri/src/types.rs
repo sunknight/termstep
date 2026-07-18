@@ -12,6 +12,11 @@ pub struct ToolMeta {
     pub order: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// `@/` 占位符的锚点（工具根目录）。优先级 root_dir > cwd > ~。
+    /// 为空/缺失时退化为 cwd，再退化为 ~（shell 展开）。
+    /// **不参与 pty spawn**（spawn 仍用 cwd）；仅渲染端 substituteCwd 用。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root_dir: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shell: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

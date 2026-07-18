@@ -223,3 +223,30 @@ export function renderButtonsJsonBlock(code: string, opts?: { isRemote?: boolean
     .join('');
   return `<div class="cmd-buttons">${items}</div>`;
 }
+
+// Resolve the anchor for the @/ placeholder: priority rootDir > cwd > ~.
+// Returns the anchor without a trailing slash (or ~); @/ carries its own /, so
+// joining never doubles it. ~ is NOT expanded: the anchor may be ~/proj, which
+// is passed verbatim to the target shell (for a remote tool, that shell's home).
+function resolveAnchor(rootDir?: string, cwd?: string): string {
+  const r = rootDir?.trim();
+  if (r) return r.replace(/\/+$/, '');
+  const c = cwd?.trim();
+  if (c) return c.replace(/\/+$/, '');
+  return '~';
+}
+
+// Replace the "tool root" placeholder @/ in a command with the tool anchor
+// (rootDir > cwd > ~). Only the @ character is matched and replaced; the / in
+// @/ is kept from the original, so a trailing @/ becomes {anchor}/.
+// Trigger rule: @ immediately followed by a / (this excludes standalone @,
+// @~1, @ followed by space, and other git semantics), AND @ not preceded by a
+// letter/digit/underscore (excludes me@/x where @ clings to a word). When the
+// anchor is empty, emit ~ and let the shell expand the home directory itself
+// (for remote tools, the remote home). Uses a function replacement so that $ in
+// the anchor (e.g. /tmp/$$) is inserted literally rather than being interpreted
+// as a replacement pattern ($&, $1, ...) — same reason substituteParams does.
+export function substituteCwd(command: string, rootDir?: string, cwd?: string): string {
+  const base = resolveAnchor(rootDir, cwd);
+  return command.replace(/(?<![A-Za-z0-9_])@(?=\/)/g, () => base);
+}
