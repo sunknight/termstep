@@ -56,6 +56,8 @@ export interface ToolMeta {
   // 工具决定更新 vs 新建。区别于 `id`（物理目录名=存储位置）。由后端在首次
   // 导入/迁移时生成并写进 tool.json，前端只读不写。
   sourceId?: string;
+  // 分组名（自由文本）。空/缺失 = 未分组。仅用于侧栏展示分区，不影响执行。
+  group?: string;
 }
 
 export interface Tool {
@@ -76,6 +78,8 @@ export interface ScanError {
 export interface ScanResult {
   tools: Tool[];
   errors: ScanError[];
+  // 分组展示顺序（来自 order.json 的 groups 数组）。渲染端按此顺序画分组标题。
+  groups: string[];
 }
 
 export interface PtySpawnOpts {

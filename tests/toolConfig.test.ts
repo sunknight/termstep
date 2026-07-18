@@ -65,4 +65,19 @@ describe('parseToolMeta', () => {
     expect(parseToolMeta({ useRemote: true }, 'git').useRemote).toBe(true);
     expect(parseToolMeta({ useRemote: false }, 'git').useRemote).toBeUndefined();
   });
+
+  it('parses group', () => {
+    const m = parseToolMeta({ name: 'A', group: '前端' }, 'x');
+    expect(m.group).toBe('前端');
+  });
+
+  it('drops blank group', () => {
+    const m = parseToolMeta({ name: 'A', group: '   ' }, 'x');
+    expect(m.group).toBeUndefined();
+  });
+
+  it('group defaults undefined', () => {
+    const m = parseToolMeta({ name: 'A' }, 'x');
+    expect(m.group).toBeUndefined();
+  });
 });

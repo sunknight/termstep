@@ -3,7 +3,7 @@
 // old value of a cleared field (e.g. mdUrl) — which is the "clearing the URL
 // doesn't stick" bug. Pure so it is unit-testable and free of Electron deps.
 
-const PRUNE_WHEN_EMPTY_STRING = ['cwd', 'tmux', 'mdUrl'] as const;
+const PRUNE_WHEN_EMPTY_STRING = ['cwd', 'tmux', 'mdUrl', 'group'] as const;
 
 export function mergeToolJson(
   existing: Record<string, unknown>,

@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { useTauriEvent } from './useTauriEvent';
 
 export function useTools(): ScanResult {
-  const [result, setResult] = useState<ScanResult>({ tools: [], errors: [] });
+  const [result, setResult] = useState<ScanResult>({ tools: [], errors: [], groups: [] });
   useTauriEvent<ScanResult>('tools:changed', setResult);
   useEffect(() => {
     api.tools.list().then(setResult);

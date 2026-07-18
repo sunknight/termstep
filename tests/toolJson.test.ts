@@ -26,6 +26,16 @@ describe('mergeToolJson', () => {
     expect(merged.initCommands).toBeUndefined();
   });
 
+  it('prunes cleared group', () => {
+    const merged = mergeToolJson({ name: 'T', group: '前端' }, { group: '' });
+    expect(merged.group).toBeUndefined();
+  });
+
+  it('keeps group when set', () => {
+    const merged = mergeToolJson({ name: 'T' }, { group: '后端' });
+    expect(merged.group).toBe('后端');
+  });
+
   it('preserves existing fields the editor does not manage (e.g. env)', () => {
     const existing = { name: 'T', env: { FOO: 'bar' }, order: 2 };
     const merged = mergeToolJson(existing, { name: 'T2' });
