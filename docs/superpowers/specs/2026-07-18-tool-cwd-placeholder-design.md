@@ -17,7 +17,7 @@
 | 触发条件 | **严格 `@/` 前缀形态**：`@` 在词首位置（左侧非字母/数字/下划线）且紧跟 `/`。孤立 `@`（如 `git show @`、`git rebase @~1`、`echo @file`）不替换 |
 | 空 rootDir + 空 cwd | 吐 `~`，让 shell 自己展开家目录（远程工具时为远端家目录） |
 | 引号内 `@/` | 无脑替换（与 `{{name}}` 参数占位符行为一致）。作者要打印字面 `@/` 就避开此写法 |
-| 替换顺序 | `substituteParams`（参数）→ 危险命令检测 → `substituteCwd`（工具根）。避免参数值里的 `@/` 被二次处理 |
+| 替换顺序 | `substituteParams`（参数）→ `substituteCwd`（工具根）→ `runCommandChecked`（内含危险命令检测）。详见 §4.6 |
 | 调用点 | `HelpPane.tsx`（2 处）+ `QuickCommands.tsx`（2 处），共 4 个 `runCommandChecked` 调用前 |
 | 后端改动 | `types.rs` + `pure.rs`（merge/serialize/parse/scan_tool_risk）加 `rootDir` 字段透传。**不涉及执行期**：pty spawn 仍用 cwd，rootDir 只给渲染端替换用 |
 | 编辑器 UI | `EditorPane` 终端 fieldset 加一个「工具根目录 (@/)」输入框，placeholder 提示「留空同 cwd」 |
@@ -235,9 +235,10 @@ state：`const [rootDir, setRootDir] = useState(meta.rootDir ?? '');`
 
 - `buttonBlock.ts` 的 `parseButtonLine` / `renderButtonsBlock`：`@/` 是执行期概念，按钮 label/tooltip 显示原样 `cd @/a` 即可（短、可读）。
 - `pty.rs`：拿到的是已替换好的绝对路径，无感知；spawn 仍用 cwd。
-- `dangerous.ts` 的危险命令检测：**替换前**检测原文。理由：危险模式（`rm -rf @/`）在替换前后风险一致；若替换后检测，`rm -rf @/` 变成 `rm -rf /srv/api/` 反而可能误判为「删项目目录」触发不必要的 confirm。保持替换前检测，作者写什么就检测什么。
+- `ParamPromptModal` 的实时预览：仍只过 `substituteParams`，显示作者原文（含 `@/`）。理由：与按钮 label/tooltip 一致（都显示作者写的原文），且解析后的绝对路径冗长、会喧宾夺主盖过用户正在填的参数值。预览展示作者意图，执行展示展开结果。
+- `dangerous.ts` 的危险命令检测：检测发生在 `substituteCwd` **之后**（`isDangerousCommand` 在 `runCommandChecked` 内部，而 `substituteCwd` 在调用 `runCommandChecked` 前包了一层）。**为何安全**：`isDangerousCommand` 的根级删除拦截名单是 `['/', '/*', '.', '..', '*', '~', '~/', ...]`，`@/` 与替换后的普通子路径（如 `/srv/api/`）都不在名单里，故 `rm -rf @/` 在替换前后**都不会**被误判或漏判。无需为「替换前检测」而在 4 个调用点重复 `runCommandChecked` 内的逻辑（YAGNI）。
 
-> 顺序：`substituteParams` → `isDangerousCommand` 检测 → `substituteCwd` → `runCommand`。
+> 实际顺序：`substituteParams` → `substituteCwd` → `runCommandChecked`（内含 `isDangerousCommand` 检测）→ `runCommand`。
 
 ---
 
