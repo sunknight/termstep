@@ -24,7 +24,12 @@ const COMMON_ICONS = [
 // Local and remote stay independent; saving persists every field regardless of
 // which sub-tab is active.
 
-export function EditorPane(props: { tool: Tool; onDone: () => void }) {
+export function EditorPane(props: {
+  tool: Tool;
+  onDone: () => void;
+  /** 已有分组名（去重），供分组输入下拉选择。 */
+  existingGroups: string[];
+}) {
   const { meta } = props.tool;
   // The open tab is also the source selection: the checked (✓) tab is the
   // EFFECTIVE source — the one the tool's help will use.
@@ -37,6 +42,7 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
   const [initCommands, setInitCommands] = useState((meta.initCommands ?? []).join('\n'));
   const [mdUrl, setMdUrl] = useState(meta.mdUrl ?? '');
   const [autoUpdate, setAutoUpdate] = useState(meta.autoUpdateMinutes?.toString() ?? '');
+  const [group, setGroup] = useState(meta.group ?? '');
   const [iconOpen, setIconOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +114,7 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
       cwd: cwd.trim(),
       tmux: tmux.trim(),
       mdUrl: mdUrl.trim(),
+      group: group.trim(),
       initCommands: initList,
     };
     const mins = Number(autoUpdate);
@@ -174,9 +181,25 @@ export function EditorPane(props: { tool: Tool; onDone: () => void }) {
                   ))}
                 </div>
               )}
-            </div>
-          </div>
-        </fieldset>
+                </div>
+              </div>
+              <label className="field">
+                <span className="field-label">
+                  分组 <em>留空 = 未分组；输入新名字即新建</em>
+                </span>
+                <input
+                  list="ts-groups"
+                  value={group}
+                  onChange={(e) => setGroup(e.target.value)}
+                  placeholder="未分组"
+                />
+                <datalist id="ts-groups">
+                  {props.existingGroups.map((g) => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
+              </label>
+            </fieldset>
 
         <fieldset className="form-section">
           <legend>终端</legend>

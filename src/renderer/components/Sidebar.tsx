@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { Tool } from '../../shared/types';
+import { buildGroupedView } from '../../shared/grouping';
 import { UpdateChecker } from './UpdateChecker';
 import { SettingsSection } from './SettingsSection';
 
@@ -7,9 +8,12 @@ const MIN_WIDTH = 140;
 const MAX_WIDTH = 380;
 const DEFAULT_WIDTH = 180;
 const STORAGE_KEY = 'termstep:sidebar-width';
+const COLLAPSED_KEY = 'termstep:sidebar-collapsed-groups';
 
 export function Sidebar(props: {
   tools: Tool[];
+  /** 分组展示顺序（来自 ScanResult.groups）。 */
+  groups: string[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onReorder: (orderedIds: string[]) => void;
@@ -41,6 +45,32 @@ export function Sidebar(props: {
   const DRAG_THRESHOLD = 4;
   const dragStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const dragActiveRef = useRef(false); // 超过阈值、真正进入拖拽态
+
+  // 分组折叠态：存「已折叠」的分组名集合。默认空 = 全展开。
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const arr = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]');
+      return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : []);
+    } catch {
+      return new Set<string>();
+    }
+  });
+  const toggleGroup = (name: string) => {
+    if (props.floating) return; // 浮层恒展开
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
+  // 由 toolId 查所属分组名（用于拖拽同组守卫）。未分组返回 null。
+  const groupOf = (id: string): string | null => {
+    const t = props.tools.find((x) => x.meta.id === id);
+    return t?.meta.group ?? null;
+  };
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(width));
@@ -74,18 +104,127 @@ export function Sidebar(props: {
   const handleDrop = () => {
     const fromId = dragStartRef.current?.id ?? dragId;
     const toId = overIdRef.current ?? overId;
-    if (fromId && toId && fromId !== toId) {
-      const ids = props.tools.map((t) => t.meta.id);
-      const from = ids.indexOf(fromId);
-      const to = ids.indexOf(toId);
-      if (from >= 0 && to >= 0) {
-        ids.splice(from, 1);
-        ids.splice(to, 0, fromId);
-        props.onReorder(ids);
-      }
+    if (!fromId || !toId || fromId === toId) {
+      setDragId(null);
+      setOverId(null);
+      return;
+    }
+    // 同组守卫：跨组拖拽 no-op（跨组移动走编辑器改 group 字段）。
+    if (groupOf(fromId) !== groupOf(toId)) {
+      setDragId(null);
+      setOverId(null);
+      return;
+    }
+    const ids = props.tools.map((t) => t.meta.id);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from >= 0 && to >= 0) {
+      ids.splice(from, 1);
+      ids.splice(to, 0, fromId);
+      props.onReorder(ids);
     }
     setDragId(null);
     setOverId(null);
+  };
+
+  const renderToolRow = (t: Tool) => {
+    const id = t.meta.id;
+    const cls = [
+      id === props.activeId ? 'active' : '',
+      dragId === id ? 'dragging' : '',
+      overId === id && dragId && dragId !== id ? 'drag-over' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return (
+      <li
+        key={id}
+        data-key={id}
+        className={cls}
+        title={props.floating ? undefined : '拖动图标以排序'}
+        // 整行（含 padding 上下空白）pointerdown 即选中。不用 click——触控板「轻点
+        // 来点按」抬起时手指易横向滑动几像素，使 mousedown 与 mouseup 落在不同
+        // 元素，浏览器不合成 click → 轻点失败。pointerdown/mousedown 稳定触发，
+        // 不受抬手滑动影响，故用它选中，且覆盖整个 li（包括文字之外的空白）。
+        // 用 pointer 而非 mouse，是为了和图标手柄用同一事件流——这样图标手柄的
+        // stopPropagation 才能阻止冒泡到这里（pointer 与 mouse 是两条独立流）。
+        // 展开态的图标手柄 stopPropagation 阻止选中（图标仅拖拽）；折叠态图标不
+        // 绑 handler，pointerdown 冒泡到这里选中。
+        onPointerDown={(e) => {
+          if (e.button !== 0) return; // 仅左键
+          props.onSelect(id);
+        }}
+      >
+        {/* 图标：
+            - 展开态：仅作拖拽手柄，pointerdown stopPropagation 阻止冒泡到 <li>
+              （否则会选中），轻点图标不选中。位移超过阈值才算拖拽。
+            - 折叠态（浮层）：不可拖拽，不绑 handler，pointerdown 冒泡到 <li> 选中。
+            拖拽用 pointer 事件而非 mouse：触控板轻点的 mouseup 经常不派发，会导致
+            拖拽无法结束（见组件上方注释）。用 setPointerCapture 把后续 move/up 锁
+            定到本元素，确保 pointerup 稳定到达、拖拽可靠结束。 */}
+        <span
+          className={'icon' + (props.floating ? '' : ' drag-handle')}
+          onPointerDown={
+            props.floating
+              ? undefined
+              : (e) => {
+                  if (e.button !== 0) return; // 仅左键
+                  e.stopPropagation(); // 图标是拖拽手柄，不让 <li> 的选中冒泡上来
+                  // 捕获元素引用：pointerdown 事件结束后 e.currentTarget 会变 null，
+                  // 后续 pointerup 回调里不能再从 e 上读，必须用闭包里的 handle。
+                  const handle = e.currentTarget;
+                  const pointerId = e.pointerId;
+                  dragStartRef.current = { id, x: e.clientX, y: e.clientY };
+                  dragActiveRef.current = false;
+                  // 锁定指针：后续 move/up/cancel 都派发给本元素，即使指针移出图标。
+                  handle.setPointerCapture(pointerId);
+                  const onMove = (ev: PointerEvent) => {
+                    const s = dragStartRef.current;
+                    if (!s) return;
+                    if (!dragActiveRef.current) {
+                      const dx = ev.clientX - s.x;
+                      const dy = ev.clientY - s.y;
+                      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return; // 阈值内不算拖拽
+                      dragActiveRef.current = true; // 超过阈值 → 进入拖拽态
+                      setDragId(s.id);
+                    }
+                    // 拖拽中：用 elementFromPoint 命中指针下的 <li> 更新 drop 目标
+                    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+                    const li = el?.closest?.('li');
+                    const overKey = li?.getAttribute('data-key') ?? null;
+                    // 跨组拖拽不显示 drag-over 高亮（drop 时也会被守卫挡掉）
+                    const effectiveOver =
+                      overKey && groupOf(overKey) === groupOf(s.id) ? overKey : null;
+                    setOverId((cur) => (cur === effectiveOver ? cur : effectiveOver));
+                  };
+                  const finish = () => {
+                    handle.removeEventListener('pointermove', onMove);
+                    handle.removeEventListener('pointerup', finish);
+                    handle.removeEventListener('pointercancel', finish);
+                    try {
+                      handle.releasePointerCapture(pointerId);
+                    } catch {
+                      // pointerId 已失效（如元素已卸载）——忽略
+                    }
+                    if (dragActiveRef.current) {
+                      handleDrop(); // 真拖拽 → 执行 reorder
+                    }
+                    dragStartRef.current = null;
+                    dragActiveRef.current = false;
+                    setDragId(null);
+                    setOverId(null);
+                  };
+                  handle.addEventListener('pointermove', onMove);
+                  handle.addEventListener('pointerup', finish);
+                  handle.addEventListener('pointercancel', finish);
+                }
+          }
+        >
+          {t.meta.icon}
+        </span>
+        <span className="name">{t.meta.name}</span>
+      </li>
+    );
   };
 
   return (
@@ -99,104 +238,36 @@ export function Sidebar(props: {
       )}
       {/* 中间工具列表：唯一可滚动区域。flex:1 + min-height:0 保证在固定顶/底之间滚动。 */}
       <ul className="sidebar-list">
-        {props.tools.map((t) => {
-          const id = t.meta.id;
-          const cls = [
-            id === props.activeId ? 'active' : '',
-            dragId === id ? 'dragging' : '',
-            overId === id && dragId && dragId !== id ? 'drag-over' : '',
-          ]
-            .filter(Boolean)
-            .join(' ');
-          return (
-            <li
-              key={id}
-              data-key={id}
-              className={cls}
-              title={props.floating ? undefined : '拖动图标以排序'}
-              // 整行（含 padding 上下空白）pointerdown 即选中。不用 click——触控板「轻点
-              // 来点按」抬起时手指易横向滑动几像素，使 mousedown 与 mouseup 落在不同
-              // 元素，浏览器不合成 click → 轻点失败。pointerdown/mousedown 稳定触发，
-              // 不受抬手滑动影响，故用它选中，且覆盖整个 li（包括文字之外的空白）。
-              // 用 pointer 而非 mouse，是为了和图标手柄用同一事件流——这样图标手柄的
-              // stopPropagation 才能阻止冒泡到这里（pointer 与 mouse 是两条独立流）。
-              // 展开态的图标手柄 stopPropagation 阻止选中（图标仅拖拽）；折叠态图标不
-              // 绑 handler，pointerdown 冒泡到这里选中。
-              onPointerDown={(e) => {
-                if (e.button !== 0) return; // 仅左键
-                props.onSelect(id);
-              }}
-            >
-              {/* 图标：
-                  - 展开态：仅作拖拽手柄，pointerdown stopPropagation 阻止冒泡到 <li>
-                    （否则会选中），轻点图标不选中。位移超过阈值才算拖拽。
-                  - 折叠态（浮层）：不可拖拽，不绑 handler，pointerdown 冒泡到 <li> 选中。
-                  拖拽用 pointer 事件而非 mouse：触控板轻点的 mouseup 经常不派发，会导致
-                  拖拽无法结束（见组件上方注释）。用 setPointerCapture 把后续 move/up 锁
-                  定到本元素，确保 pointerup 稳定到达、拖拽可靠结束。 */}
-              <span
-                className={'icon' + (props.floating ? '' : ' drag-handle')}
-                onPointerDown={
-                  props.floating
-                    ? undefined
-                    : (e) => {
-                        if (e.button !== 0) return; // 仅左键
-                        e.stopPropagation(); // 图标是拖拽手柄，不让 <li> 的选中冒泡上来
-                        // 捕获元素引用：pointerdown 事件结束后 e.currentTarget 会变 null，
-                        // 后续 pointerup 回调里不能再从 e 上读，必须用闭包里的 handle。
-                        const handle = e.currentTarget;
-                        const pointerId = e.pointerId;
-                        dragStartRef.current = { id, x: e.clientX, y: e.clientY };
-                        dragActiveRef.current = false;
-                        // 锁定指针：后续 move/up/cancel 都派发给本元素，即使指针移出图标。
-                        handle.setPointerCapture(pointerId);
-                        const onMove = (ev: PointerEvent) => {
-                          const s = dragStartRef.current;
-                          if (!s) return;
-                          if (!dragActiveRef.current) {
-                            const dx = ev.clientX - s.x;
-                            const dy = ev.clientY - s.y;
-                            if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return; // 阈值内不算拖拽
-                            dragActiveRef.current = true; // 超过阈值 → 进入拖拽态
-                            setDragId(s.id);
-                          }
-                          // 拖拽中：用 elementFromPoint 命中指针下的 <li> 更新 drop 目标
-                          const el = document.elementFromPoint(ev.clientX, ev.clientY);
-                          const li = el?.closest?.('li');
-                          const overKey = li?.getAttribute('data-key') ?? null;
-                          setOverId((cur) => (cur === overKey ? cur : overKey));
-                        };
-                        const finish = () => {
-                          handle.removeEventListener('pointermove', onMove);
-                          handle.removeEventListener('pointerup', finish);
-                          handle.removeEventListener('pointercancel', finish);
-                          try {
-                            handle.releasePointerCapture(pointerId);
-                          } catch {
-                            // pointerId 已失效（如元素已卸载）——忽略
-                          }
-                          if (dragActiveRef.current) {
-                            handleDrop(); // 真拖拽 → 执行 reorder
-                          }
-                          dragStartRef.current = null;
-                          dragActiveRef.current = false;
-                          setDragId(null);
-                          setOverId(null);
-                        };
-                        handle.addEventListener('pointermove', onMove);
-                        handle.addEventListener('pointerup', finish);
-                        handle.addEventListener('pointercancel', finish);
-                      }
-                }
-              >
-                {t.meta.icon}
-              </span>
-              <span className="name">
-                {t.meta.name}
-              </span>
-            </li>
-          );
-        })}
+        {(() => {
+          const grouped = buildGroupedView(props.tools, props.groups);
+          // 只有一个非空 bucket（或全未分组）→ 平铺渲染，不画分组头（向后兼容老数据）
+          const nonEmpty = grouped.filter((g) => g.tools.length > 0);
+          const flat = nonEmpty.length <= 1;
+          if (flat) {
+            return grouped.flatMap((g) => g.tools).map((t) => renderToolRow(t));
+          }
+          return grouped.map((g) => {
+            // 空未分组不渲染（buildGroupedView 已保证，双保险）
+            if (g.isUngrouped && g.tools.length === 0) return null;
+            const isCollapsed = !props.floating && collapsed.has(g.name);
+            return (
+              <Fragment key={g.name}>
+                <li
+                  className="group-header"
+                  onClick={() => toggleGroup(g.name)}
+                  title={props.floating ? undefined : '点击折叠/展开'}
+                >
+                  <span className="caret" aria-hidden>
+                    {isCollapsed ? '▸' : '▾'}
+                  </span>
+                  <span className="group-name">{g.name}</span>
+                  <span className="group-count">{g.tools.length}</span>
+                </li>
+                {!isCollapsed && g.tools.map((t) => renderToolRow(t))}
+              </Fragment>
+            );
+          });
+        })()}
       </ul>
       {!props.floating && (
         <>

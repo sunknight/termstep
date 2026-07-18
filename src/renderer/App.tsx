@@ -42,7 +42,10 @@ function formatImportRisks(risks: { name: string; shell?: string; initCommands: 
 }
 
 export default function App() {
-  const { tools, errors } = useTools();
+  const { tools, errors, groups } = useTools();
+  const existingGroups = Array.from(
+    new Set(tools.map((t) => t.meta.group).filter((g): g is string => !!g)),
+  );
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -208,6 +211,7 @@ export default function App() {
   const sidebarContent = (
     <Sidebar
       tools={tools}
+      groups={groups}
       activeId={activeId}
       onSelect={setActiveId}
       onReorder={reorderTools}
@@ -234,7 +238,11 @@ export default function App() {
       }}
     >
       {active && editingId === active.meta.id ? (
-        <EditorPane tool={active} onDone={() => setEditingId(null)} />
+        <EditorPane
+          tool={active}
+          onDone={() => setEditingId(null)}
+          existingGroups={existingGroups}
+        />
       ) : active ? (
         <>
           {!floating && (

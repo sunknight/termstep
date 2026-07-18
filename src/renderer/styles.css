@@ -201,6 +201,29 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   pointer-events: none;
 }
 
+/* 分组标题：区别于普通工具项（不可选中、不可拖拽、无 hover 高亮）。 */
+.sidebar li.group-header {
+  padding: 10px 10px 4px;
+  cursor: default;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  gap: 6px;
+}
+.sidebar li.group-header:hover { background: transparent; color: var(--text-3); }
+.sidebar li.group-header .caret {
+  width: 1em; flex: 0 0 auto; font-size: 10px; opacity: 0.7;
+}
+.sidebar li.group-header .group-name {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sidebar li.group-header .group-count {
+  flex: 0 0 auto; opacity: 0.6; font-weight: 400;
+}
+
 /* ----------------------------------------------------------------------------
    中列：终端区域（标题栏 + 终端面板）
    ------------------------------------------------------------------------- */
