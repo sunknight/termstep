@@ -200,6 +200,21 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   border-radius: 0;
   pointer-events: none;
 }
+/* 下沿 drop 指示线：跨分组拖拽时，落在分组标题或工具行下半区表示「插入到此处之后」。
+   与上沿对称，用 ::after 而非 border/box-shadow 以避免圆角弧线与布局位移。 */
+.sidebar li.drag-over-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 0;
+  pointer-events: none;
+}
+/* 折叠的分组标题作为 drop 目标时，整行轻微高亮提示「落入此分组末尾」。 */
+.sidebar li.group-header.drag-over-bottom {
+  background: var(--accent-subtle);
+}
 
 /* 分组标题：区别于普通工具项（不可选中、不可拖拽、无 hover 高亮）。 */
 .sidebar li.group-header {

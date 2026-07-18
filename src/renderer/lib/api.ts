@@ -40,6 +40,8 @@ export const api = {
     create: (name: string) => invoke<string>('tool_create', { name }),
     del: (toolId: string) => invoke('tool_delete', { toolId }),
     reorder: (orderedIds: string[]) => invoke('tool_reorder', { orderedIds }),
+    move: (toolId: string, targetGroup: string | null, beforeId: string | null) =>
+      invoke('tool_move', { toolId, targetGroup, beforeId }),
   },
   shell: {
     openExternal: (url: string) => invoke('open_external', { url }),

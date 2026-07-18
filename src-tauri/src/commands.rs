@@ -275,6 +275,60 @@ fn emit_reordered(
     let _ = handle.emit("tools:changed", &result);
 }
 
+/// 移动工具到另一分组并调整排序。同时更新 tool.json 的 group 字段与
+/// order.json 的位置，前端零延迟收到新分组/新顺序。
+#[tauri::command]
+pub async fn tool_move(
+    handle: AppHandle,
+    tools_dir: State<'_, ToolsDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
+    watcher_state: State<'_, WatcherArc>,
+    tool_id: String,
+    target_group: Option<String>,
+    before_id: Option<String>,
+) -> Result<(), String> {
+    validate_tool_id(&tool_id)?;
+    if let Some(ref bid) = before_id {
+        validate_tool_id(bid)?;
+    }
+    let td = lock_or_recover!(&tools_dir.0).clone();
+    tool_io::tool_move(&td, &tool_id, target_group.as_deref(), before_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    // 立即生效：更新缓存里的 group 并按最新 order 重排 emit。
+    emit_moved(&handle, &watcher_state, &td, &tool_id, target_group.as_deref());
+    // 自动提交：工具分组变更只动该工具目录与 order.json。
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    let group_display = target_group.as_deref().unwrap_or("未分组");
+    try_auto_commit(
+        &vcs_state,
+        &cd,
+        &tool_pathspec(&tool_id),
+        &format!("移动工具 {} 到分组 {}", tool_id, group_display),
+    );
+    try_auto_commit(&vcs_state, &cd, "tools/order.json", "调整工具顺序");
+    Ok(())
+}
+
+fn emit_moved(
+    handle: &AppHandle,
+    watcher_state: &State<'_, WatcherArc>,
+    tools_dir: &std::path::Path,
+    tool_id: &str,
+    group_name: Option<&str>,
+) {
+    let mut tools = {
+        let s = lock_or_recover!(watcher_state);
+        s.last_tools.clone()
+    };
+    if let Some(t) = tools.iter_mut().find(|t| t.meta.id == tool_id) {
+        t.meta.group = group_name.map(|s| s.to_string());
+    }
+    let idx = tool_io::read_order_index(tools_dir);
+    emit_reordered(handle, watcher_state, tools_dir, &idx.order);
+}
+
 // ── md ──────────────────────────────────────────────────────────────────────
 #[tauri::command]
 pub async fn fetch_md_preview(url: String) -> Result<serde_json::Value, String> {

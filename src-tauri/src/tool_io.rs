@@ -237,6 +237,102 @@ pub async fn write_order_index(tools_dir: &Path, ordered_ids: &[String]) -> std:
     Ok(())
 }
 
+/// 同步读取所有工具目录的 group 字段（key = tool id，value = 分组名或 None）。
+/// 用于 tool_move 在 order.json 中定位目标分组的插入位置。不走 scan_tools
+/// 是因为后者会拉取远程 md，移动操作不需要。
+pub fn read_tool_groups(tools_dir: &Path) -> std::collections::HashMap<String, Option<String>> {
+    let mut map = std::collections::HashMap::new();
+    let entries = match std::fs::read_dir(tools_dir) {
+        Ok(e) => e,
+        Err(_) => return map,
+    };
+    for entry in entries.flatten() {
+        let filetype = match entry.file_type() {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        if !filetype.is_dir() {
+            continue;
+        }
+        let id = entry.file_name().to_string_lossy().to_string();
+        if id.is_empty() || id.contains('/') || id.contains("\\") || id.contains("..") || id.contains('\0') {
+            continue;
+        }
+        let json_path = entry.path().join("tool.json");
+        let raw = match std::fs::read_to_string(&json_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let v: serde_json::Value = match serde_json::from_str(&raw) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let group = v
+            .get("group")
+            .and_then(|g| g.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        map.insert(id, group);
+    }
+    map
+}
+
+/// 移动工具到另一个分组并调整排序。
+/// - `target_group`: Some(分组名) 或 None（未分组）。
+/// - `before_id`: Some(工具 id) 时插到该工具之前；None 时追加到目标分组末尾。
+/// 写 tool.json 的 group 字段 + 重写 order.json，失败返回 Err。
+pub async fn tool_move(
+    tools_dir: &Path,
+    tool_id: &str,
+    target_group: Option<&str>,
+    before_id: Option<&str>,
+) -> std::io::Result<()> {
+    // 1. 更新 tool.json 的 group 字段。
+    let tool_json_path = tools_dir.join(tool_id).join("tool.json");
+    let raw = tokio::fs::read_to_string(&tool_json_path).await?;
+    let mut v: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    if let Some(obj) = v.as_object_mut() {
+        if let Some(g) = target_group.map(str::trim).filter(|s| !s.is_empty()) {
+            obj.insert("group".into(), serde_json::json!(g));
+        } else {
+            obj.remove("group");
+        }
+    }
+    let pretty = serde_json::to_string_pretty(&v)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    tokio::fs::write(&tool_json_path, format!("{}\n", pretty)).await?;
+
+    // 2. 调整 order.json：先移除，再按目标位置插入。
+    let mut idx = read_order_index(tools_dir);
+    idx.order.retain(|x| x != tool_id);
+
+    let insert_pos = if let Some(bid) = before_id {
+        idx.order
+            .iter()
+            .position(|x| x == bid)
+            .unwrap_or(idx.order.len())
+    } else {
+        // 追加到目标分组末尾：找目标分组在现有顺序中的最后一个工具，插到其后。
+        let groups = read_tool_groups(tools_dir);
+        let mut last_pos: Option<usize> = None;
+        for (i, id) in idx.order.iter().enumerate() {
+            let g = if id == tool_id {
+                target_group.map(|s| s.to_string())
+            } else {
+                groups.get(id).cloned().unwrap_or(None)
+            };
+            if g.as_deref() == target_group {
+                last_pos = Some(i);
+            }
+        }
+        last_pos.map(|p| p + 1).unwrap_or(idx.order.len())
+    };
+
+    idx.order.insert(insert_pos, tool_id.to_string());
+    write_order_index(tools_dir, &idx.order).await
+}
+
 /// 若 group 非空且不在 order.json 的 groups 数组中，追加。已存在则 no-op。
 /// 由 tool_save 在写完 tool.json 后调用：编辑器保存工具时若指定了新分组名，
 /// 把它登记到 groups 索引里（展示顺序）。失败只返回 Err，由调用方决定降级。
@@ -674,6 +770,135 @@ mod tests {
         let dir = _dir.path();
         std::fs::write(dir.join("order.json"), r#"{"order":["a"]}"#).unwrap();
         assert!(read_groups(dir).is_empty());
+    }
+
+    // ── tool_move：跨分组移动 + 排序调整 ───────────────────────────────────────
+    /// 创建一个带 group 的工具目录，返回其 dir（用于断言）。
+    fn make_tool(dir: &Path, id: &str, group: Option<&str>) {
+        let t = dir.join(id);
+        std::fs::create_dir_all(&t).unwrap();
+        let mut obj = serde_json::json!({"name": id, "icon": "★"});
+        if let Some(g) = group {
+            obj["group"] = serde_json::json!(g);
+        }
+        let pretty = serde_json::to_string_pretty(&obj).unwrap();
+        std::fs::write(t.join("tool.json"), format!("{}\n", pretty)).unwrap();
+        std::fs::write(t.join("help.md"), "").unwrap();
+    }
+
+    #[tokio::test]
+    async fn tool_move_updates_group_field_in_tool_json() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        make_tool(dir, "a", Some("前端"));
+        make_tool(dir, "b", None);
+        std::fs::write(dir.join("order.json"), r#"{"order":["a","b"],"groups":["前端"]}"#).unwrap();
+
+        tool_move(dir, "b", Some("前端"), Some("a")).await.unwrap();
+
+        let raw = std::fs::read_to_string(dir.join("b").join("tool.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v.get("group").and_then(|g| g.as_str()), Some("前端"));
+    }
+
+    #[tokio::test]
+    async fn tool_move_to_ungrouped_removes_group_field() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        make_tool(dir, "a", Some("前端"));
+        make_tool(dir, "b", Some("后端"));
+        std::fs::write(
+            dir.join("order.json"),
+            r#"{"order":["a","b"],"groups":["前端","后端"]}"#,
+        )
+        .unwrap();
+
+        tool_move(dir, "a", None, None).await.unwrap();
+
+        let raw = std::fs::read_to_string(dir.join("a").join("tool.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(v.get("group").is_none(), "group field should be removed for ungrouped");
+    }
+
+    #[tokio::test]
+    async fn tool_move_before_id_inserts_before_target() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        make_tool(dir, "a", Some("前端"));
+        make_tool(dir, "b", Some("前端"));
+        make_tool(dir, "c", Some("前端"));
+        std::fs::write(dir.join("order.json"), r#"{"order":["a","b","c"],"groups":["前端"]}"#).unwrap();
+
+        // 把 c 移到 a 之前 → [c, a, b]
+        tool_move(dir, "c", Some("前端"), Some("a")).await.unwrap();
+        assert_eq!(
+            read_order_index(dir).order,
+            vec!["c".to_string(), "a".into(), "b".into()]
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_move_append_to_group_puts_after_last_of_group() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 前端：a, b；后端：c
+        make_tool(dir, "a", Some("前端"));
+        make_tool(dir, "b", Some("前端"));
+        make_tool(dir, "c", Some("后端"));
+        std::fs::write(
+            dir.join("order.json"),
+            r#"{"order":["a","b","c"],"groups":["前端","后端"]}"#,
+        )
+        .unwrap();
+
+        // 把 c 移到「前端」分组末尾 → 前端末尾即 b 之后、c 之前 → [a, b, c]，group 变前端
+        tool_move(dir, "c", Some("前端"), None).await.unwrap();
+        assert_eq!(
+            read_order_index(dir).order,
+            vec!["a".to_string(), "b".into(), "c".into()],
+            "c should remain at end position but belong to 前端"
+        );
+        let raw = std::fs::read_to_string(dir.join("c").join("tool.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v.get("group").and_then(|g| g.as_str()), Some("前端"));
+    }
+
+    #[tokio::test]
+    async fn tool_move_append_to_empty_group_inserts_at_end() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        make_tool(dir, "a", Some("前端"));
+        make_tool(dir, "b", Some("后端"));
+        // 「测试」分组已在 groups 索引但没有任何工具
+        std::fs::write(
+            dir.join("order.json"),
+            r#"{"order":["a","b"],"groups":["前端","测试","后端"]}"#,
+        )
+        .unwrap();
+
+        // 把 a 移到空分组「测试」→ 该分组无工具 → 追加到末尾
+        tool_move(dir, "a", Some("测试"), None).await.unwrap();
+        assert_eq!(
+            read_order_index(dir).order,
+            vec!["b".to_string(), "a".into()],
+            "empty target group → append at end"
+        );
+        let raw = std::fs::read_to_string(dir.join("a").join("tool.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v.get("group").and_then(|g| g.as_str()), Some("测试"));
+    }
+
+    #[test]
+    fn read_tool_groups_parses_group_map() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        make_tool(dir, "a", Some("前端"));
+        make_tool(dir, "b", None);
+        make_tool(dir, "c", Some("后端"));
+        let map = read_tool_groups(dir);
+        assert_eq!(map.get("a").and_then(|g| g.as_deref()), Some("前端"));
+        assert_eq!(map.get("b").and_then(|g| g.as_deref()), None);
+        assert_eq!(map.get("c").and_then(|g| g.as_deref()), Some("后端"));
     }
 
     // ── 端到端：保存工具时 group 字段进入 order.json.groups 并被 scan 返回 ───────

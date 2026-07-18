@@ -1,6 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { Tool } from '../../shared/types';
-import { buildGroupedView } from '../../shared/grouping';
+import { buildGroupedView, UNGROUPED } from '../../shared/grouping';
+import { buildNewOrder, isNoopTarget, resolveBeforeId, sameDropTarget } from '../../shared/sidebarDrag';
+import type { DropTarget } from '../../shared/sidebarDrag';
 import { UpdateChecker } from './UpdateChecker';
 import { SettingsSection } from './SettingsSection';
 
@@ -17,6 +19,8 @@ export function Sidebar(props: {
   activeId: string | null;
   onSelect: (id: string) => void;
   onReorder: (orderedIds: string[]) => void;
+  /** 跨分组移动：把工具移到 targetGroup（null=未分组），beforeId 为 null 时追加到分组末尾。 */
+  onMove: (toolId: string, targetGroup: string | null, beforeId: string | null) => void;
   onNew: () => void;
   onExport: () => void;
   onImport: () => void;
@@ -28,15 +32,17 @@ export function Sidebar(props: {
     const v = Number(localStorage.getItem(STORAGE_KEY));
     return v >= MIN_WIDTH && v <= MAX_WIDTH ? v : DEFAULT_WIDTH;
   });
-  // Drag-to-reorder state for the normal tool list.
+  // 拖拽状态
   const [dragId, setDragId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
-  // overId 的 ref 镜像：pointerup 回调是拖拽开始时那次渲染的闭包，读到的是旧值
-  // （null）。drop 时必须读最新值，所以用 ref 同步。
-  const overIdRef = useRef<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  // dropTarget 的 ref 镜像：pointerup 回调在拖拽开始时闭包，读不到最新 state。
+  const dropTargetRef = useRef<DropTarget | null>(null);
   useEffect(() => {
-    overIdRef.current = overId;
-  }, [overId]);
+    dropTargetRef.current = dropTarget;
+  }, [dropTarget]);
+  // 工具列表 ul 的引用：拖拽时扫描其下所有 <li> 的几何位置来计算落点，
+  // 避免依赖 elementFromPoint（会在 2px gap 上命中父容器，造成落点闪烁）。
+  const listRef = useRef<HTMLUListElement>(null);
   // 自实现拖拽，用 pointer 事件而非 mouse 事件。关键原因：触控板「轻点来点按」抬起
   // 时 mouseup 经常不被 WebKit 派发（mousedown 与 mouseup 落在不同元素，或合成缺陷），
   // 导致 mouseup 监听永不触发 → 拖拽无法结束（mousemove 一直挂着，鼠标动一下就拖）。
@@ -66,11 +72,13 @@ export function Sidebar(props: {
     });
   };
 
-  // 由 toolId 查所属分组名（用于拖拽同组守卫）。未分组返回 null。
+  // 由 toolId 查所属分组名。未分组返回 null。
   const groupOf = (id: string): string | null => {
     const t = props.tools.find((x) => x.meta.id === id);
     return t?.meta.group ?? null;
   };
+
+  const groupedView = useMemo(() => buildGroupedView(props.tools, props.groups), [props.tools, props.groups]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(width));
@@ -97,42 +105,169 @@ export function Sidebar(props: {
     document.body.style.userSelect = 'none';
   };
 
-  // Reorder the list by dropping dragId onto overId's position.
-  // 读 ref（最新值）而非 state：此函数可能由拖拽开始时那次渲染的闭包调用，state 是
-  // 旧值。dragId 取自 dragStartRef（拖拽起始记录），overId 取自 overIdRef（mousemove
-  // 同步）。
+  /** 根据指针位置计算当前 drop target。
+   *
+   * 关键设计：相邻工具之间**只能有一个落点**。实现方式是扫描滚动列表里所有
+   * 渲染出的 `<li>`（工具行 + 分组标题），把指针 Y 映射到「最近的相邻边界」，
+   * 再按边界两侧的元素决定语义。这样：
+   *  - 指针落在某工具行的上半 = 它的上边界 = 「插到此工具之前」。
+   *  - 指针落在某工具行的下半 = 下一个元素的上边界（同组下一个工具 / 下个分组标题
+   *    / 列表底）。同组下一个工具 → 「插到下一个工具之前」（=此工具之后，同一条线）；
+   *    下一个是别的分组标题 → 「追加到本分组末尾」（此工具下沿线）。
+   *  - 列表项之间 2px 的 gap 不再产生「无目标」空隙：因为它仍在某行的边界附近，
+   *    取最近的边界即可。
+   */
+  const computeDropTarget = (ev: PointerEvent): DropTarget | null => {
+    const list = listRef.current;
+    if (!list) return null;
+    const items = Array.from(list.querySelectorAll<HTMLLIElement>(':scope > li'));
+    if (items.length === 0) return null;
+    const y = ev.clientY;
+
+    // 计算每个 <li> 的上边界 Y。把指针 Y 落到「最近的上边界」所属的元素上。
+    // 同时记录其前一个兄弟（gap 边界归属判断要用）。
+    type Item = { li: HTMLLIElement; top: number; key: string | null; group: string | null };
+    const rows: Item[] = items.map((li) => {
+      const top = li.getBoundingClientRect().top;
+      return {
+        li,
+        top,
+        key: li.getAttribute('data-key'),
+        group: li.getAttribute('data-group'),
+      };
+    });
+
+    // 找到指针 Y 落在哪一行（top <= y < 下一行 top）。若 y 超出最后一行底，算最后一行。
+    let hit: Item | null = null;
+    for (let i = 0; i < rows.length; i++) {
+      const nextTop = i + 1 < rows.length ? rows[i + 1].top : Number.POSITIVE_INFINITY;
+      if (y >= rows[i].top && y < nextTop) {
+        hit = rows[i];
+        break;
+      }
+    }
+    if (!hit) {
+      // y 在第一行之上 → 命中第一行
+      hit = rows[0];
+    }
+
+    // 命中行的中点：上半归属「此行的上边界」，下半归属「下一行的上边界」。
+    const rect = hit.li.getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const useNext = y >= midY;
+
+    const resolve = (item: Item): DropTarget | null => {
+      if (item.key) {
+        return { kind: 'before-tool', id: item.key };
+      }
+      if (item.group) {
+        const groupName = item.group === UNGROUPED ? null : item.group;
+        const isCollapsed = !props.floating && collapsed.has(item.group);
+        if (!isCollapsed) {
+          const section = groupedView.find((g) => g.name === item.group);
+          if (section && section.tools.length > 0) {
+            return { kind: 'before-tool', id: section.tools[0].meta.id };
+          }
+        }
+        return { kind: 'append-group', group: groupName };
+      }
+      return null;
+    };
+
+    if (!useNext) {
+      // 上半：归属此行上边界
+      return resolve(hit);
+    }
+
+    // 下半：归属下一行的上边界。若没有下一行（最后一行）→ 该行若是工具且是本分组
+    // 最后一个 → after-tool（下沿线，落到本分组底部）。
+    const hitIdx = rows.indexOf(hit);
+    const nextRow = hitIdx + 1 < rows.length ? rows[hitIdx + 1] : null;
+    if (nextRow) {
+      const resolved = resolve(nextRow);
+      // 下一个是别的分组标题而当前是工具 → 改为「追加到当前工具所在分组末尾」，
+      // 让线画在当前工具下方（分组真正的底部），而不是下个分组的首个工具上方。
+      if (
+        hit.key &&
+        nextRow.group &&
+        resolved?.kind === 'before-tool'
+      ) {
+        const hitGroup = groupOf(hit.key);
+        const nextGroupName = nextRow.group === UNGROUPED ? null : nextRow.group;
+        if (hitGroup !== nextGroupName) {
+          return { kind: 'after-tool', id: hit.key };
+        }
+      }
+      return resolved;
+    }
+    // 最后一行下半且是工具 → after-tool（列表底部）
+    if (hit.key) {
+      return { kind: 'after-tool', id: hit.key };
+    }
+    return resolve(hit);
+  };
+
+  /** 判断把 fromId 拖到 target 是否是 no-op（结果顺序/分组不变）。
+   *  no-op 位置不显示落点指示。委托给 shared/isNoopTarget（可单测）。 */
+  const isNoop = (fromId: string, target: DropTarget): boolean => isNoopTarget(props.tools, fromId, target);
+
+  /** 执行释放：同组内走 onReorder，跨组走 onMove。 */
   const handleDrop = () => {
     const fromId = dragStartRef.current?.id ?? dragId;
-    const toId = overIdRef.current ?? overId;
-    if (!fromId || !toId || fromId === toId) {
+    const target = dropTargetRef.current;
+    if (!fromId || !target) {
       setDragId(null);
-      setOverId(null);
+      setDropTarget(null);
       return;
     }
-    // 同组守卫：跨组拖拽 no-op（跨组移动走编辑器改 group 字段）。
-    if (groupOf(fromId) !== groupOf(toId)) {
+
+    // 无意义释放：放到自己身上或自身所在位置
+    if (target.kind === 'before-tool' && target.id === fromId) {
       setDragId(null);
-      setOverId(null);
+      setDropTarget(null);
       return;
     }
-    const ids = props.tools.map((t) => t.meta.id);
-    const from = ids.indexOf(fromId);
-    const to = ids.indexOf(toId);
-    if (from >= 0 && to >= 0) {
-      ids.splice(from, 1);
-      ids.splice(to, 0, fromId);
-      props.onReorder(ids);
+    if (target.kind === 'after-tool' && target.id === fromId) {
+      setDragId(null);
+      setDropTarget(null);
+      return;
     }
+
+    const targetGroup = target.kind === 'before-tool' || target.kind === 'after-tool' ? groupOf(target.id) : target.group;
+    const fromGroup = groupOf(fromId);
+
+    if (fromGroup === targetGroup) {
+      const newOrder = buildNewOrder(props.tools, fromId, target);
+      const currentOrder = props.tools.map((t) => t.meta.id);
+      if (JSON.stringify(newOrder) !== JSON.stringify(currentOrder)) {
+        props.onReorder(newOrder);
+      }
+    } else {
+      const beforeId = resolveBeforeId(props.tools, target);
+      props.onMove(fromId, targetGroup, beforeId);
+    }
+
     setDragId(null);
-    setOverId(null);
+    setDropTarget(null);
   };
 
   const renderToolRow = (t: Tool) => {
     const id = t.meta.id;
+    const isTopTarget = dropTarget?.kind === 'before-tool' && dropTarget.id === id;
+    // 下沿指示线只在「分组真正的最底部」显示（after-tool 且其后没有同组工具）。
+    // 组内连续工具之间不画下沿线 —— 那个空隙在视觉上归属「下一个工具的上沿」，
+    // 在同一处画两条线会让人感觉有两个落点。
+    const nextId = (() => {
+      const idx = props.tools.findIndex((x) => x.meta.id === id);
+      return idx >= 0 && idx < props.tools.length - 1 ? props.tools[idx + 1].meta.id : null;
+    })();
+    const isLastInGroup = nextId === null || groupOf(nextId) !== groupOf(id);
+    const isBottomTarget = dropTarget?.kind === 'after-tool' && dropTarget.id === id && isLastInGroup;
     const cls = [
       id === props.activeId ? 'active' : '',
       dragId === id ? 'dragging' : '',
-      overId === id && dragId && dragId !== id ? 'drag-over' : '',
+      isTopTarget ? 'drag-over' : '',
+      isBottomTarget ? 'drag-over-bottom' : '',
     ]
       .filter(Boolean)
       .join(' ');
@@ -188,14 +323,12 @@ export function Sidebar(props: {
                       dragActiveRef.current = true; // 超过阈值 → 进入拖拽态
                       setDragId(s.id);
                     }
-                    // 拖拽中：用 elementFromPoint 命中指针下的 <li> 更新 drop 目标
-                    const el = document.elementFromPoint(ev.clientX, ev.clientY);
-                    const li = el?.closest?.('li');
-                    const overKey = li?.getAttribute('data-key') ?? null;
-                    // 跨组拖拽不显示 drag-over 高亮（drop 时也会被守卫挡掉）
-                    const effectiveOver =
-                      overKey && groupOf(overKey) === groupOf(s.id) ? overKey : null;
-                    setOverId((cur) => (cur === effectiveOver ? cur : effectiveOver));
+                    // 拖拽中：扫描列表 <li> 的几何位置计算落点；落点是 no-op
+                    // （拖到自己原位）时不显示指示线。
+                    let next = computeDropTarget(ev);
+                    if (next && isNoop(s.id, next)) next = null;
+                    const finalNext = next;
+                    setDropTarget((cur) => (sameDropTarget(cur, finalNext) ? cur : finalNext));
                   };
                   const finish = () => {
                     handle.removeEventListener('pointermove', onMove);
@@ -207,12 +340,12 @@ export function Sidebar(props: {
                       // pointerId 已失效（如元素已卸载）——忽略
                     }
                     if (dragActiveRef.current) {
-                      handleDrop(); // 真拖拽 → 执行 reorder
+                      handleDrop(); // 真拖拽 → 执行 reorder / move
                     }
                     dragStartRef.current = null;
                     dragActiveRef.current = false;
                     setDragId(null);
-                    setOverId(null);
+                    setDropTarget(null);
                   };
                   handle.addEventListener('pointermove', onMove);
                   handle.addEventListener('pointerup', finish);
@@ -237,23 +370,24 @@ export function Sidebar(props: {
         </div>
       )}
       {/* 中间工具列表：唯一可滚动区域。flex:1 + min-height:0 保证在固定顶/底之间滚动。 */}
-      <ul className="sidebar-list">
+      <ul className="sidebar-list" ref={listRef}>
         {(() => {
-          const grouped = buildGroupedView(props.tools, props.groups);
           // 只有一个非空 bucket（或全未分组）→ 平铺渲染，不画分组头（向后兼容老数据）
-          const nonEmpty = grouped.filter((g) => g.tools.length > 0);
+          const nonEmpty = groupedView.filter((g) => g.tools.length > 0);
           const flat = nonEmpty.length <= 1;
           if (flat) {
-            return grouped.flatMap((g) => g.tools).map((t) => renderToolRow(t));
+            return groupedView.flatMap((g) => g.tools).map((t) => renderToolRow(t));
           }
-          return grouped.map((g) => {
+          return groupedView.map((g) => {
             // 空未分组不渲染（buildGroupedView 已保证，双保险）
             if (g.isUngrouped && g.tools.length === 0) return null;
             const isCollapsed = !props.floating && collapsed.has(g.name);
+            const isGroupTarget = dropTarget?.kind === 'append-group' && dropTarget.group === (g.isUngrouped ? null : g.name);
             return (
               <Fragment key={g.name}>
                 <li
-                  className="group-header"
+                  className={`group-header${isGroupTarget ? ' drag-over-bottom' : ''}`}
+                  data-group={g.name}
                   onClick={() => toggleGroup(g.name)}
                   title={props.floating ? undefined : '点击折叠/展开'}
                 >

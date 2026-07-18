@@ -170,6 +170,10 @@ export default function App() {
   const reorderTools = async (orderedIds: string[]) => {
     await api.tool.reorder(orderedIds);
   };
+  // 跨分组移动：拖拽到别的分组时，改 group 字段并调整 order。
+  const moveTool = async (toolId: string, targetGroup: string | null, beforeId: string | null) => {
+    await api.tool.move(toolId, targetGroup, beforeId);
+  };
 
   const exportTools = async () => {
     const res = await api.bundle.export();
@@ -215,6 +219,7 @@ export default function App() {
       activeId={activeId}
       onSelect={setActiveId}
       onReorder={reorderTools}
+      onMove={moveTool}
       onNew={createTool}
       onExport={exportTools}
       onImport={importTools}
