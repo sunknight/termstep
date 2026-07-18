@@ -3,6 +3,23 @@
 > 版本变动说明。条目按版本倒序（最新在上），日期为该版本号引入提交的日期。
 > 历史版本（v0.1.0 ~ v0.9.2）当时无 git tag，边界依据 `package.json` 的 `version` 字段首次出现的提交切分；此后新版本以 git tag 为准。
 
+## [0.9.4] - 2026-07-18
+### Added
+- Sidebar 分组渲染 + 折叠 + 同组拖拽守卫；编辑器分组输入
+- buildGroupedView 纯函数（分组视图构建）
+- shared 层加 group 字段（types/toolConfig/toolJson）
+- append_group_if_new + tool_save 登记 group 到索引
+- order.json 扩展 OrderIndex 结构，新增 groups 键（向后兼容）
+- parse_tool_meta/merge_tool_json 支持 group 字段
+- ToolMeta/ScanResult 增加 group/groups 字段
+- 导入按 sourceId 去重，避免同一 bundle 重复新建工具
+
+### Changed
+- 端到端验证保存 group → 索引登记 → scan 返回 groups
+
+### Fixed
+- tool_delete/reorder 的 emit 保留 groups，避免分组索引闪失
+
 ## [0.9.3] - 2026-07-18
 ### Added
 - 弹层式网页浏览+文档预览 (0.9.3)
