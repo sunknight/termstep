@@ -260,7 +260,12 @@ pub async fn append_group_if_new(tools_dir: &Path, group: Option<&str>) -> std::
     Ok(())
 }
 
-/// 把旧「每个 tool.json 各存一个 order 字段」迁移到单一的 order.json 索引，
+/// 读 order.json 的 groups 数组（展示顺序）。供不走全量 scan 的 emit 路径
+/// （tool_delete / tool_reorder）带上 groups，避免前端在后台 scan 到达前
+/// 丢失分组索引（侧栏分组标题闪没）。缺失/损坏返回空。
+pub fn read_groups(tools_dir: &Path) -> Vec<String> {
+    read_order_index(tools_dir).groups
+}
 /// 并清理 tool.json 里的 order 字段。幂等：order.json 已存在则跳过。
 ///
 /// 时序：必须在 `migrate_to_uuid_ids_blocking` **之后**调用（索引里存的是迁移后
@@ -649,6 +654,26 @@ mod tests {
         append_group_if_new(dir, Some("前端")).await.unwrap(); // 重复 → no-op
         let idx = read_order_index(dir);
         assert_eq!(idx.groups, vec!["前端".to_string(), "后端".into()]);
+    }
+
+    #[test]
+    fn read_groups_returns_indexed_groups() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(
+            dir.join("order.json"),
+            r#"{"order":["a"],"groups":["前端","后端"]}"#,
+        )
+        .unwrap();
+        assert_eq!(read_groups(dir), vec!["前端".to_string(), "后端".into()]);
+    }
+
+    #[test]
+    fn read_groups_empty_when_missing() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(dir.join("order.json"), r#"{"order":["a"]}"#).unwrap();
+        assert!(read_groups(dir).is_empty());
     }
 
     #[tokio::test]

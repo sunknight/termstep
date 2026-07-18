@@ -191,7 +191,7 @@ pub async fn tool_delete(
         let _ = handle.emit("tools:changed", &crate::types::ScanResult {
             tools: s.last_tools.clone(),
             errors: vec![],
-            groups: vec![],
+            groups: tool_io::read_groups(&td),
         });
     }
     // 自动提交：分别记录删除目录和排序更新（各自独立提交，消息清晰）。
@@ -224,7 +224,7 @@ pub async fn tool_reorder(
     // 不等 watcher 的全量重扫（那次会重抓所有 mdUrl 的远程 md → 几秒延迟）。
     // watcher 仍会因 order.json 变化触发一次后台 scan，但前端早已拿到新顺序；
     // 后台 scan 到达时顺序一致，只是刷新了远程 md 内容，无可见回退。
-    emit_reordered(&handle, &watcher_state, &ordered_ids);
+    emit_reordered(&handle, &watcher_state, &td, &ordered_ids);
     // 自动提交：排序变更只动 order.json。
     let cd = lock_or_recover!(&configs_dir.0).clone();
     try_auto_commit(&vcs_state, &cd, "tools/order.json", "重排工具顺序");
@@ -236,6 +236,7 @@ pub async fn tool_reorder(
 fn emit_reordered(
     handle: &AppHandle,
     watcher_state: &State<'_, WatcherArc>,
+    tools_dir: &std::path::Path,
     ordered_ids: &[String],
 ) {
     let mut tools = {
@@ -269,7 +270,7 @@ fn emit_reordered(
     let result = crate::types::ScanResult {
         tools,
         errors: vec![],
-        groups: vec![],
+        groups: tool_io::read_groups(tools_dir),
     };
     let _ = handle.emit("tools:changed", &result);
 }
