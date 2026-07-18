@@ -202,6 +202,21 @@ pub fn sensitive_path_reason(p: &str) -> Option<String> {
 
 // ── fetchRemoteMarkdown（对偶 toolsScanner.ts）───────────────────────────────
 /// is_local_path: file:// 或非 http/https/data 的 URL scheme 视为本地路径。
+/// 展开 ~ 与 ~/ 为 $HOME（shell 惯例，文件系统不识别 ~）。
+/// 仅处理以 ~ 开头的整段；不处理 ~user 形式（极少见于帮助文档路径）。
+/// 无法获取 home 时原样返回（交给后续读取自然报错）。
+fn expand_tilde(p: &str) -> String {
+    if p == "~" {
+        return dirs::home_dir().map(|h| h.to_string_lossy().to_string()).unwrap_or_else(|| p.to_string());
+    }
+    if let Some(rest) = p.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return format!("{}/{}", home.display(), rest);
+        }
+    }
+    p.to_string()
+}
+
 fn is_local_path(url: &str) -> bool {
     if url.starts_with("file://") {
         return true;
@@ -234,11 +249,15 @@ pub struct FetchedMd {
 
 pub async fn fetch_remote_markdown(url: &str) -> FetchedMd {
     if is_local_path(url) {
-        let p = if let Some(stripped) = url.strip_prefix("file://") {
+        let raw = if let Some(stripped) = url.strip_prefix("file://") {
             stripped.to_string()
         } else {
             url.to_string()
         };
+        // 展开 ~ 与 ~/（shell 惯例，文件系统不认 ~）。敏感守卫内部也会展开一次，
+        // 但实际读取前必须先展开成绝对路径，否则 tokio::fs 会报 No such file。
+        // 仅展开以 ~ 开头的整段（不处理 ~user 形式，极少见于帮助文档）。
+        let p = expand_tilde(&raw);
         // 敏感守卫优先：无论扩展名，凭据/系统文件一律拒绝。
         if let Some(reason) = sensitive_path_reason(&p) {
             return FetchedMd {
@@ -883,5 +902,50 @@ mod tests {
         // 端到端：经 extract_host + is_internal_host 全链路拦截
         let h = extract_host("https://[::ffff:127.0.0.1]/x").unwrap();
         assert!(is_internal_host(&h));
+    }
+
+    // ── expand_tilde（~ 展开为 $HOME，文件系统不识别 ~）─────────────────────────
+    #[test]
+    fn expand_tilde_home_alone() {
+        let expanded = expand_tilde("~");
+        let home = dirs::home_dir().unwrap().to_string_lossy().to_string();
+        assert_eq!(expanded, home);
+    }
+
+    #[test]
+    fn expand_tilde_home_slash() {
+        let expanded = expand_tilde("~/foo/bar.md");
+        let home = dirs::home_dir().unwrap().to_string_lossy().to_string();
+        assert_eq!(expanded, format!("{}/foo/bar.md", home));
+    }
+
+    #[test]
+    fn expand_tilde_leaves_absolute_untouched() {
+        assert_eq!(expand_tilde("/abs/path.md"), "/abs/path.md");
+    }
+
+    #[test]
+    fn expand_tilde_leaves_relative_untouched() {
+        assert_eq!(expand_tilde("rel/path.md"), "rel/path.md");
+    }
+
+    #[test]
+    fn expand_tilde_does_not_handle_user_form() {
+        // ~user 不展开（约定不处理，极少见于帮助文档）
+        assert_eq!(expand_tilde("~root/x.md"), "~root/x.md");
+    }
+
+    // ── fetch_remote_markdown 本地路径（含 ~ 展开）端到端 ─────────────────────
+    #[tokio::test]
+    async fn fetch_local_with_tilde_expands_and_reads() {
+        // 在 $HOME 下建临时 md，用 ~/... 路径读取，验证 ~ 被展开。
+        let home = dirs::home_dir().unwrap();
+        let tmp = TempDir::new_in(&home).unwrap();
+        let rel = tmp.path().strip_prefix(&home).unwrap();
+        let tilde_path = format!("~/{}", rel.join("doc.md").display());
+        tokio::fs::write(home.join(rel).join("doc.md"), "# Hello").await.unwrap();
+        let r = fetch_remote_markdown(&tilde_path).await;
+        assert!(r.error.is_none(), "应成功读取，但 error = {:?}", r.error);
+        assert_eq!(r.markdown, "# Hello");
     }
 }
