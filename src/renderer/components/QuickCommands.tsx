@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { parseButtonsFromMarkdown, substituteParams, type ButtonParam } from '../../shared/buttonBlock';
+import { parseButtonsFromMarkdown, substituteParams, substituteCwd, type ButtonParam } from '../../shared/buttonBlock';
 import type { Tool, PtySpawnOpts } from '../../shared/types';
 import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
@@ -67,11 +67,12 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
     if (params && params.length > 0) {
       prompt.open({ command, edit, params }, (values) => {
         if (!values) return;
-        void runCommandChecked(a.meta.id, substituteParams(command, values), edit, opts);
+        const cmd = substituteParams(command, values);
+        void runCommandChecked(a.meta.id, substituteCwd(cmd, a.meta.rootDir, a.meta.cwd), edit, opts);
       });
       return;
     }
-    void runCommandChecked(a.meta.id, command, edit, opts);
+    void runCommandChecked(a.meta.id, substituteCwd(command, a.meta.rootDir, a.meta.cwd), edit, opts);
   };
 
   const openEditor = () => {
