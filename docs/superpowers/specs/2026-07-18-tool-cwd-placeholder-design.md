@@ -11,9 +11,9 @@
 | 主题 | 决策 |
 |---|---|
 | 语法 | `@/` —— 后跟 `/` 或行尾时触发替换（前缀形态）。对标 `~/`，记忆负担为零：`~`=家，`@`=工具根 |
-| 替换层 | 渲染端 `shared/buttonBlock.ts` 新增 `substituteCwd()`；在点击执行链路上调用一次。后端 `pure.rs` 不需要改动（不影响执行） |
+| 替换层 | 渲染端 `shared/buttonBlock.ts` 新增 `substituteCwd()`；在点击执行链路上调用一次。后端 **零改动**（不影响执行，不新增 IPC） |
 | 触发条件 | **严格 `@/` 前缀形态**：`@/` 紧跟 `/`，或 `@/` 在命令末尾。孤立 `@`（如 `git show @`、`git rebase @`、`echo @file`）不替换 |
-| 空 cwd 行为 | 退化为家目录 `~/`（与 pty spawn 时 `unwrap_or_else(home)` 行为一致）。不在按钮上报错 |
+| 空 cwd 行为 | 吐 `~`，让 shell 自己展开家目录（远程工具时为远端家目录）。与 pty spawn 时 `unwrap_or_else(home)` 殊途同归 |
 | 引号内 `@/` | 无脑替换（与 `{{name}}` 参数占位符行为一致）。作者要打印字面 `@/` 就避开此写法 |
 | 替换顺序 | `substituteParams`（参数）→ `substituteCwd`（工具根）。避免参数值里的 `@/` 被二次处理 |
 | 调用点 | `HelpPane.tsx`（2 处）+ `QuickCommands.tsx`（2 处），共 4 个 `runCommandChecked` 调用前 |
@@ -78,20 +78,26 @@
 
 ---
 
-## 3. cwd 解析
+## 3. cwd 解析：交给 shell，不自己展开
 
-替换用的 cwd 值来自 `meta.cwd`，需要做 `~` 展开（与后端 `pty.rs: expand_home` 对齐）：
+关键洞察：`@/` 替换后的命令是**粘进终端**的（`runCommand` → `term.paste()`），不是 `CommandBuilder::cwd()`。因此 shell（zsh/bash）自己会展开 `~`，渲染端**不需要也不应该**自己展开家目录。
 
-```ts
-function expandHome(p: string | undefined): string {
-  if (!p) return homedir();          // 空 cwd → 家目录
-  if (p === '~') return homedir();
-  if (p.startsWith('~/')) return homedir() + p.slice(1);
-  return p;
-}
-```
+替换规则极简：
 
-`homedir()` 在渲染端取 `api` 暴露的值，或直接用现有路径（见 §4 落地点）。**空 cwd 退化为家目录**——与 `pty.rs:118-126` 的 spawn 行为一致：pty spawn 时 cwd 空也是 fallback 到 home，按钮替换保持同一来源真相，避免「按钮跑了家目录，但新 shell 在别处」的错位。
+| `meta.cwd` | `@/` 替换为 | 例（`cd @/a`） |
+|---|---|---|
+| 空 / 缺失 | `~` | `cd ~/a` |
+| `~/proj` | `~/proj`（原样） | `cd ~/proj/a` |
+| `/Users/x/proj` | `/Users/x/proj`（原样，去尾斜杠） | `cd /Users/x/proj/a` |
+
+**为什么空 cwd 直接吐 `~` 而非展开成绝对路径**：
+
+1. **零 IPC**：渲染端不需要知道家目录是什么，直接吐 `~` 字面量。无需新增 `env:home` 或复用 `pty_cwd`。
+2. **远程场景天然正确**：对 ssh 到远端的工具，`~/` 会被**远端 shell** 展开成远端家目录——这恰是用户想要的（`@/` 在远程工具上表示远端家）。若渲染端硬展开成本地 `/Users/x`，粘到远端就是错路径。
+3. **与 pty spawn 同源**：pty spawn 时 cwd 空也 fallback 到 home（`pty.rs:122-125`）；`~` 进了 shell 也是 home。两路一致。
+4. **配置的 cwd 可能含 `~`**：用户本来就常把 cwd 配成 `~/proj`。原样吐回 `~/proj`，让 shell 统一展开，避免渲染端再实现一份 `expand_home`（后端 `pty.rs:19-31` 已有对偶实现，渲染端不必重复）。
+
+> 注：`meta.cwd` 在 spawn 时由后端 `expand_home` 展开（`pty.rs:121`），所以「空 cwd → 家」是 spawn 期的真相；`@/` 粘进终端后 shell 再展一次 `~`，殊途同归到同一个家目录。
 
 ---
 
@@ -100,11 +106,11 @@ function expandHome(p: string | undefined): string {
 ### 4.1 新增 `substituteCwd`（`src/shared/buttonBlock.ts`）
 
 ```ts
-// 把命令里的「工具根」占位符 @/ 替换成展开后的 cwd 绝对路径。
+// 把命令里的「工具根」占位符 @/ 替换成工具 meta.cwd（原样，交给 shell 展开 ~）。
 // 触发规则：@/ 紧跟斜杠或位于字符串末尾，且 @ 左侧非 [A-Za-z0-9_]。
-// 空 cwd 退化为家目录（与 pty spawn 行为一致）。
+// 空 cwd → 吐 ~，让 shell 自己展开家目录（远程工具时为远端家目录）。
 export function substituteCwd(command: string, cwd: string | undefined): string {
-  const base = expandHome(cwd).replace(/\/+$/, ''); // 去尾斜杠，@/ 自带 /
+  const base = (cwd && cwd.trim()) ? cwd.replace(/\/+$/, '') : '~'; // 去尾斜杠；空 → ~
   return command.replace(/(?<![A-Za-z0-9_])@\/(?=\/|$)/g, base);
 }
 ```
@@ -116,15 +122,7 @@ export function substituteCwd(command: string, cwd: string | undefined): string 
 
 注意：`@/` 自带一个 `/`，所以 `base` 去尾斜杠后拼接结果 = `base + / + ...`，不会重复。
 
-`expandHome` 复用 `previewLink.ts: resolveDocPath` 里同款的 `~` 展开逻辑——但那里是原样返回，这里需要真正展开。需要在渲染端拿到家目录路径。
-
-**家目录来源**：渲染端没有直接的 `os.homedir()`。两个选项：
-- (a) 新增 IPC `env:home` 暴露后端 `dirs::home_dir()`
-- (b) 复用 `meta.cwd` 未配置时已有的 fallback——但渲染端不知道 home
-
-**决策：走 (a)**，新增一个极轻量的 IPC `env:home` 返回家目录字符串。理由：`@/` 替换、未来的路径展示都可能用；后端 `dirs::home_dir()` 已是依赖，零成本。但**仅当确实需要时才调**（即 cwd 为空或 `~/` 开头时）——多数情况 cwd 已配置，不需要查 home。
-
-> **简化**：若想避免新增 IPC，可以让 `substituteCwd` 接收「已展开的 cwd 绝对路径」而非 `meta.cwd` 原值，由调用方负责展开。但调用方（HelpPane/QuickCommands）同样拿不到 home，问题没消失。所以仍需 IPC。这是本设计唯一的后端改动（一行命令）。
+**不展开 `~`**：cwd 可能是 `~/proj`，原样吐回让 shell 展开。渲染端不实现 `expand_home`（后端 `pty.rs:19` 已有对偶，无需重复）。这是本设计**零后端改动**的关键——`substituteCwd` 是纯字符串替换，不依赖任何 IPC。
 
 ### 4.2 调用点（4 处）
 
@@ -158,9 +156,11 @@ export function substituteCwd(command: string, cwd: string | undefined): string 
 4. 不替换孤立 `@`：`substituteCwd('git show @', '/p')` → `'git show @'`
 5. 不替换 `@~`：`substituteCwd('git rebase @~1', '/p')` → `'git rebase @~1'`
 6. 不替换词中：`substituteCwd('echo me@/x', '/p')` → `'echo me@/x'`
-7. 空 cwd 退化家目录：`substituteCwd('cd @/a', undefined)` → `'cd <home>/a'`
-8. cwd 带 `~`：`substituteCwd('cd @/a', '~/proj')` → `'cd <home>/proj/a'`
-9. cwd 去尾斜杠：`substituteCwd('cd @/a', '/p/')` → `'cd /p/a'`（不重复斜杠）
+7. 空 cwd 吐 `~`：`substituteCwd('cd @/a', undefined)` → `'cd ~/a'`（由 shell 展开家目录）
+8. 空 cwd 吐 `~`：`substituteCwd('cd @/a', '')` → `'cd ~/a'`
+9. cwd 带 `~` 原样：`substituteCwd('cd @/a', '~/proj')` → `'cd ~/proj/a'`（shell 展开）
+10. cwd 去尾斜杠：`substituteCwd('cd @/a', '/p/')` → `'cd /p/a'`（不重复斜杠）
+11. cwd 去尾斜杠：`substituteCwd('cd @/a', '/p')` → `'cd /p/a'`
 
 ---
 
