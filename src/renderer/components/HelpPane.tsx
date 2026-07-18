@@ -3,7 +3,7 @@ import type { Tool } from '../../shared/types';
 import { md } from '../lib/markdown';
 import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
-import { substituteParams } from '../../shared/buttonBlock';
+import { substituteParams, substituteCwd } from '../../shared/buttonBlock';
 import { api } from '../lib/api';
 import { copyOnModifier } from '../lib/clipboardToast';
 import { confirmDialog } from '../lib/dialog';
@@ -190,11 +190,22 @@ export function HelpPane(props: {
           }
           prompt.open({ command, edit, params }, (values) => {
             if (!values) return;
-            void runCommandChecked(props.activeToolId, substituteParams(command, values), edit, opts);
+            const cmd = substituteParams(command, values);
+            void runCommandChecked(
+              props.activeToolId,
+              substituteCwd(cmd, props.tool.meta.rootDir, props.tool.meta.cwd),
+              edit,
+              opts,
+            );
           });
           return;
         }
-        void runCommandChecked(props.activeToolId, command, edit, opts);
+        void runCommandChecked(
+          props.activeToolId,
+          substituteCwd(command, props.tool.meta.rootDir, props.tool.meta.cwd),
+          edit,
+          opts,
+        );
         return;
       }
       // Markdown 链接：按 href 形式分类路由到预览弹层。
