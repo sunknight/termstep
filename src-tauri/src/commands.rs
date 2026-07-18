@@ -170,12 +170,12 @@ pub async fn tool_delete(
         .await
         .map_err(|e| e.to_string())?;
     // 从排序索引移除该 id（保持索引干净；失败不阻断删除）
-    let mut order = tool_io::read_order_index(&td);
-    let before_len = order.len();
-    order.retain(|x| x != &tool_id);
-    let order_changed = before_len != order.len();
+    let mut idx = tool_io::read_order_index(&td);
+    let before_len = idx.order.len();
+    idx.order.retain(|x| x != &tool_id);
+    let order_changed = before_len != idx.order.len();
     if order_changed {
-        let _ = tool_io::write_order_index(&td, &order).await;
+        let _ = tool_io::write_order_index(&td, &idx.order).await;
     }
     // 立即生效：从 watcher 缓存剔除该工具并 emit，不等全量重扫（同 reorder）。
     {
@@ -371,9 +371,9 @@ pub async fn tools_import(
         let stats = write_imported_tools(&td, &parsed).await?;
         // 仅新建的工具追加到排序索引末尾（更新的保持原位）。
         if !stats.created.is_empty() {
-            let mut order = tool_io::read_order_index(&td);
-            order.extend(stats.created.iter().cloned());
-            let _ = tool_io::write_order_index(&td, &order).await;
+            let mut idx = tool_io::read_order_index(&td);
+            idx.order.extend(stats.created.iter().cloned());
+            let _ = tool_io::write_order_index(&td, &idx.order).await;
         }
         // 自动提交：导入会写新工具目录 + 可能的 order.json + 被更新的工具，一个提交涵盖 tools/。
         if stats.total() > 0 {

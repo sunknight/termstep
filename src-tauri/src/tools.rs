@@ -424,7 +424,7 @@ pub async fn scan_tools(tools_dir: &Path) -> ScanResult {
     // 让新工具/导入工具以可预测的顺序追加）。meta.order 字段同步设为该位置，供
     // 前端/导出携带，但前端实际顺序由这里 sort 后的数组决定。
     let order_index = crate::tool_io::read_order_index(tools_dir);
-    let position_of = |id: &str| order_index.iter().position(|x| x == id);
+    let position_of = |id: &str| order_index.order.iter().position(|x| x == id);
     for t in result.tools.iter_mut() {
         t.meta.order = position_of(&t.meta.id).map(|p| p as i64).unwrap_or(i64::MAX);
     }
@@ -434,6 +434,7 @@ pub async fn scan_tools(tools_dir: &Path) -> ScanResult {
             .cmp(&b.meta.order)
             .then_with(|| a.meta.id.cmp(&b.meta.id))
     });
+    result.groups = order_index.groups;
     result
 }
 

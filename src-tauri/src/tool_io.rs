@@ -179,31 +179,54 @@ pub async fn tool_delete(tools_dir: &Path, tool_id: &str) -> std::io::Result<()>
 /// 单文件存储让 reorder 只重写一处（而非每个 tool.json），从根上避免分散写入。
 const ORDER_INDEX_FILE: &str = "order.json";
 
-/// 读排序索引。缺失/损坏返回空 vec（scanner 对不在数组里的 id 兜底排末尾）。
+/// order.json 的内容：order（工具 id 的 flat 数组，纯展示顺序）+ groups
+/// （分组展示顺序，分组功能新增的键）。旧版 order.json 没有 groups 键，读为空
+/// （向后兼容：缺失即所有工具归未分组，零迁移）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OrderIndex {
+    pub order: Vec<String>,
+    pub groups: Vec<String>,
+}
+
+/// 读排序索引。缺失/损坏返回空 OrderIndex（scanner 对不在数组里的 id 兜底排末尾）。
 /// 同步（std::fs）：scanner 是同步路径，对偶它。
-pub fn read_order_index(tools_dir: &Path) -> Vec<String> {
+pub fn read_order_index(tools_dir: &Path) -> OrderIndex {
     let file = tools_dir.join(ORDER_INDEX_FILE);
     let raw = match std::fs::read_to_string(&file) {
         Ok(s) => s,
-        Err(_) => return vec![],
+        Err(_) => return OrderIndex::default(),
     };
     let v: serde_json::Value = match serde_json::from_str(&raw) {
         Ok(v) => v,
-        Err(_) => return vec![],
+        Err(_) => return OrderIndex::default(),
     };
-    v.get("order")
+    let order = v
+        .get("order")
         .and_then(|o| o.as_array())
         .map(|arr| {
             arr.iter()
                 .filter_map(|x| x.as_str().map(|s| s.to_string()))
                 .collect()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let groups = v
+        .get("groups")
+        .and_then(|o| o.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    OrderIndex { order, groups }
 }
 
-/// 原子写排序索引：写临时文件再 rename，避免 watcher 读到半截 JSON。
+/// 原子写排序索引：只更新 order，**保留**已存在的 groups（read-modify-write）。
+/// 写临时文件再 rename，避免 watcher 读到半截 JSON。
 pub async fn write_order_index(tools_dir: &Path, ordered_ids: &[String]) -> std::io::Result<()> {
-    let obj = serde_json::json!({ "order": ordered_ids });
+    let mut idx = read_order_index(tools_dir); // 保留 groups
+    idx.order = ordered_ids.to_vec();
+    let obj = serde_json::json!({ "order": idx.order, "groups": idx.groups });
     let pretty = serde_json::to_string_pretty(&obj)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     let final_path = tools_dir.join(ORDER_INDEX_FILE);
@@ -468,7 +491,7 @@ mod tests {
     #[test]
     fn read_order_index_returns_empty_when_missing() {
         let _dir = tmp();
-        assert!(read_order_index(_dir.path()).is_empty());
+        assert!(read_order_index(_dir.path()).order.is_empty());
     }
 
     #[test]
@@ -476,7 +499,7 @@ mod tests {
         let _dir = tmp();
         let dir = _dir.path();
         std::fs::write(dir.join("order.json"), r#"{"order":["a","b","c"]}"#).unwrap();
-        assert_eq!(read_order_index(dir), vec!["a".to_string(), "b".into(), "c".into()]);
+        assert_eq!(read_order_index(dir).order, vec!["a".to_string(), "b".into(), "c".into()]);
     }
 
     #[test]
@@ -484,7 +507,7 @@ mod tests {
         let _dir = tmp();
         let dir = _dir.path();
         std::fs::write(dir.join("order.json"), "{ not json").unwrap();
-        assert!(read_order_index(dir).is_empty());
+        assert!(read_order_index(dir).order.is_empty());
     }
 
     #[test]
@@ -492,7 +515,42 @@ mod tests {
         let _dir = tmp();
         let dir = _dir.path();
         std::fs::write(dir.join("order.json"), r#"{"order":"notarray"}"#).unwrap();
-        assert!(read_order_index(dir).is_empty());
+        assert!(read_order_index(dir).order.is_empty());
+    }
+
+    #[test]
+    fn read_order_index_returns_groups_when_present() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(
+            dir.join("order.json"),
+            r#"{"order":["a","b"],"groups":["前端","后端"]}"#,
+        )
+        .unwrap();
+        let idx = read_order_index(dir);
+        assert_eq!(idx.order, vec!["a".to_string(), "b".into()]);
+        assert_eq!(idx.groups, vec!["前端".to_string(), "后端".into()]);
+    }
+
+    #[test]
+    fn read_order_index_groups_default_empty_when_missing() {
+        // 旧版 order.json（无 groups 键）→ groups 读为空（向后兼容）
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(dir.join("order.json"), r#"{"order":["a"]}"#).unwrap();
+        let idx = read_order_index(dir);
+        assert_eq!(idx.order, vec!["a".to_string()]);
+        assert!(idx.groups.is_empty(), "missing groups key → empty");
+    }
+
+    #[test]
+    fn read_order_index_groups_default_empty_when_corrupt() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(dir.join("order.json"), "{ not json").unwrap();
+        let idx = read_order_index(dir);
+        assert!(idx.order.is_empty());
+        assert!(idx.groups.is_empty());
     }
 
     // ── order index: write_order_index ─────────────────────────────────────────
@@ -502,7 +560,23 @@ mod tests {
         let dir = _dir.path();
         let ids = vec!["x".to_string(), "y".into(), "z".into()];
         write_order_index(dir, &ids).await.unwrap();
-        assert_eq!(read_order_index(dir), ids);
+        assert_eq!(read_order_index(dir).order, ids);
+    }
+
+    #[tokio::test]
+    async fn write_order_index_preserves_existing_groups() {
+        // write_order_index 只改 order，不得覆盖已存在的 groups
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(
+            dir.join("order.json"),
+            r#"{"order":["a"],"groups":["前端"]}"#,
+        )
+        .unwrap();
+        write_order_index(dir, &["b".into(), "a".into()]).await.unwrap();
+        let idx = read_order_index(dir);
+        assert_eq!(idx.order, vec!["b".to_string(), "a".into()]);
+        assert_eq!(idx.groups, vec!["前端".to_string()], "groups must be preserved");
     }
 
     #[tokio::test]
@@ -521,7 +595,7 @@ mod tests {
         let dir = _dir.path();
         let ids = vec!["b".to_string(), "a".into()];
         tool_reorder(dir, &ids).await.unwrap();
-        assert_eq!(read_order_index(dir), ids);
+        assert_eq!(read_order_index(dir).order, ids);
     }
 
     // ── migrate_order_to_index_blocking ────────────────────────────────────────
@@ -540,7 +614,7 @@ mod tests {
         assert!(changed);
 
         // 索引按 order 升序：docker 在前
-        assert_eq!(read_order_index(dir), vec!["docker".to_string(), "git".into()]);
+        assert_eq!(read_order_index(dir).order, vec!["docker".to_string(), "git".into()]);
         // tool.json 里的 order 字段被清理
         let git = std::fs::read_to_string(dir.join("git").join("tool.json")).unwrap();
         let v: serde_json::Value = serde_json::from_str(&git).unwrap();
@@ -560,7 +634,7 @@ mod tests {
         let changed = migrate_order_to_index_blocking(dir);
         assert!(!changed, "order.json already exists → skip");
         // 索引不变（未被覆盖）
-        assert_eq!(read_order_index(dir), vec!["git".to_string()]);
+        assert_eq!(read_order_index(dir).order, vec!["git".to_string()]);
         // tool.json 的 order 未被清理（迁移跳过了）
         let v: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("git").join("tool.json")).unwrap())
@@ -580,7 +654,7 @@ mod tests {
 
         migrate_order_to_index_blocking(dir);
         // 两个都 order=0 → 按 id 升序：a, b
-        assert_eq!(read_order_index(dir), vec!["a".to_string(), "b".into()]);
+        assert_eq!(read_order_index(dir).order, vec!["a".to_string(), "b".into()]);
     }
 
     // ── migrate_to_uuid_ids_blocking ───────────────────────────────────────────
