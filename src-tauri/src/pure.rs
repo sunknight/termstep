@@ -23,7 +23,7 @@ pub fn merge_tool_json(existing: &Value, patch: &Value) -> Value {
         }
     }
     // 裁掉被清空的 optional 字段（空字符串 = 清空）
-    for k in &["cwd", "rootDir", "tmux", "mdUrl", "group", "type"] {
+    for k in &["cwd", "rootDir", "tmux", "mdUrl", "group", "layout"] {
         if merged.get(*k).and_then(|v| v.as_str()) == Some("") {
             merged.remove(*k);
         }
@@ -39,6 +39,10 @@ pub fn merge_tool_json(existing: &Value, patch: &Value) -> Value {
     if merged.get("mdUrl").is_none() {
         merged.remove("autoUpdateMinutes");
         merged.remove("useRemote");
+    }
+    // terminalHidden=false 是默认值，prune 掉保持 tool.json 整洁（与 layout 空串同理）。
+    if merged.get("terminalHidden").and_then(|v| v.as_bool()) == Some(false) {
+        merged.remove("terminalHidden");
     }
     Value::Object(merged)
 }
@@ -207,7 +211,8 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
         use_remote: None,
         source_id: None,
         group: None,
-        tool_type: None,
+        layout: None,
+        terminal_hidden: None,
     };
     if let Some(cwd) = trim_str_field(o, "cwd") {
         meta.cwd = Some(cwd);
@@ -246,11 +251,14 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
     if let Some(g) = trim_str_field(o, "group") {
         meta.group = Some(g);
     }
-    if let Some(t) = trim_str_field(o, "type") {
-        // 只接受 terminal / document，其它一律视为缺省。
-        if t == "terminal" || t == "document" {
-            meta.tool_type = Some(t);
+    if let Some(l) = trim_str_field(o, "layout") {
+        // 只接受 LR / TB，其它一律视为缺省。
+        if l == "LR" || l == "TB" {
+            meta.layout = Some(l);
         }
+    }
+    if let Some(b) = o.and_then(|m| m.get("terminalHidden")).and_then(|v| v.as_bool()) {
+        meta.terminal_hidden = Some(b);
     }
     meta
 }
@@ -508,34 +516,6 @@ mod tests {
         let t = bundle_with(json!({"name":"E","rootDir":"/srv/api"}));
         let r = scan_tool_risk(&t);
         assert!(r.is_empty(), "rootDir must not be a risk field");
-    }
-
-    #[test]
-    fn meta_parses_type_document() {
-        let raw = json!({ "type": "document" });
-        let m = parse_tool_meta(&raw, "t1");
-        assert_eq!(m.tool_type.as_deref(), Some("document"));
-    }
-
-    #[test]
-    fn meta_parses_type_terminal() {
-        let raw = json!({ "type": "terminal" });
-        let m = parse_tool_meta(&raw, "t1");
-        assert_eq!(m.tool_type.as_deref(), Some("terminal"));
-    }
-
-    #[test]
-    fn meta_type_defaults_none_when_missing() {
-        let raw = json!({});
-        let m = parse_tool_meta(&raw, "t1");
-        assert_eq!(m.tool_type, None);
-    }
-
-    #[test]
-    fn meta_drops_invalid_type_values() {
-        let raw = json!({ "type": "foo" });
-        let m = parse_tool_meta(&raw, "t1");
-        assert_eq!(m.tool_type, None);
     }
 
     #[test]

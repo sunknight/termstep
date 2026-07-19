@@ -39,8 +39,14 @@ pub struct ToolMeta {
     /// 不影响执行。对偶 src/shared/types.ts 的 meta.group。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
-    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
-    pub tool_type: Option<String>,
+    /// 布局方向：`"LR"` = 文档左/终端右（默认），`"TB"` = 文档上/终端下。
+    /// 对偶 src/shared/types.ts 的 meta.layout。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
+    /// 终端初始是否隐藏（配置默认值，运行时可被顶栏 toggle 覆盖）。
+    /// 对偶 src/shared/types.ts 的 meta.terminalHidden。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_hidden: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,10 +90,6 @@ pub struct PtySpawnOpts {
     pub tmux: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_commands: Option<Vec<String>>,
-    /// 工具类型（对偶 ToolMeta.tool_type）。document 型不应 spawn 终端，
-    /// pty::ensure 据此防御性早 return。其它值/缺失 = 正常终端工具。
-    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
-    pub tool_type: Option<String>,
 }
 
 // UpdateState 对齐 TS 的 discriminated union {status:'available', version, url, notes}。
