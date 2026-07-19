@@ -84,6 +84,10 @@ pub struct PtySpawnOpts {
     pub tmux: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_commands: Option<Vec<String>>,
+    /// 工具类型（对偶 ToolMeta.tool_type）。document 型不应 spawn 终端，
+    /// pty::ensure 据此防御性早 return。其它值/缺失 = 正常终端工具。
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub tool_type: Option<String>,
 }
 
 // UpdateState 对齐 TS 的 discriminated union {status:'available', version, url, notes}。
