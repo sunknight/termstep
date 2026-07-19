@@ -152,7 +152,7 @@ export function HelpPane(props: {
       setToc([]);
       setOpenIds(new Set());
     };
-  }, [html]);
+  }, [html, props.sidebarToc]);
 
   useEffect(() => {
     const el = ref.current;
