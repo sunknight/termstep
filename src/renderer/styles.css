@@ -1175,18 +1175,32 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .version-item-time { flex: 0 0 auto; font-size: 10px; color: var(--text-3); min-width: 110px; }
 .version-item-msg { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* 模式单选：外层 .mode-radio-group 仿 input 外观（同 padding/border/背景），
+   让它与左侧分组的 <input> 等高、视觉一致。 */
 .mode-radio-group {
-  display: inline-flex;
+  display: flex;
+  align-items: center;
   gap: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  min-height: 18px; /* 与 .meta-form input 内容高度对齐（6+6 padding + 12px font） */
+  box-sizing: content-box;
+  font-size: 12px;
 }
 .mode-radio {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   cursor: pointer;
+  color: var(--text);
 }
 .mode-radio input[type='radio'] {
   margin: 0;
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
 }
 
 /* 仅文档型工具（renderHelp documentMode）：撑满中+右栏位置。
