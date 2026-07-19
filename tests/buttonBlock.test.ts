@@ -230,6 +230,25 @@ describe('parseButtonsJson', () => {
     }));
     expect((r as { buttons: any[] }).buttons[0].params).toEqual([{ name: 'ok' }]);
   });
+  it('keeps param label when present, omits when absent or empty', () => {
+    // name stays the {{name}} key; label only governs the form display name.
+    const r = parseButtonsJson(JSON.stringify({
+      command: 'search {{keyword}} {{nolabel}}',
+      params: [
+        { name: 'keyword', label: '关键词' },
+        { name: 'nolabel' },
+        { name: 'blank', label: '   ' },
+        { name: 'nonstring', label: 42 },
+      ],
+    }));
+    const params = (r as { buttons: any[] }).buttons[0].params;
+    expect(params[0]).toEqual({ name: 'keyword', label: '关键词' });
+    // absent label → field not present (form falls back to name)
+    expect('label' in params[1]).toBe(false);
+    // whitespace-only and non-string labels are dropped (same as a missing label)
+    expect('label' in params[2]).toBe(false);
+    expect('label' in params[3]).toBe(false);
+  });
   it('coerces strictly: only === true is truthy; options filtered to strings', () => {
     const r = parseButtonsJson(JSON.stringify({
       command: 'x',

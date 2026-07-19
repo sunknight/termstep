@@ -30,4 +30,5 @@ opener = "0.7"
 chrono = "0.4"
 arboard = "3"
 portable-pty = "0.9"
+libc = "0.2"
 uuid = { version = "1", features = ["v4"] }

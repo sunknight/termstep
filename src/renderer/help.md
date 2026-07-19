@@ -83,6 +83,7 @@ docker run -it ubuntu // edit
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `name` | string | **必填**。参数名，对应 command 中的 `{{name}}` |
+| `label` | string | 表单上显示的名称，默认同 `name` |
 | `hint` | string | 输入框提示文字 |
 | `options` | string[] | 下拉选项，提供则渲染为下拉框而非文本输入 |
 | `default` | string | 默认值 |

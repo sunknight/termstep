@@ -119,6 +119,9 @@ export function QuickAddModal(props: {
           className="quick-editor-md"
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           onKeyDown={(e) => {
             // ⌘Enter / Ctrl+Enter submits; plain Enter stays a newline so users
             // can paste multi-line command lists.

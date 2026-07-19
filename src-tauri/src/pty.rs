@@ -11,6 +11,34 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 
+/// 彻底杀掉一个 pty 会话的全部进程（shell 及其子孙进程），并等待 controlling
+/// terminal 释放，保证紧接着的新 spawn 能成为新 session 的前台 leader。
+///
+/// 背景（修复「重启终端无效」的核心）：portable-pty spawn 时 `setsid()`，所以
+/// child.pid == sid == pgid leader。但 `clone_killer().kill()` 只发一次 SIGHUP
+/// 给 child 的正数 pid——**碰不到** shell 里跑着的前台程序（vim/node/ssh...），
+/// 它们有独立进程组、持有 pty slave fd、且是 controlling terminal 的前台组。
+/// 新 spawn 的 shell 因此抢不到 controlling terminal，提示符出现但键盘输入被
+/// 旧前台程序截走，表现成「卡死」且再次重启也无效（旧程序仍占着 ctty）。
+///
+/// 本函数用 `kill(-pid, SIGKILL)` 覆盖整个进程组（负数 pid = 进程组），SIGKILL
+/// 不可阻塞/忽略，能带走组内所有进程。之后短暂 sleep 让内核清理 ctty 投递。
+fn reap_process_group(pid: Option<u32>) {
+    let Some(pid) = pid else { return; };
+    if pid == 0 {
+        return;
+    }
+    // kill 整个进程组：负数 pid 表示「pid 这个进程组」。组已不存在返回 ESRCH，忽略。
+    // unsafe 仅因 libc::kill 是 C FFI；pid 来自 child.process_id()，受控非用户输入。
+    unsafe {
+        let _ = libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+    // 不等 reap：child 在 ensure 里被 drop，被 init 收养，我们无法 waitpid。
+    // 50ms 足够内核释放 controlling terminal 并把前台权交还，避免新 spawn 撞车。
+    // restart 是用户主动操作，这点延迟无感知。
+    std::thread::sleep(std::time::Duration::from_millis(50));
+}
+
 fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
 }
@@ -212,6 +240,7 @@ impl PtyService {
             Err(e) => {
                 eprintln!("pty reader failed for {}: {}", tool_id, e);
                 let _ = killer.kill();
+                reap_process_group(pid); // 弱版 SIGHUP 杀不掉整组，SIGKILL 兜底防孤儿
                 return; // _guard drop 移除哨兵
             }
         };
@@ -220,6 +249,7 @@ impl PtyService {
             Err(e) => {
                 eprintln!("pty writer failed for {}: {}", tool_id, e);
                 let _ = killer.kill();
+                reap_process_group(pid); // 同上
                 return; // _guard drop 移除哨兵
             }
         };
@@ -333,15 +363,34 @@ impl PtyService {
     pub fn kill(&self, tool_id: &str) {
         let entry = self.ptys.lock().unwrap_or_else(|e| e.into_inner()).remove(tool_id);
         if let Some(entry) = entry {
-            let _ = entry.killer.lock().unwrap_or_else(|e| e.into_inner()).kill();
+            // 先取 pid（drop 前可用），再 drop entry 关闭 master/writer（让 slave 端
+            // 最终 EIO），最后 reap 整个进程组带走残留的前台程序。详见 reap_process_group。
+            let pid = entry.pid;
+            let _ = entry
+                .killer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .kill();
+            drop(entry);
+            reap_process_group(pid);
         }
         // 不清 desired（终端尺寸跨 shell 存活）
     }
 
     pub fn kill_all(&self) {
         let mut ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
-        for (_, entry) in ptys.drain() {
-            let _ = entry.killer.lock().unwrap_or_else(|e| e.into_inner()).kill();
+        let drained: Vec<PtyEntry> = ptys.drain().map(|(_, e)| e).collect();
+        // 锁只护 drain；drop entry + reap 放锁外，避免 kill_all 期间长持 ptys 锁。
+        drop(ptys);
+        for entry in drained {
+            let pid = entry.pid;
+            let _ = entry
+                .killer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .kill();
+            drop(entry);
+            reap_process_group(pid);
         }
         self.desired.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }

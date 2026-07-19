@@ -24,6 +24,15 @@ const COMMON_ICONS = [
 // Local and remote stay independent; saving persists every field regardless of
 // which sub-tab is active.
 
+// Disable macOS WKWebView's smart punctuation / text replacement on free-text
+// inputs (it turns "--" into "—", straight quotes into curly ones, etc., which
+// corrupts commands and JSON). All user-typed text fields below spread these.
+const noTransform = {
+  autoCorrect: 'off' as const,
+  autoCapitalize: 'off' as const,
+  spellCheck: false as const,
+};
+
 export function EditorPane(props: {
   tool: Tool;
   onDone: () => void;
@@ -172,7 +181,12 @@ export function EditorPane(props: {
           <div className="form-row">
             <label className="field">
               <span className="field-label">名称</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                {...noTransform}
+                autoFocus
+              />
             </label>
             <div className="field">
               <span className="field-label">图标</span>
@@ -181,6 +195,7 @@ export function EditorPane(props: {
                   className="icon-input"
                   value={icon}
                   onChange={(e) => setIcon(e.target.value)}
+                  {...noTransform}
                 />
                 <button
                   type="button"
@@ -221,6 +236,7 @@ export function EditorPane(props: {
                 value={group}
                 onChange={(e) => setGroup(e.target.value)}
                 placeholder="未分组"
+                {...noTransform}
               />
               <datalist id="ts-groups">
                 {props.existingGroups.map((g) => (
@@ -262,20 +278,35 @@ export function EditorPane(props: {
           <legend>终端</legend>
           <label className="field">
             <span className="field-label">起始目录 (cwd)</span>
-            <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="~" />
+            <input
+              value={cwd}
+              onChange={(e) => setCwd(e.target.value)}
+              placeholder="~"
+              {...noTransform}
+            />
           </label>
           <label className="field">
             <span className="field-label">
               工具根目录 (@/) <em>留空同 cwd；按钮里 @/ 锚定此目录</em>
             </span>
-            <input value={rootDir} onChange={(e) => setRootDir(e.target.value)} placeholder="留空同 cwd" />
+            <input
+              value={rootDir}
+              onChange={(e) => setRootDir(e.target.value)}
+              placeholder="留空同 cwd"
+              {...noTransform}
+            />
           </label>
           <div className="form-row">
             <label className="field">
               <span className="field-label">
                 tmux 会话名 <em>留空不开；已存在则 attach，否则新建</em>
               </span>
-              <input value={tmux} onChange={(e) => setTmux(e.target.value)} placeholder="dev" />
+              <input
+                value={tmux}
+                onChange={(e) => setTmux(e.target.value)}
+                placeholder="dev"
+                {...noTransform}
+              />
             </label>
           </div>
           <label className="field">
@@ -288,6 +319,7 @@ export function EditorPane(props: {
               value={initCommands}
               onChange={(e) => setInitCommands(e.target.value)}
               placeholder={'cd ~/project\nsource venv/bin/activate'}
+              {...noTransform}
             />
           </label>
         </fieldset>
@@ -324,6 +356,7 @@ export function EditorPane(props: {
             value={markdownText}
             onChange={(e) => setMarkdownText(e.target.value)}
             placeholder={'# 标题\n\n```buttons\nls\n```\n'}
+            {...noTransform}
           />
         ) : (
           <div className="md-remote-pane">
@@ -343,6 +376,7 @@ export function EditorPane(props: {
                     value={mdUrl}
                     onChange={(e) => setMdUrl(e.target.value)}
                     placeholder="https://example.com/help.md 或 /Users/me/help.md"
+                    {...noTransform}
                   />
                   <button
                     type="button"

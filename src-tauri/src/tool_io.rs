@@ -160,7 +160,7 @@ ls
 # ── buttons-json 语法（带参数的按钮）──
 # 把围栏名 buttons 改成 buttons-json，内容是 JSON 对象或数组，每项可用字段：
 #   command（必填）   label   edit   params
-# params 每项：name（必填）   required   default   hint   options
+# params 每项：name（必填）   label   required   default   hint   options
 # command 里写 {{{{参数名}}}} 占位；点按钮时弹表单收集，值做 POSIX shell 转义后代入
 # 示例（去掉下面这行开头的 #，放进 buttons-json 围栏即可用）：
 # {{"command":"git commit -m {{{{msg}}}}","label":"提交","params":[{{"name":"msg","required":true}}]}}
