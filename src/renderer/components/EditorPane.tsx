@@ -229,7 +229,7 @@ export function EditorPane(props: {
               </datalist>
             </label>
           </div>
-          <label className="field">
+          <div className="field">
             <span className="field-label">模式</span>
             <div className="mode-radio-group" role="radiogroup" aria-label="工具模式">
               <label className="mode-radio">
@@ -254,7 +254,7 @@ export function EditorPane(props: {
               </label>
             </div>
             <em className="field-hint">仅文档=不创建终端，整个右半屏渲染文档；按钮无动作（保留 ⌘复制）</em>
-          </label>
+          </div>
         </fieldset>
 
         <fieldset className="form-section">
