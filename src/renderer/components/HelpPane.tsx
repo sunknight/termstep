@@ -92,7 +92,7 @@ export function HelpPane(props: {
     }
     const entries: TocEntry[] = [];
     const initialOpen = new Set<string>();
-    const handlers: Array<{ el: HTMLDetailsElement; fn: () => void }> = [];
+    const handlers: Array<{ el: HTMLDetailsElement; fn: () => void; h2: HTMLHeadingElement }> = [];
     // 初始化默认展开期间抑制闪动（仅 setAttribute 初始打开时为 true，之后翻 false）。
     let initializing = true;
     h2s.forEach((h2, i) => {
@@ -141,14 +141,28 @@ export function HelpPane(props: {
       // 默认全部展开：先绑监听再设 open（setAttribute 可能触发 toggle，被 flag 抑制）。
       details.setAttribute('open', '');
       initialOpen.add(id);
-      handlers.push({ el: details, fn });
+      handlers.push({ el: details, fn, h2 });
       entries.push({ id, text: summary.textContent ?? `第 ${i + 1} 节` });
     });
     initializing = false;
     setToc(entries);
     setOpenIds(initialOpen);
     return () => {
-      handlers.forEach(({ el, fn }) => el.removeEventListener('toggle', fn));
+      handlers.forEach(({ el, fn, h2 }) => {
+        el.removeEventListener('toggle', fn);
+        const parent = el.parentNode;
+        if (!parent) return;
+        // 恢复 DOM：把 body 内容移回 details 之后，summary 内容移回 h2，
+        // 再把 h2 插回 details 原位置，最后移除 details。这样下一次 effect
+        // setup 能重新扫描原始 h2。
+        const body = el.querySelector('.help-section-body');
+        const summary = el.querySelector('.help-section-summary');
+        const nextSibling = el.nextSibling;
+        while (body?.firstChild) parent.insertBefore(body.firstChild, nextSibling);
+        while (summary?.firstChild) h2.appendChild(summary.firstChild);
+        parent.insertBefore(h2, el);
+        parent.removeChild(el);
+      });
       setToc([]);
       setOpenIds(new Set());
     };
