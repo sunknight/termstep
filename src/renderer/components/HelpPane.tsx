@@ -56,6 +56,11 @@ export function HelpPane(props: {
    * 默认 false（终端型右栏）：TOC 在顶部横向，H2 < 3 不显示也不折叠。
    */
   sidebarToc?: boolean;
+  /**
+   * 终端是否被隐藏（运行时 state）。Task 10 会据此切换文档的布局（整屏 vs 半屏）；
+   * 当前仅作为门控的占位 prop 传入，不参与本组件逻辑。
+   */
+  termHidden?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastBtn = useRef<HTMLElement | null>(null);

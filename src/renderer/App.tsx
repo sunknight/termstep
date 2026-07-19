@@ -59,7 +59,8 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     () => localStorage.getItem('termstep:sidebar-collapsed') === '1',
   );
-  const [helpCollapsed, setHelpCollapsed] = useState<boolean>(
+  // 文档折叠为浮动 Peek（保留旧 localStorage key 以兼容用户既有偏好）。
+  const [docCollapsed, setDocCollapsed] = useState<boolean>(
     () => localStorage.getItem('termstep:help-collapsed') === '1',
   );
   // Right panel width, persisted like the sidebar's. Drag direction is mirrored:
@@ -67,6 +68,19 @@ export default function App() {
   const [helpWidth, setHelpWidth] = useState<number>(() => {
     const v = Number(localStorage.getItem('termstep:help-width'));
     return v >= HELP_MIN_WIDTH && v <= HELP_MAX_WIDTH ? v : HELP_DEFAULT_WIDTH;
+  });
+  // 终端显隐（运行时状态）。初值取自当前工具的 meta.terminalHidden；
+  // 切换工具时重置（见下方 effect）。顶栏 toggle 改这个 state，不写回配置。
+  const [termHidden, setTermHidden] = useState<boolean>(false);
+  // LR 布局下的终端宽度（px），全局共享。
+  const [termSizeLr, setTermSizeLr] = useState<number>(() => {
+    const v = Number(localStorage.getItem('termstep:term-size-lr'));
+    return v >= 280 && v <= 1200 ? v : 560;
+  });
+  // TB 布局下的终端高度（px），全局共享。
+  const [termSizeTb, setTermSizeTb] = useState<number>(() => {
+    const v = Number(localStorage.getItem('termstep:term-size-tb'));
+    return v >= 120 && v <= 1200 ? v : 320;
   });
 
   // 打开预览弹层。web 直接展示；doc 先 loading 再 fetch_md_preview（远程/本地统一复用）。
@@ -93,14 +107,24 @@ export default function App() {
     }
   };
 
-  const startHelpDrag = (e: React.MouseEvent) => {
+  // 终端/文档之间的拖动条。方向由当前工具的 layout 决定：
+  // LR = 左右拖（改 termSizeLr），TB = 上下拖（改 termSizeTb）。
+  const startTermDrag = (e: React.MouseEvent) => {
     e.preventDefault();
+    const layout = active?.meta.layout ?? 'LR';
     const startX = e.clientX;
-    const startW = helpWidth;
+    const startY = e.clientY;
+    const startLr = termSizeLr;
+    const startTb = termSizeTb;
+    // 终端在右/下：光标向左/上移 = 终端变大。
     const onMove = (ev: MouseEvent) => {
-      // Cursor moves left (ev.clientX < startX) -> panel grows.
-      const w = Math.min(HELP_MAX_WIDTH, Math.max(HELP_MIN_WIDTH, startW + (startX - ev.clientX)));
-      setHelpWidth(w);
+      if (layout === 'LR') {
+        const w = Math.min(1200, Math.max(280, startLr + (startX - ev.clientX)));
+        setTermSizeLr(w);
+      } else {
+        const h = Math.min(1200, Math.max(120, startTb + (startY - ev.clientY)));
+        setTermSizeTb(h);
+      }
     };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
@@ -110,19 +134,31 @@ export default function App() {
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = layout === 'LR' ? 'col-resize' : 'row-resize';
     document.body.style.userSelect = 'none';
   };
 
+  // 切换工具时，termHidden 重置为新工具的 meta.terminalHidden（配置默认值）。
+  // 只依赖 activeId，不依赖 active 对象（每帧新对象会重置，丢失用户 toggle）。
+  useEffect(() => {
+    setTermHidden(!!active?.meta.terminalHidden);
+  }, [activeId]);
   useEffect(() => {
     localStorage.setItem('termstep:sidebar-collapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
+  // 文档折叠（Peek）：保留旧 key 以兼容既有用户偏好。
   useEffect(() => {
-    localStorage.setItem('termstep:help-collapsed', helpCollapsed ? '1' : '0');
-  }, [helpCollapsed]);
+    localStorage.setItem('termstep:help-collapsed', docCollapsed ? '1' : '0');
+  }, [docCollapsed]);
   useEffect(() => {
     localStorage.setItem('termstep:help-width', String(helpWidth));
   }, [helpWidth]);
+  useEffect(() => {
+    localStorage.setItem('termstep:term-size-lr', String(termSizeLr));
+  }, [termSizeLr]);
+  useEffect(() => {
+    localStorage.setItem('termstep:term-size-tb', String(termSizeTb));
+  }, [termSizeTb]);
 
   useEffect(() => {
     if (!activeId && tools.length > 0) setActiveId(tools[0].meta.id);
@@ -228,141 +264,180 @@ export default function App() {
       floating={sidebarCollapsed}
     />
   );
-  // `floating` = rendered inside the collapsed peek: hide the delete/export/edit
-  // toolbar there (the peek is for reading docs / running commands, not editing).
-  // `documentMode` = 仅文档型工具：撑满中+右栏位置（flex:1），不渲染 resizer
-  // （产品/运营阅读视图，宽度不需要手动调）。
-  const renderHelp = (floating: boolean, documentMode = false) => (
-    <div
-      className={documentMode ? 'help-area document-mode' : 'help-area'}
-      // Width applies in both docked and floating states so the collapsed
-      // hover-peek has a real width (it has none from CSS, and without one it
-      // collapses / escapes the window). Only the flex shorthand is dock-only
-      // (the floating peek is position:fixed, not in the flex row).
-      // documentMode 用 flex:1 撑满，覆盖固定宽度。
-      style={
-        documentMode
-          ? { flex: 1, minWidth: 0 }
-          : {
-              width: `${helpWidth}px`,
-              ...(floating ? {} : { flex: `0 0 ${helpWidth}px` }),
-            }
-      }
-    >
-      {active ? (
-        <>
-          {!floating && (
-            <div className="help-toolbar">
-              <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>删除</button>
-              <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>导出</button>
-              <button title="该工具的配置记录" onClick={() => setRecordsToolId(active.meta.id)}>记录</button>
-              {active.meta.useRemote && (
-                <button title="重新拉取远程内容" onClick={() => api.refreshMd()}>重载</button>
-              )}
-              {!active.meta.useRemote && (
-                <button title="快速添加命令（追加到末尾）" onClick={() => setQuickAddOpen(true)}>添加</button>
-              )}
-              <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
-            </div>
-          )}
-          {/* HelpPane 内部自行管理 TOC（固定）+ 文档滚动区（.help-scroll）。 */}
-          <HelpPane
-            tool={active}
-            activeToolId={active.meta.id}
-            isRemote={!!active.meta.useRemote}
-            markdown={
-              active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
-            }
-            onPreview={openPreview}
-            sidebarToc={documentMode}
-          />
-        </>
-      ) : (
-        <div className="placeholder">无选中工具</div>
-      )}
-      {!floating && !documentMode && (
-        <div className="help-resizer" onMouseDown={startHelpDrag} title="拖动调整宽度" />
-      )}
-    </div>
-  );
+  // 文档区内容（docked 主区和折叠 Peek 共用同一份）：工具栏（删除/导出/记录/
+  // 重载/添加/编辑）+ HelpPane。外壳由调用方提供——docked 用 .doc-pane，Peek 用
+  // .doc-peek-body。docked 显示工具栏；Peek 顶部有独立 header，内容区不重复。
+  const renderDocContent = ({ withToolbar = true }: { withToolbar?: boolean } = {}) =>
+    active ? (
+      <>
+        {withToolbar && (
+          <div className="help-toolbar">
+            <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>删除</button>
+            <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>导出</button>
+            <button title="该工具的配置记录" onClick={() => setRecordsToolId(active.meta.id)}>记录</button>
+            {active.meta.useRemote && (
+              <button title="重新拉取远程内容" onClick={() => api.refreshMd()}>重载</button>
+            )}
+            {!active.meta.useRemote && (
+              <button title="快速添加命令（追加到末尾）" onClick={() => setQuickAddOpen(true)}>添加</button>
+            )}
+            <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
+          </div>
+        )}
+        {/* HelpPane 内部自行管理 TOC（固定）+ 文档滚动区（.help-scroll）。 */}
+        <HelpPane
+          tool={active}
+          activeToolId={active.meta.id}
+          isRemote={!!active.meta.useRemote}
+          markdown={
+            active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
+          }
+          onPreview={openPreview}
+          sidebarToc={termHidden}
+          termHidden={termHidden}
+        />
+      </>
+    ) : (
+      <div className="placeholder">无选中工具</div>
+    );
 
-  // 中间态：所有工具统一走终端路径。文档型布局（隐藏终端、整屏文档）
-  // 将由 Task 9 的统一布局（layout + terminalHidden）重建。
+  // 统一布局：主区 = 顶栏 + 双面板主体（doc-pane | term-splitter | term-pane）。
+  // layout(LR/TB) 决定 flex-direction；termHidden 运行时控制终端显隐；
+  // docCollapsed 把文档折为浮动 Peek（终端撑满）。
+  const layout = active?.meta.layout ?? 'LR';
+
   return (
     <div className="app">
       {!sidebarCollapsed && sidebarContent}
-      <>
-          <section className="terminal-area">
-            <div className="term-header">
-              <PanelToggle
-                side="left"
-                collapsed={sidebarCollapsed}
-                icon="☰"
-                title="工具列表"
-                onToggle={() => setSidebarCollapsed((v) => !v)}
-                peekContent={sidebarContent}
-                closePeekOnClick
-              />
-              {sidebarCollapsed && active && (
-                <span className="term-active-tool" title={active.meta.name}>
-                  {active.meta.icon && <span className="term-active-tool-icon">{active.meta.icon}</span>}
-                  <span className="term-active-tool-name">{active.meta.name}</span>
-                </span>
-              )}
-              <span className="term-cwd">
-                <span className="term-cwd-icon">📂</span>
-                <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
-                  {liveCwd ?? active?.meta.cwd ?? '~'}
-                </HoverTip>
-              </span>
-              <div className="term-actions">
-                <QuickCommands activeTool={active} />
-                {active && (
-                  <button
-                    className="term-restart"
-                    title="重启终端（按住 ⌘ 强制重启：放弃旧终端，新起一个）"
-                    onClick={(e) => {
-                      const id = active.meta.id;
-                      const opts = {
-                        cwd: active.meta.cwd,
-                        shell: active.meta.shell,
-                        env: active.meta.env,
-                        tmux: active.meta.tmux,
-                        initCommands: active.meta.initCommands,
-                      };
-                      termRegistry.get(id)?.reset();
-                      if (e.metaKey) {
-                        // ⌘+点击：强制新起。普通重启失效时的逃生通道——清残留哨兵
-                        // + SIGKILL 整组（尽力杀，杀不掉留僵尸不阻塞）+ 强制 spawn。
-                        api.pty.forceRestart(id, opts);
-                      } else {
-                        api.pty.restart(id, opts);
-                      }
-                    }}
-                  >
-                    ↻ 重启终端
-                  </button>
-                )}
-              </div>
-              <PanelToggle
-                side="right"
-                collapsed={helpCollapsed}
-                icon="📖"
-                title="工具文档"
-                onToggle={() => setHelpCollapsed((v) => !v)}
-                peekContent={renderHelp(true)}
-              />
+      <section className="main-area">
+        {/* 顶栏：跨布局一致，始终在主区顶部 */}
+        <div className="term-header">
+          <PanelToggle
+            side="left"
+            collapsed={sidebarCollapsed}
+            icon="☰"
+            title="工具列表"
+            onToggle={() => setSidebarCollapsed((v) => !v)}
+            peekContent={sidebarContent}
+            closePeekOnClick
+          />
+          {sidebarCollapsed && active && (
+            <span className="term-active-tool" title={active.meta.name}>
+              {active.meta.icon && <span className="term-active-tool-icon">{active.meta.icon}</span>}
+              <span className="term-active-tool-name">{active.meta.name}</span>
+            </span>
+          )}
+          <span className="term-cwd">
+            <span className="term-cwd-icon">📂</span>
+            <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
+              {liveCwd ?? active?.meta.cwd ?? '~'}
+            </HoverTip>
+          </span>
+          <div className="term-actions">
+            <QuickCommands activeTool={active} />
+            {active && (
+              <>
+                <button
+                  className="term-toggle"
+                  title={termHidden ? '显示终端' : '隐藏终端'}
+                  onClick={() => setTermHidden((v) => !v)}
+                >
+                  {termHidden ? '▸ 终端' : '▾ 终端'}
+                </button>
+                <button
+                  className="term-restart"
+                  title="重启终端（按住 ⌘ 强制重启：放弃旧终端，新起一个）"
+                  onClick={(e) => {
+                    const id = active.meta.id;
+                    const opts = {
+                      cwd: active.meta.cwd,
+                      shell: active.meta.shell,
+                      env: active.meta.env,
+                      tmux: active.meta.tmux,
+                      initCommands: active.meta.initCommands,
+                    };
+                    termRegistry.get(id)?.reset();
+                    if (e.metaKey) {
+                      // ⌘+点击：强制新起。普通重启失效时的逃生通道——清残留哨兵
+                      // + SIGKILL 整组（尽力杀，杀不掉留僵尸不阻塞）+ 强制 spawn。
+                      api.pty.forceRestart(id, opts);
+                    } else {
+                      api.pty.restart(id, opts);
+                    }
+                  }}
+                >
+                  ↻ 重启终端
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        <div className={`main-body layout-${layout.toLowerCase()}`}>
+          {/* 文档区（docked）。docCollapsed 时不渲染——内容移到浮动 doc-peek，
+              避免与 HelpPane 实例重复（HelpPane 有内部 ref/state/监听）。 */}
+          {!docCollapsed && (
+            <div
+              className="doc-pane"
+              style={
+                termHidden
+                  ? { flex: 1, minWidth: 0 }
+                  : layout === 'LR'
+                    ? { flex: `0 0 calc(100% - ${termSizeLr}px - 6px)`, minWidth: 0 }
+                    : { flex: `0 0 calc(100% - ${termSizeTb}px - 6px)`, minHeight: 0 }
+              }
+            >
+              {renderDocContent()}
+              {/* 文档折叠按钮（Peek）：放在文档区右上角 */}
+              <button
+                className="doc-collapse-btn"
+                title="折叠文档为浮动"
+                onClick={() => setDocCollapsed(true)}
+              >
+                ⤢
+              </button>
             </div>
-            <div className="term-pane-wrap">
-              {activeId ? (
-                <TerminalPane tools={tools} activeId={activeId} />
-              ) : (
-                <div className="placeholder">选择一个工具</div>
-              )}
+          )}
+          {/* 拖动条：终端隐藏或文档折叠时不渲染 */}
+          {!termHidden && !docCollapsed && (
+            <div
+              className={`term-splitter ${layout === 'LR' ? 'lr' : 'tb'}`}
+              onMouseDown={startTermDrag}
+            />
+          )}
+          {/* 终端区。隐藏时 CSS 移出 flex 流但保留非零尺寸（pty + xterm 实例不销毁）。
+              docCollapsed 时终端撑满；否则按 termSize 固定宽/高。 */}
+          <div
+            className={`term-pane ${termHidden ? 'hidden' : ''}`}
+            style={
+              termHidden
+                ? undefined
+                : docCollapsed
+                  ? { flex: 1, minWidth: 0 }
+                  : layout === 'LR'
+                    ? { flex: `0 0 ${termSizeLr}px`, minWidth: 0 }
+                    : { flex: `0 0 ${termSizeTb}px`, minHeight: 0 }
+            }
+          >
+            {activeId ? (
+              <TerminalPane tools={tools} activeId={activeId} />
+            ) : (
+              <div className="placeholder">选择一个工具</div>
+            )}
+          </div>
+        </div>
+        {/* 文档折叠为 Peek（浮动层）：覆盖在 main-body 上方。 */}
+        {docCollapsed && active && (
+          <div className="doc-peek">
+            <div className="doc-peek-header">
+              <span>文档</span>
+              <button title="展开文档" onClick={() => setDocCollapsed(false)}>▾</button>
             </div>
-          </section>
-          {!helpCollapsed && renderHelp(false)}
-        </>
+            <div className="doc-peek-body" style={{ width: `${helpWidth}px` }}>
+              {renderDocContent({ withToolbar: false })}
+            </div>
+          </div>
+        )}
+      </section>
       {editingId && active && (
         <EditorModal
           tool={active}
