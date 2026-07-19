@@ -65,11 +65,15 @@ export interface ToolMeta {
   // 分组名（自由文本）。空/缺失 = 未分组。仅用于侧栏展示分区，不影响执行。
   group?: string;
   /**
-   * 工具类型。`"terminal"`（默认）= 持久终端 + 右栏帮助页；
-   * `"document"` = 仅文档型：不创建终端，整个右半屏合并为文档区，按钮无动作（保留 ⌘/Ctrl+点击复制）。
-   * 缺省视为 `"terminal"`，向后兼容旧 tool.json。
+   * 布局方向。`"LR"` = 文档左/终端右（默认）；`"TB"` = 文档上/终端下。
+   * 仅工具配置控制（保存后生效），无运行时 toggle。
    */
-  type?: 'terminal' | 'document';
+  layout?: 'LR' | 'TB';
+  /**
+   * 终端初始是否隐藏（配置默认值）。运行时顶栏 toggle 可临时覆盖，
+   * toggle 状态不写回配置。隐藏时 pty 保持活着，可随时重新显示。
+   */
+  terminalHidden?: boolean;
 }
 
 export interface Tool {
@@ -100,11 +104,6 @@ export interface PtySpawnOpts {
   env?: Record<string, string>;
   tmux?: string;
   initCommands?: string[];
-  /**
-   * 工具类型（对偶 Rust `PtySpawnOpts.tool_type`）。后端 `pty::ensure` 据此
-   * 防御性 skip document 型——前端不渲染终端已是主防线，这里是兜底。
-   */
-  type?: 'terminal' | 'document';
 }
 
 // Auto-update check state. The main process fetches a self-hosted JSON manifest

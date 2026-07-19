@@ -53,9 +53,8 @@ export function EditorPane(props: {
   const [mdUrl, setMdUrl] = useState(meta.mdUrl ?? '');
   const [autoUpdate, setAutoUpdate] = useState(meta.autoUpdateMinutes?.toString() ?? '');
   const [group, setGroup] = useState(meta.group ?? '');
-  const [typeMode, setTypeMode] = useState<'terminal' | 'document'>(
-    meta.type === 'document' ? 'document' : 'terminal',
-  );
+  const [layout, setLayout] = useState<'LR' | 'TB'>(meta.layout === 'TB' ? 'TB' : 'LR');
+  const [terminalHidden, setTerminalHidden] = useState<boolean>(!!meta.terminalHidden);
   const [iconOpen, setIconOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,11 +131,10 @@ export function EditorPane(props: {
       tmux: tmux.trim(),
       mdUrl: mdUrl.trim(),
       group: group.trim(),
-      // terminal 模式发空串让 mergeToolJson 裁掉 type 字段（保持 tool.json 干净，
-      // 与旧 terminal 文件一致）；document 保留显式 'document'。
-      // ToolMeta.type 的静态类型不含 ''，故此处断言为 ''——mergeToolJson 的
-      // PRUNE_WHEN_EMPTY_STRING 正是为 '' 设计的裁剪标记。
-      type: (typeMode === 'terminal' ? '' : 'document') as 'terminal' | 'document',
+      // LR（默认布局）发空串让 mergeToolJson 裁掉 layout 字段（保持 tool.json 干净）；
+      // TB 保留显式 'TB'。terminalHidden=false 也是默认值，由 mergeToolJson 裁剪。
+      layout: (layout === 'LR' ? '' : 'TB') as 'LR' | 'TB',
+      terminalHidden: terminalHidden || undefined,
       initCommands: initList,
     };
     const mins = Number(autoUpdate);
@@ -246,30 +244,41 @@ export function EditorPane(props: {
             </label>
             <div className="field">
               <span className="field-label">
-                模式 <em>普通=终端+文档；文档=无终端</em>
+                布局方向 <em>LR=文档左/终端右；TB=文档上/终端下</em>
               </span>
-              <div className="mode-radio-group" role="radiogroup" aria-label="工具模式">
+              <div className="mode-radio-group" role="radiogroup" aria-label="布局方向">
                 <label className="mode-radio">
                   <input
                     type="radio"
-                    name="tool-mode"
-                    value="terminal"
-                    checked={typeMode === 'terminal'}
-                    onChange={() => setTypeMode('terminal')}
+                    name="tool-layout"
+                    value="LR"
+                    checked={layout === 'LR'}
+                    onChange={() => setLayout('LR')}
                   />
-                  <span>普通</span>
+                  <span>LR（左右）</span>
                 </label>
                 <label className="mode-radio">
                   <input
                     type="radio"
-                    name="tool-mode"
-                    value="document"
-                    checked={typeMode === 'document'}
-                    onChange={() => setTypeMode('document')}
+                    name="tool-layout"
+                    value="TB"
+                    checked={layout === 'TB'}
+                    onChange={() => setLayout('TB')}
                   />
-                  <span>文档</span>
+                  <span>TB（上下）</span>
                 </label>
               </div>
+            </div>
+            <div className="field">
+              <span className="field-label">终端初始状态</span>
+              <label className="mode-radio">
+                <input
+                  type="checkbox"
+                  checked={terminalHidden}
+                  onChange={(e) => setTerminalHidden(e.target.checked)}
+                />
+                <span>默认隐藏终端（仅看文档；运行时可随时显示）</span>
+              </label>
             </div>
           </div>
         </fieldset>

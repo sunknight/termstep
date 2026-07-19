@@ -3,7 +3,7 @@
 // old value of a cleared field (e.g. mdUrl) — which is the "clearing the URL
 // doesn't stick" bug. Pure so it is unit-testable and free of Electron deps.
 
-const PRUNE_WHEN_EMPTY_STRING = ['cwd', 'rootDir', 'tmux', 'mdUrl', 'group', 'type'] as const;
+const PRUNE_WHEN_EMPTY_STRING = ['cwd', 'rootDir', 'tmux', 'mdUrl', 'group', 'layout'] as const;
 
 export function mergeToolJson(
   existing: Record<string, unknown>,
@@ -26,6 +26,10 @@ export function mergeToolJson(
   if (!merged.mdUrl) {
     delete merged.autoUpdateMinutes;
     delete merged.useRemote;
+  }
+  // terminalHidden=false 是默认值，prune 掉保持 tool.json 整洁（与 layout 空串同理）。
+  if (merged.terminalHidden === false) {
+    delete merged.terminalHidden;
   }
   return merged;
 }

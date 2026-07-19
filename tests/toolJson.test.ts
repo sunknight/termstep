@@ -68,27 +68,6 @@ describe('mergeToolJson rootDir', () => {
   });
 });
 
-describe('mergeToolJson type', () => {
-  it('prunes cleared type (empty string)', () => {
-    const existing = { type: 'document' };
-    const patch = { type: '' };
-    const merged = mergeToolJson(existing, patch);
-    expect('type' in merged).toBe(false);
-  });
-  it('keeps type=document when set', () => {
-    const existing = {};
-    const patch = { type: 'document' };
-    const merged = mergeToolJson(existing, patch);
-    expect(merged.type).toBe('document');
-  });
-  it('keeps existing type when patch does not touch it', () => {
-    const existing = { type: 'document' };
-    const patch = { name: 'New Name' };
-    const merged = mergeToolJson(existing, patch);
-    expect(merged.type).toBe('document');
-  });
-});
-
 describe('migrateMeta', () => {
   it('converts type=document to layout=TB + terminalHidden=true and drops type', () => {
     const before = { name: 'doc', type: 'document', cwd: '/x' };

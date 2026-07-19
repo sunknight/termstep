@@ -40,6 +40,11 @@ export function parseToolMeta(raw: unknown, id: string): ToolMeta {
   if (o.useRemote === true) meta.useRemote = true;
   if (typeof o.sourceId === 'string' && o.sourceId.trim()) meta.sourceId = o.sourceId.trim();
   if (typeof o.group === 'string' && o.group.trim()) meta.group = o.group.trim();
-  if (o.type === 'terminal' || o.type === 'document') meta.type = o.type;
+  if (o.layout === 'LR' || o.layout === 'TB') {
+    meta.layout = o.layout;
+  }
+  if (typeof o.terminalHidden === 'boolean') {
+    meta.terminalHidden = o.terminalHidden;
+  }
   return meta;
 }
