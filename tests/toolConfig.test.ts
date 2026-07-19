@@ -108,3 +108,26 @@ describe('parseToolMeta rootDir', () => {
     expect(m.rootDir).toBe('~/api');
   });
 });
+
+describe('parseToolMeta type', () => {
+  it('parses type=document', () => {
+    const meta = parseToolMeta({ type: 'document' }, 't1');
+    expect(meta.type).toBe('document');
+  });
+  it('parses type=terminal', () => {
+    const meta = parseToolMeta({ type: 'terminal' }, 't1');
+    expect(meta.type).toBe('terminal');
+  });
+  it('type defaults undefined when missing', () => {
+    const meta = parseToolMeta({}, 't1');
+    expect(meta.type).toBeUndefined();
+  });
+  it('drops invalid type values', () => {
+    const meta = parseToolMeta({ type: 'foo' }, 't1');
+    expect(meta.type).toBeUndefined();
+  });
+  it('drops blank type string', () => {
+    const meta = parseToolMeta({ type: '  ' }, 't1');
+    expect(meta.type).toBeUndefined();
+  });
+});

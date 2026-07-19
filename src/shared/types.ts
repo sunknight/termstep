@@ -63,6 +63,12 @@ export interface ToolMeta {
   sourceId?: string;
   // 分组名（自由文本）。空/缺失 = 未分组。仅用于侧栏展示分区，不影响执行。
   group?: string;
+  /**
+   * 工具类型。`"terminal"`（默认）= 持久终端 + 右栏帮助页；
+   * `"document"` = 仅文档型：不创建终端，整个右半屏合并为文档区，按钮无动作（保留 ⌘/Ctrl+点击复制）。
+   * 缺省视为 `"terminal"`，向后兼容旧 tool.json。
+   */
+  type?: 'terminal' | 'document';
 }
 
 export interface Tool {
