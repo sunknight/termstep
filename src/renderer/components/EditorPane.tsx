@@ -229,33 +229,32 @@ export function EditorPane(props: {
               </datalist>
             </label>
           </div>
-          <div className="form-row">
-            <label className="field">
-              <span className="field-label">模式 <em>仅文档=不创建终端，整个右半屏渲染文档；按钮无动作（保留 ⌘复制）</em></span>
-              <div className="mode-radio-group" role="radiogroup" aria-label="工具模式">
-                <label className="mode-radio">
-                  <input
-                    type="radio"
-                    name="tool-mode"
-                    value="terminal"
-                    checked={typeMode === 'terminal'}
-                    onChange={() => setTypeMode('terminal')}
-                  />
-                  <span>终端</span>
-                </label>
-                <label className="mode-radio">
-                  <input
-                    type="radio"
-                    name="tool-mode"
-                    value="document"
-                    checked={typeMode === 'document'}
-                    onChange={() => setTypeMode('document')}
-                  />
-                  <span>仅文档</span>
-                </label>
-              </div>
-            </label>
-          </div>
+          <label className="field">
+            <span className="field-label">模式</span>
+            <div className="mode-radio-group" role="radiogroup" aria-label="工具模式">
+              <label className="mode-radio">
+                <input
+                  type="radio"
+                  name="tool-mode"
+                  value="terminal"
+                  checked={typeMode === 'terminal'}
+                  onChange={() => setTypeMode('terminal')}
+                />
+                <span>终端</span>
+              </label>
+              <label className="mode-radio">
+                <input
+                  type="radio"
+                  name="tool-mode"
+                  value="document"
+                  checked={typeMode === 'document'}
+                  onChange={() => setTypeMode('document')}
+                />
+                <span>仅文档</span>
+              </label>
+            </div>
+            <em className="field-hint">仅文档=不创建终端，整个右半屏渲染文档；按钮无动作（保留 ⌘复制）</em>
+          </label>
         </fieldset>
 
         <fieldset className="form-section">
