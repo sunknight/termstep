@@ -132,9 +132,10 @@ export function EditorPane(props: {
       mdUrl: mdUrl.trim(),
       group: group.trim(),
       // LR（默认布局）发空串让 mergeToolJson 裁掉 layout 字段（保持 tool.json 干净）；
-      // TB 保留显式 'TB'。terminalHidden=false 也是默认值，由 mergeToolJson 裁剪。
+      // TB 保留显式 'TB'。terminalHidden 显式发 false（不能 || undefined——否则
+      // mergeToolJson 会跳过这个 key，旧的 true 值无法清除）；false 由 mergeToolJson 裁剪。
       layout: (layout === 'LR' ? '' : 'TB') as 'LR' | 'TB',
-      terminalHidden: terminalHidden || undefined,
+      terminalHidden,
       initCommands: initList,
     };
     const mins = Number(autoUpdate);
