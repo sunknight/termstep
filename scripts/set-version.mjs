@@ -205,39 +205,13 @@ if (tagResult) {
   console.log('（未 push，请手动 git push origin main --tags）');
 }
 
-// ── CHANGELOG 提示词：本脚本不碰 CHANGELOG，由人工按「面向用户」原则手写。
-// 这里生成一段可复制的提示词，粘给 AI 即可按既定原则产出本版本条目。
-// 提取范围 = 最近 tag..HEAD（与旧自动逻辑一致的范围，只是改由 AI 总结成用户视角）。
-function buildChangelogPrompt(version) {
-  const tags = git(['tag', '-l', '--sort=-v:refname']).trim();
-  const range = tags ? `${tags.split('\n')[0]}..HEAD` : '全部历史';
-  let subjects = [];
-  try {
-    subjects = git(['log', range, '--no-merges', '--format=- %s']).trim().split('\n').filter(Boolean);
-  } catch {
-    subjects = [];
-  }
-  const today = new Date().toISOString().slice(0, 10);
-  return [
-    `请为 TermStep ${version}（${today}）生成 CHANGELOG.md 条目，插入到文件顶部「## [」标题之前。`,
-    '',
-    '原则：面向用户，不面向开发。',
-    '- 只写用户能看到/能做到的变化，不写模块名、函数名、数据字段、内部机制、重构/测试/文档改动。',
-    '- 用「可/能/不再/现在」开头，每条一句话。',
-    '- 段落为空就省略（Added / Changed / Fixed）。',
-    '- 格式：',
-    '  ## [' + version + '] - ' + today,
-    '  ### Added',
-    '  - ...',
-    '',
-    '本版本提交（' + range + '，仅作参考素材，需提炼成用户视角，不要照抄）：',
-    ...subjects,
-  ].join('\n');
-}
-
-console.log('\n──────── CHANGELOG 提示词（复制下方给 AI）────────');
-console.log(buildChangelogPrompt(version));
-console.log('─────────────────────────────────────────────────');
-console.log('注：脚本不自动改 CHANGELOG.md。请把上面的提示词粘给 AI 生成条目，');
-console.log('    人工核对后插入 CHANGELOG.md 顶部，再 git add CHANGELOG.md 并提交。');
+// ── CHANGELOG：本脚本不碰 CHANGELOG。用 changelog-gen skill 一句话生成。
+// skill 会自己 git log 取 <最近 tag>..HEAD 提交、按「面向用户」原则提炼、
+// 直接插入 CHANGELOG.md 顶部——无需复制粘贴提示词。
+console.log('');
+console.log('──────── CHANGELOG ────────');
+console.log('本脚本不写 CHANGELOG。用 changelog-gen skill 生成：');
+console.log(`  在 AI 对话里说「用 changelog-gen 写 ${version} 版本记录」`);
+console.log('skill 会自动取提交、提炼成面向用户条目、插入 CHANGELOG.md 顶部。');
+console.log('──────────────────────────');
 console.log(dryRun ? '\n（dry-run，未写盘）\n' : '\n完成。\n');
