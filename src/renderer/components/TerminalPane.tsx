@@ -15,7 +15,6 @@ export function TerminalPane(props: { tools: Tool[]; activeId: string | null }) 
             env: t.meta.env,
             tmux: t.meta.tmux,
             initCommands: t.meta.initCommands,
-            type: t.meta.type,
           }}
         />
       ))}

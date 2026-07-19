@@ -62,7 +62,6 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
       env: a.meta.env,
       tmux: a.meta.tmux,
       initCommands: a.meta.initCommands,
-      type: a.meta.type,
     };
     setOpen(false);
     if (params && params.length > 0) {

@@ -286,16 +286,12 @@ export default function App() {
     </div>
   );
 
-  // 文档型工具（tool.json 的 type === 'document'）：不建终端，整屏渲染文档。
-  const isDocument = active?.meta.type === 'document';
-
+  // 中间态：所有工具统一走终端路径。文档型布局（隐藏终端、整屏文档）
+  // 将由 Task 9 的统一布局（layout + terminalHidden）重建。
   return (
     <div className="app">
       {!sidebarCollapsed && sidebarContent}
-      {isDocument ? (
-        renderHelp(false, true)
-      ) : (
-        <>
+      <>
           <section className="terminal-area">
             <div className="term-header">
               <PanelToggle
@@ -333,7 +329,6 @@ export default function App() {
                         env: active.meta.env,
                         tmux: active.meta.tmux,
                         initCommands: active.meta.initCommands,
-                        type: active.meta.type,
                       };
                       termRegistry.get(id)?.reset();
                       if (e.metaKey) {
@@ -368,7 +363,6 @@ export default function App() {
           </section>
           {!helpCollapsed && renderHelp(false)}
         </>
-      )}
       {editingId && active && (
         <EditorModal
           tool={active}
