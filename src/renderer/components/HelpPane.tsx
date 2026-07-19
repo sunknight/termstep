@@ -50,6 +50,12 @@ export function HelpPane(props: {
   isRemote?: boolean;
   /** 点链接时打开预览弹层。由 App 注入；HelpPane 负责 href 分类后调对应分支。 */
   onPreview?: (req: PreviewRequest) => void;
+  /**
+   * 文档型工具主区模式：TOC 改为左侧竖向 sidebar（飞书风格），与正文左右三七分、
+   * 各自独立滚动；忽略 COLLAPSE_THRESHOLD——只要有 H2 就显示 sidebar 且启用折叠。
+   * 默认 false（终端型右栏）：TOC 在顶部横向，H2 < 3 不显示也不折叠。
+   */
+  sidebarToc?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastBtn = useRef<HTMLElement | null>(null);
@@ -73,11 +79,18 @@ export function HelpPane(props: {
   // 渲染后把 H2 分节自动包裹成 <details>，H2 数 >= 阈值才启用。
   // 序言（H1 及第一个 H2 之前的内容）保留在 details 外，不折叠。
   // 直接给每个 details 绑 toggle 监听（toggle 不冒泡，事件代理收不到，必须绑目标）。
+  // sidebarToc（文档型主区）：忽略阈值，只要有 H2 就启用折叠 + 填充 TOC。
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
     const h2s = Array.from(root.querySelectorAll('h2'));
-    if (h2s.length < COLLAPSE_THRESHOLD) {
+    if (!props.sidebarToc && h2s.length < COLLAPSE_THRESHOLD) {
+      setToc([]);
+      setOpenIds(new Set());
+      return;
+    }
+    if (h2s.length === 0) {
+      // sidebarToc 下无 H2：不显示 sidebar（正文占满），避免空 sidebar 尴尬。
       setToc([]);
       setOpenIds(new Set());
       return;
@@ -300,34 +313,49 @@ export function HelpPane(props: {
     });
   };
 
+  const tocNode =
+    toc.length >= COLLAPSE_THRESHOLD || (props.sidebarToc && toc.length > 0) ? (
+      <div className={props.sidebarToc ? 'help-toc help-toc-sidebar' : 'help-toc'}>
+        <button type="button" className="help-toc-btn" onClick={toggleAll}>
+          {allOpen ? '全部折叠' : '全部展开'}
+        </button>
+        {toc.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            data-toc-id={t.id}
+            className={`help-toc-chip${openIds.has(t.id) ? ' active' : ''}`}
+            title={t.text}
+            onClick={() => scrollToSection(t.id)}
+          >
+            {t.text}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
   return (
     <>
       {prompt.node}
-      {toc.length >= COLLAPSE_THRESHOLD && (
-        // TOC 栏固定在文档滚动区上方（.help-scroll 的前一个兄弟），不参与滚动。
-        // 按钮和 chip 同属一个 flex 流，多行 wrap 一起换行（按钮不单独成行）。
-        <div className="help-toc">
-          <button type="button" className="help-toc-btn" onClick={toggleAll}>
-            {allOpen ? '全部折叠' : '全部展开'}
-          </button>
-          {toc.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              data-toc-id={t.id}
-              className={`help-toc-chip${openIds.has(t.id) ? ' active' : ''}`}
-              title={t.text}
-              onClick={() => scrollToSection(t.id)}
-            >
-              {t.text}
-            </button>
-          ))}
+      {props.sidebarToc ? (
+        // 文档型主区：TOC 作为左侧竖向 sidebar，与正文左右三七分、各自独立滚动。
+        <div className="help-body">
+          {tocNode}
+          <div className="help-scroll">
+            <div className="help" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
+          </div>
         </div>
+      ) : (
+        <>
+          {/* TOC 栏固定在文档滚动区上方（.help-scroll 的前一个兄弟），不参与滚动。
+              按钮和 chip 同属一个 flex 流，多行 wrap 一起换行（按钮不单独成行）。 */}
+          {tocNode}
+          {/* .help-scroll 是文档独立滚动容器；TOC 在它上方固定。 */}
+          <div className="help-scroll">
+            <div className="help" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
+          </div>
+        </>
       )}
-      {/* .help-scroll 是文档独立滚动容器；TOC 在它上方固定。 */}
-      <div className="help-scroll">
-        <div className="help" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
-      </div>
       {tip && (
         <div
           className="cmd-tip"

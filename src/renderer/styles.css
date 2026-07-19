@@ -438,6 +438,52 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 .help-toc-btn:hover { background: var(--surface-2); border-color: var(--border-strong); }
 
+/* 文档型主区（sidebarToc）：TOC + 正文左右三七分，各自独立滚动。
+   .help-body 是水平 flex 容器，撑满 .help-area 剩余高度（顶栏在它上方）。
+   min-height: 0 是 flex 子项能滚动的必要条件。 */
+.help-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  overflow: hidden;
+}
+.help-toc-sidebar {
+  flex: 0 0 30%;
+  max-width: 280px;
+  min-width: 160px;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 4px;
+  padding: 12px 10px;
+  max-height: none;
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+/* 竖向 sidebar 下的 chip：占满宽度，左对齐，去掉圆角胶囊改为方块（更像目录条目） */
+.help-toc-sidebar .help-toc-chip {
+  max-width: none;
+  width: 100%;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  white-space: normal; /* 允许长标题换行，sidebar 宽度有限 */
+  overflow: hidden;
+  display: block;
+}
+.help-toc-sidebar .help-toc-btn {
+  width: 100%;
+  margin-bottom: 6px;
+  text-align: left;
+}
+/* sidebar 模式下正文占右侧剩余空间（.help-scroll 原有 flex:1 + overflow-y:auto 不变） */
+.help-body .help-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* 折叠分节：原生 <details>。容器无边框/背景/padding，与未折叠文档视觉一致；
    summary 复刻 .help h2 的样式（字号 + 底部下划线）。
    容器顶部 margin 与 .help h2（1.4em）一致，保证折叠/未折叠 H2 上方留白相同。 */
