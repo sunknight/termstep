@@ -203,44 +203,46 @@ export function EditorPane(props: {
               </div>
             </div>
           </div>
-          <label className="field">
-            <span className="field-label">
-              分组 <em>留空 = 未分组；输入新名字即新建</em>
-            </span>
-            <input
-              list="ts-groups"
-              value={group}
-              onChange={(e) => setGroup(e.target.value)}
-              placeholder="未分组"
-            />
-            <datalist id="ts-groups">
-              {props.existingGroups.map((g) => (
-                <option key={g} value={g} />
-              ))}
-            </datalist>
-          </label>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">
+                分组 <em>留空 = 未分组；输入新名字即新建</em>
+              </span>
+              <input
+                list="ts-groups"
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
+                placeholder="未分组"
+              />
+              <datalist id="ts-groups">
+                {props.existingGroups.map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+            </label>
+          </div>
         </fieldset>
 
         <fieldset className="form-section">
           <legend>终端</legend>
-          <div className="form-row">
-            <label className="field">
-              <span className="field-label">起始目录 (cwd)</span>
-              <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="~" />
-            </label>
-            <label className="field">
-              <span className="field-label">
-                工具根目录 (@/) <em>留空同 cwd；按钮里 @/ 锚定此目录</em>
-              </span>
-              <input value={rootDir} onChange={(e) => setRootDir(e.target.value)} placeholder="留空同 cwd" />
-            </label>
-          </div>
+          <label className="field">
+            <span className="field-label">起始目录 (cwd)</span>
+            <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="~" />
+          </label>
           <label className="field">
             <span className="field-label">
-              tmux 会话名 <em>留空不开；已存在则 attach，否则新建</em>
+              工具根目录 (@/) <em>留空同 cwd；按钮里 @/ 锚定此目录</em>
             </span>
-            <input value={tmux} onChange={(e) => setTmux(e.target.value)} placeholder="dev" />
+            <input value={rootDir} onChange={(e) => setRootDir(e.target.value)} placeholder="留空同 cwd" />
           </label>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">
+                tmux 会话名 <em>留空不开；已存在则 attach，否则新建</em>
+              </span>
+              <input value={tmux} onChange={(e) => setTmux(e.target.value)} placeholder="dev" />
+            </label>
+          </div>
           <label className="field">
             <span className="field-label">
               启动命令 <em>每行一条，进入终端后依次执行</em>

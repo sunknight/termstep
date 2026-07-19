@@ -579,11 +579,11 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
    internally for long content. */
 .meta-form {
   flex: 0 0 auto;
-  display: flex; flex-direction: column; gap: 8px; font-size: 12px;
+  display: flex; flex-direction: column; gap: 7px; font-size: 12px;
 }
 .form-section {
-  border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 12px 12px; margin: 0;
-  display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 12px 10px; margin: 0;
+  display: flex; flex-direction: column; gap: 7px;
 }
 .form-section legend {
   font-size: 10px; font-weight: 700; color: var(--accent); padding: 0 4px; letter-spacing: 0.5px;
@@ -597,7 +597,7 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
   align-items: start;
 }
 .form-row .field {
