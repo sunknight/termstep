@@ -228,32 +228,32 @@ export function EditorPane(props: {
                 ))}
               </datalist>
             </label>
-          </div>
-          <div className="field">
-            <span className="field-label">
-              模式 <em>普通=终端+文档模式；文档=文档优先模式，无终端</em>
-            </span>
-            <div className="mode-radio-group" role="radiogroup" aria-label="工具模式">
-              <label className="mode-radio">
-                <input
-                  type="radio"
-                  name="tool-mode"
-                  value="terminal"
-                  checked={typeMode === 'terminal'}
-                  onChange={() => setTypeMode('terminal')}
-                />
-                <span>普通</span>
-              </label>
-              <label className="mode-radio">
-                <input
-                  type="radio"
-                  name="tool-mode"
-                  value="document"
-                  checked={typeMode === 'document'}
-                  onChange={() => setTypeMode('document')}
-                />
-                <span>文档</span>
-              </label>
+            <div className="field">
+              <span className="field-label">
+                模式 <em>普通=终端+文档；文档=无终端</em>
+              </span>
+              <div className="mode-radio-group" role="radiogroup" aria-label="工具模式">
+                <label className="mode-radio">
+                  <input
+                    type="radio"
+                    name="tool-mode"
+                    value="terminal"
+                    checked={typeMode === 'terminal'}
+                    onChange={() => setTypeMode('terminal')}
+                  />
+                  <span>普通</span>
+                </label>
+                <label className="mode-radio">
+                  <input
+                    type="radio"
+                    name="tool-mode"
+                    value="document"
+                    checked={typeMode === 'document'}
+                    onChange={() => setTypeMode('document')}
+                  />
+                  <span>文档</span>
+                </label>
+              </div>
             </div>
           </div>
         </fieldset>
