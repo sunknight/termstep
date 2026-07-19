@@ -90,7 +90,10 @@ export function EditorPane(props: {
       if (iconWrapRef.current && !iconWrapRef.current.contains(e.target as Node)) setIconOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIconOpen(false);
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setIconOpen(false);
+      }
     };
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
@@ -137,10 +140,23 @@ export function EditorPane(props: {
     }
   };
 
+  // Cmd/Ctrl + Enter 快速保存（用 ref 避免闭包捕获旧 state）
+  const saveRef = useRef(save);
+  saveRef.current = save;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        void saveRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div className="editor">
-      <div className="editor-header">编辑工具</div>
-
       {/* Always-visible main form */}
       <div className="meta-form">
         <fieldset className="form-section">
