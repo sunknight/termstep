@@ -63,9 +63,8 @@ export default function App() {
   const [docCollapsed, setDocCollapsed] = useState<boolean>(
     () => localStorage.getItem('termstep:help-collapsed') === '1',
   );
-  // Right panel width, persisted like the sidebar's. Drag direction is mirrored:
-  // on the right edge, moving the cursor LEFT widens the panel.
-  const [helpWidth, setHelpWidth] = useState<number>(() => {
+  // Peek 浮动层宽度（doc 折叠时用）。持久化如侧栏。
+  const [helpWidth] = useState<number>(() => {
     const v = Number(localStorage.getItem('termstep:help-width'));
     return v >= HELP_MIN_WIDTH && v <= HELP_MAX_WIDTH ? v : HELP_DEFAULT_WIDTH;
   });

@@ -303,13 +303,8 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .doc-peek-body { max-height: 70vh; overflow: auto; }
 
 /* ----------------------------------------------------------------------------
-   中列：终端区域（标题栏 + 终端面板）—— 旧 .terminal-area 保留兼容
+   中列：终端区域（标题栏 + 终端面板）
    ------------------------------------------------------------------------- */
-.terminal-area {
-  flex: 1; min-width: 0; min-height: 0;
-  background: var(--term-bg); /* 四周与终端画布同色，无灰边 */
-  display: flex; flex-direction: column; overflow: hidden;
-}
 /* Title bar above the terminal: cwd on the left, quick/restart on the right
    (buttons are no longer floating over the terminal). 高度与左/右顶栏统一。 */
 .term-header {
@@ -334,7 +329,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .term-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
-.term-pane-wrap { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
 .term { padding: 6px; }
 .term .xterm { height: 100%; }
 /* Keep terminal scrolling, but hide the scrollbar. */
@@ -382,14 +376,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .cmd-btn.compact .cmd-edit-tag {
   flex: 0 0 auto; font-size: 10px; color: var(--text-3);
   border: 1px dashed var(--border-strong); border-radius: 4px; padding: 0 4px;
-}
-/* Width set inline by the docked panel (see startHelpDrag in App.tsx); when
-   floated inside the collapsed peek, no width is set and the Peek sizes itself. */
-.help-area {
-  border-left: 1px solid var(--border);
-  background: var(--surface); color: var(--text);
-  display: flex; flex-direction: column;
-  overflow: hidden; /* 顶栏固定，文档区独立滚动 */
 }
 .placeholder { color: var(--text-3); padding: 16px; }
 .errors { display: none; }
@@ -649,7 +635,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 /* ----------------------------------------------------------------------------
    帮助区：工具栏 + 编辑器
    ------------------------------------------------------------------------- */
-.help-area { position: relative; display: flex; flex-direction: column; }
 /* 右列顶栏：与左、中列顶栏等高、固定不滚动。 */
 .help-toolbar {
   flex: 0 0 var(--bar-h);
@@ -838,14 +823,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   cursor: col-resize; z-index: 10;
 }
 .sidebar-resizer:hover, .sidebar-resizer:active { background: var(--accent-weak); }
-
-/* Right panel resizer — mirror of .sidebar-resizer, anchored to the LEFT edge
-   (the panel's border side). Dragging it left widens the panel. */
-.help-resizer {
-  position: absolute; top: 0; left: -3px; bottom: 0; width: 6px;
-  cursor: col-resize; z-index: 10;
-}
-.help-resizer:hover, .help-resizer:active { background: var(--accent-weak); }
 
 /* Markdown links open in the system browser (clicks routed via openExternal). */
 .help a { color: var(--accent); text-decoration: underline; cursor: pointer; }
