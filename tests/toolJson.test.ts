@@ -68,6 +68,32 @@ describe('mergeToolJson rootDir', () => {
   });
 });
 
+// 对偶 src-tauri/src/pure.rs merge_tool_json layout/terminalHidden prune。
+describe('mergeToolJson layout/terminalHidden', () => {
+  it('prunes cleared layout (empty string)', () => {
+    const merged = mergeToolJson({ name: 't', layout: 'TB' }, { layout: '' });
+    expect(merged).toEqual({ name: 't' });
+    expect('layout' in merged).toBe(false);
+  });
+  it('keeps layout=TB', () => {
+    const merged = mergeToolJson({ name: 't' }, { layout: 'TB' });
+    expect(merged).toEqual({ name: 't', layout: 'TB' });
+  });
+  it('keeps existing layout when patch does not touch it', () => {
+    const merged = mergeToolJson({ name: 't', layout: 'TB' }, { cwd: '/x' });
+    expect(merged).toEqual({ name: 't', layout: 'TB', cwd: '/x' });
+  });
+  it('prunes terminalHidden=false', () => {
+    const merged = mergeToolJson({ name: 't', terminalHidden: true }, { terminalHidden: false });
+    expect(merged).toEqual({ name: 't' });
+    expect('terminalHidden' in merged).toBe(false);
+  });
+  it('keeps terminalHidden=true', () => {
+    const merged = mergeToolJson({ name: 't' }, { terminalHidden: true });
+    expect(merged).toEqual({ name: 't', terminalHidden: true });
+  });
+});
+
 describe('migrateMeta', () => {
   it('converts type=document to layout=TB + terminalHidden=true and drops type', () => {
     const before = { name: 'doc', type: 'document', cwd: '/x' };

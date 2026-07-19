@@ -518,6 +518,94 @@ mod tests {
         assert!(r.is_empty(), "rootDir must not be a risk field");
     }
 
+    // ── layout / terminalHidden（对偶 src/shared/toolJson.ts + toolConfig.ts）──
+    #[test]
+    fn merge_prunes_cleared_layout() {
+        // layout 空串 = 清空，必须 prune（与 cwd/rootDir 同一裁剪列表）
+        let existing = json!({"name":"t","layout":"TB"});
+        let patch = json!({"layout":""});
+        let m = merge_tool_json(&existing, &patch);
+        assert!(m.get("layout").is_none(), "cleared layout must be pruned");
+        assert_eq!(m["name"], "t");
+    }
+
+    #[test]
+    fn merge_keeps_layout_tb() {
+        let existing = json!({"name":"t"});
+        let patch = json!({"layout":"TB"});
+        let m = merge_tool_json(&existing, &patch);
+        assert_eq!(m["layout"], "TB");
+    }
+
+    #[test]
+    fn merge_keeps_layout_when_patch_does_not_touch_it() {
+        let existing = json!({"name":"t","layout":"TB"});
+        let patch = json!({"cwd":"/x"});
+        let m = merge_tool_json(&existing, &patch);
+        assert_eq!(m["layout"], "TB");
+        assert_eq!(m["cwd"], "/x");
+    }
+
+    #[test]
+    fn merge_prunes_terminal_hidden_false() {
+        // terminalHidden=false 是默认值，prune 掉保持 tool.json 整洁
+        let existing = json!({"name":"t","terminalHidden":true});
+        let patch = json!({"terminalHidden":false});
+        let m = merge_tool_json(&existing, &patch);
+        assert!(m.get("terminalHidden").is_none(), "terminalHidden=false must be pruned");
+        assert_eq!(m["name"], "t");
+    }
+
+    #[test]
+    fn merge_keeps_terminal_hidden_true() {
+        let existing = json!({"name":"t"});
+        let patch = json!({"terminalHidden":true});
+        let m = merge_tool_json(&existing, &patch);
+        assert_eq!(m["terminalHidden"], true);
+    }
+
+    #[test]
+    fn meta_parses_layout_tb() {
+        let m = parse_tool_meta(&json!({"name":"t","layout":"TB"}), "t");
+        assert_eq!(m.layout.as_deref(), Some("TB"));
+    }
+
+    #[test]
+    fn meta_parses_layout_lr() {
+        let m = parse_tool_meta(&json!({"name":"t","layout":"LR"}), "t");
+        assert_eq!(m.layout.as_deref(), Some("LR"));
+    }
+
+    #[test]
+    fn meta_drops_invalid_layout() {
+        let m = parse_tool_meta(&json!({"name":"t","layout":"diagonal"}), "t");
+        assert!(m.layout.is_none(), "invalid layout must drop to None");
+    }
+
+    #[test]
+    fn meta_layout_defaults_none() {
+        let m = parse_tool_meta(&json!({"name":"t"}), "t");
+        assert!(m.layout.is_none());
+    }
+
+    #[test]
+    fn meta_parses_terminal_hidden_true() {
+        let m = parse_tool_meta(&json!({"name":"t","terminalHidden":true}), "t");
+        assert_eq!(m.terminal_hidden, Some(true));
+    }
+
+    #[test]
+    fn meta_parses_terminal_hidden_false() {
+        let m = parse_tool_meta(&json!({"name":"t","terminalHidden":false}), "t");
+        assert_eq!(m.terminal_hidden, Some(false));
+    }
+
+    #[test]
+    fn meta_terminal_hidden_defaults_none() {
+        let m = parse_tool_meta(&json!({"name":"t"}), "t");
+        assert!(m.terminal_hidden.is_none());
+    }
+
 }
 
 /// 把旧 `type` 字段迁移到新的 `layout` + `terminalHidden` 字段（统一布局系统）。

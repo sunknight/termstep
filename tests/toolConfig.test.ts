@@ -108,3 +108,35 @@ describe('parseToolMeta rootDir', () => {
     expect(m.rootDir).toBe('~/api');
   });
 });
+
+// 对偶 src-tauri/src/pure.rs parse_tool_meta layout/terminalHidden。
+describe('parseToolMeta layout/terminalHidden', () => {
+  it('parses layout=TB', () => {
+    const m = parseToolMeta({ name: 't', layout: 'TB' }, 't');
+    expect(m.layout).toBe('TB');
+  });
+  it('parses layout=LR', () => {
+    const m = parseToolMeta({ name: 't', layout: 'LR' }, 't');
+    expect(m.layout).toBe('LR');
+  });
+  it('layout defaults undefined when missing', () => {
+    const m = parseToolMeta({ name: 't' }, 't');
+    expect(m.layout).toBeUndefined();
+  });
+  it('drops invalid layout values', () => {
+    const m = parseToolMeta({ name: 't', layout: 'diagonal' }, 't');
+    expect(m.layout).toBeUndefined();
+  });
+  it('parses terminalHidden=true', () => {
+    const m = parseToolMeta({ name: 't', terminalHidden: true }, 't');
+    expect(m.terminalHidden).toBe(true);
+  });
+  it('parses terminalHidden=false', () => {
+    const m = parseToolMeta({ name: 't', terminalHidden: false }, 't');
+    expect(m.terminalHidden).toBe(false);
+  });
+  it('terminalHidden defaults undefined when missing', () => {
+    const m = parseToolMeta({ name: 't' }, 't');
+    expect(m.terminalHidden).toBeUndefined();
+  });
+});
