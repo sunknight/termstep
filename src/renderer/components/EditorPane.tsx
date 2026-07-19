@@ -83,23 +83,15 @@ export function EditorPane(props: {
   // stays effective (✓ stays on 本地) even while the 远程 tab is open for setup.
   const effective: 'local' | 'remote' = tab === 'remote' && mdUrl.trim() ? 'remote' : 'local';
 
-  // Close the icon popup on outside-click / Escape.
+  // Close the icon popup on outside-click.
   useEffect(() => {
     if (!iconOpen) return;
     const onDown = (e: MouseEvent) => {
       if (iconWrapRef.current && !iconWrapRef.current.contains(e.target as Node)) setIconOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setIconOpen(false);
-      }
-    };
     window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
     };
   }, [iconOpen]);
 
@@ -182,8 +174,21 @@ export function EditorPane(props: {
                 ▾
               </button>
               {iconOpen && (
-                <div className="icon-popup" role="listbox" aria-label="常用图标">
-                  {COMMON_ICONS.map((ic) => (
+                <div
+                  className="icon-popup"
+                  role="listbox"
+                  aria-label="常用图标"
+                  tabIndex={-1}
+                  ref={(el) => {
+                    if (el) el.focus();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setIconOpen(false);
+                    }
+                  }}
+                >                  {COMMON_ICONS.map((ic) => (
                     <button
                       key={ic}
                       type="button"

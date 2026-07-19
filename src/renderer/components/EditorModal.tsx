@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Tool } from '../../shared/types';
 import { EditorPane } from './EditorPane';
 
@@ -15,11 +15,17 @@ export function EditorModal(props: {
     };
   }, []);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
+
   return (
     <div className="modal-overlay" onClick={props.onDone}>
-      <div
-        className="modal editor-modal"
-        onClick={(e) => e.stopPropagation()}
+        <div
+          className="modal editor-modal"
+          ref={modalRef}
+          onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') props.onDone();
         }}
