@@ -355,13 +355,13 @@ export function EditorPane(props: {
         )}
       </div>
 
+      {error && <div className="editor-error">{error}</div>}
       <div className="editor-actions">
         <button className="primary" onClick={save} disabled={saving}>
           {saving ? '保存中…' : '保存'}
         </button>
         <button onClick={props.onDone}>取消</button>
       </div>
-      {error && <div className="editor-error">{error}</div>}
     </div>
   );
 }
