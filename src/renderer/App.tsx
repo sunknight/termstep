@@ -3,6 +3,7 @@ import { useTools } from './hooks/useTools';
 import { Sidebar } from './components/Sidebar';
 import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
+import { DocumentPane } from './components/DocumentPane';
 import { EditorModal } from './components/EditorModal';
 import { QuickAddModal } from './components/QuickAddModal';
 import { HelpModal } from './components/HelpModal';
@@ -276,71 +277,94 @@ export default function App() {
     </div>
   );
 
+  // 文档来源：与 renderHelp 内部逻辑一致（抽出共享，避免 document/terminal 两处重复）。
+  //   - isRemote: 按 useRemote 的真值判断（与 HelpPane 的 isRemote prop 同口径）
+  //   - markdown: useRemote 为真时取 remoteMarkdown（缺省 ''），否则取 helpMarkdown
+  const activeIsRemote = !!active?.meta.useRemote;
+  const activeMarkdown = active
+    ? active.meta.useRemote
+      ? active.remoteMarkdown ?? ''
+      : active.helpMarkdown
+    : '';
+  // 文档型工具（tool.json 的 type === 'document'）：不建终端，整屏渲染文档。
+  const isDocument = active?.meta.type === 'document';
+
   return (
     <div className="app">
       {!sidebarCollapsed && sidebarContent}
-      <section className="terminal-area">
-        <div className="term-header">
-          <PanelToggle
-            side="left"
-            collapsed={sidebarCollapsed}
-            icon="☰"
-            title="工具列表"
-            onToggle={() => setSidebarCollapsed((v) => !v)}
-            peekContent={sidebarContent}
-            closePeekOnClick
-          />
-          {sidebarCollapsed && active && (
-            <span className="term-active-tool" title={active.meta.name}>
-              {active.meta.icon && <span className="term-active-tool-icon">{active.meta.icon}</span>}
-              <span className="term-active-tool-name">{active.meta.name}</span>
-            </span>
-          )}
-          <span className="term-cwd">
-            <span className="term-cwd-icon">📂</span>
-            <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
-              {liveCwd ?? active?.meta.cwd ?? '~'}
-            </HoverTip>
-          </span>
-          <div className="term-actions">
-            <QuickCommands activeTool={active} />
-            {active && (
-              <button
-                className="term-restart"
-                title="重启终端"
-                onClick={() => {
-                  termRegistry.get(active.meta.id)?.reset();
-                  api.pty.restart(active.meta.id, {
-                    cwd: active.meta.cwd,
-                    shell: active.meta.shell,
-                    env: active.meta.env,
-                    tmux: active.meta.tmux,
-                    initCommands: active.meta.initCommands,
-                  });
-                }}
-              >
-                ↻ 重启终端
-              </button>
-            )}
-          </div>
-          <PanelToggle
-            side="right"
-            collapsed={helpCollapsed}
-            icon="📖"
-            title="工具文档"
-            onToggle={() => setHelpCollapsed((v) => !v)}
-            peekContent={renderHelp(true)}
-          />
-        </div>
-        <div className="term-pane-wrap">
-          {activeId ? (
-            <TerminalPane tools={tools} activeId={activeId} />
-          ) : (
-            <div className="placeholder">选择一个工具</div>
-          )}
-        </div>
-      </section>
-      {!helpCollapsed && renderHelp(false)}
+      {isDocument ? (
+        <DocumentPane
+          tool={active!}
+          isRemote={activeIsRemote}
+          markdown={activeMarkdown}
+          onPreview={openPreview}
+        />
+      ) : (
+        <>
+          <section className="terminal-area">
+            <div className="term-header">
+              <PanelToggle
+                side="left"
+                collapsed={sidebarCollapsed}
+                icon="☰"
+                title="工具列表"
+                onToggle={() => setSidebarCollapsed((v) => !v)}
+                peekContent={sidebarContent}
+                closePeekOnClick
+              />
+              {sidebarCollapsed && active && (
+                <span className="term-active-tool" title={active.meta.name}>
+                  {active.meta.icon && <span className="term-active-tool-icon">{active.meta.icon}</span>}
+                  <span className="term-active-tool-name">{active.meta.name}</span>
+                </span>
+              )}
+              <span className="term-cwd">
+                <span className="term-cwd-icon">📂</span>
+                <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
+                  {liveCwd ?? active?.meta.cwd ?? '~'}
+                </HoverTip>
+              </span>
+              <div className="term-actions">
+                <QuickCommands activeTool={active} />
+                {active && (
+                  <button
+                    className="term-restart"
+                    title="重启终端"
+                    onClick={() => {
+                      termRegistry.get(active.meta.id)?.reset();
+                      api.pty.restart(active.meta.id, {
+                        cwd: active.meta.cwd,
+                        shell: active.meta.shell,
+                        env: active.meta.env,
+                        tmux: active.meta.tmux,
+                        initCommands: active.meta.initCommands,
+                      });
+                    }}
+                  >
+                    ↻ 重启终端
+                  </button>
+                )}
+              </div>
+              <PanelToggle
+                side="right"
+                collapsed={helpCollapsed}
+                icon="📖"
+                title="工具文档"
+                onToggle={() => setHelpCollapsed((v) => !v)}
+                peekContent={renderHelp(true)}
+              />
+            </div>
+            <div className="term-pane-wrap">
+              {activeId ? (
+                <TerminalPane tools={tools} activeId={activeId} />
+              ) : (
+                <div className="placeholder">选择一个工具</div>
+              )}
+            </div>
+          </section>
+          {!helpCollapsed && renderHelp(false)}
+        </>
+      )}
       {editingId && active && (
         <EditorModal
           tool={active}
