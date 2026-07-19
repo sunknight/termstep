@@ -3,7 +3,6 @@ import { useTools } from './hooks/useTools';
 import { Sidebar } from './components/Sidebar';
 import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
-import { DocumentPane } from './components/DocumentPane';
 import { EditorModal } from './components/EditorModal';
 import { QuickAddModal } from './components/QuickAddModal';
 import { HelpModal } from './components/HelpModal';
@@ -231,17 +230,24 @@ export default function App() {
   );
   // `floating` = rendered inside the collapsed peek: hide the delete/export/edit
   // toolbar there (the peek is for reading docs / running commands, not editing).
-  const renderHelp = (floating: boolean) => (
+  // `documentMode` = 仅文档型工具：撑满中+右栏位置（flex:1），不渲染 resizer
+  // （产品/运营阅读视图，宽度不需要手动调）。
+  const renderHelp = (floating: boolean, documentMode = false) => (
     <div
-      className="help-area"
+      className={documentMode ? 'help-area document-mode' : 'help-area'}
       // Width applies in both docked and floating states so the collapsed
       // hover-peek has a real width (it has none from CSS, and without one it
       // collapses / escapes the window). Only the flex shorthand is dock-only
       // (the floating peek is position:fixed, not in the flex row).
-      style={{
-        width: `${helpWidth}px`,
-        ...(floating ? {} : { flex: `0 0 ${helpWidth}px` }),
-      }}
+      // documentMode 用 flex:1 撑满，覆盖固定宽度。
+      style={
+        documentMode
+          ? { flex: 1, minWidth: 0 }
+          : {
+              width: `${helpWidth}px`,
+              ...(floating ? {} : { flex: `0 0 ${helpWidth}px` }),
+            }
+      }
     >
       {active ? (
         <>
@@ -273,19 +279,12 @@ export default function App() {
       ) : (
         <div className="placeholder">无选中工具</div>
       )}
-      {!floating && <div className="help-resizer" onMouseDown={startHelpDrag} title="拖动调整宽度" />}
+      {!floating && !documentMode && (
+        <div className="help-resizer" onMouseDown={startHelpDrag} title="拖动调整宽度" />
+      )}
     </div>
   );
 
-  // 文档来源：与 renderHelp 内部逻辑一致（抽出共享，避免 document/terminal 两处重复）。
-  //   - isRemote: 按 useRemote 的真值判断（与 HelpPane 的 isRemote prop 同口径）
-  //   - markdown: useRemote 为真时取 remoteMarkdown（缺省 ''），否则取 helpMarkdown
-  const activeIsRemote = !!active?.meta.useRemote;
-  const activeMarkdown = active
-    ? active.meta.useRemote
-      ? active.remoteMarkdown ?? ''
-      : active.helpMarkdown
-    : '';
   // 文档型工具（tool.json 的 type === 'document'）：不建终端，整屏渲染文档。
   const isDocument = active?.meta.type === 'document';
 
@@ -293,12 +292,7 @@ export default function App() {
     <div className="app">
       {!sidebarCollapsed && sidebarContent}
       {isDocument ? (
-        <DocumentPane
-          tool={active!}
-          isRemote={activeIsRemote}
-          markdown={activeMarkdown}
-          onPreview={openPreview}
-        />
+        renderHelp(false, true)
       ) : (
         <>
           <section className="terminal-area">
