@@ -248,7 +248,10 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   display: flex; flex-direction: column; overflow: hidden;
   position: relative; /* 给 doc-peek 浮动层做定位基准 */
 }
-.main-body { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+.main-body {
+  flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden;
+  position: relative; /* 给 .term-pane.hidden（absolute 定位）做尺寸基准 */
+}
 .main-body.layout-lr { flex-direction: row; }
 .main-body.layout-tb { flex-direction: column; }
 

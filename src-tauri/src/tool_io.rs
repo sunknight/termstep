@@ -507,6 +507,11 @@ pub fn migrate_layout_fields_blocking(tools_dir: &Path) -> bool {
         return false;
     };
     for entry in entries.flatten() {
+        // 只处理目录（与 migrate_to_uuid_ids_blocking 等其他迁移一致，
+        // 避免 tools_dir 下的杂散文件产生无意义的 <file>/tool.json 路径）。
+        if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+            continue;
+        }
         let tool_json = entry.path().join("tool.json");
         let Ok(content) = std::fs::read_to_string(&tool_json) else {
             continue; // 无 tool.json 或读失败——跳过，不阻断
