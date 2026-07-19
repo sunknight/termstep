@@ -528,7 +528,9 @@ pub fn migrate_layout_fields_blocking(tools_dir: &Path) -> bool {
         if std::fs::write(&tmp, format!("{}\n", pretty)).is_err() {
             continue;
         }
-        let _ = std::fs::rename(&tmp, &tool_json);
+        if let Err(e) = std::fs::rename(&tmp, &tool_json) {
+            eprintln!("migrate_layout_fields: rename {} failed: {}", tool_json.display(), e);
+        }
     }
     // 所有处理完成（或本就无需处理）后写标志文件。
     if let Err(e) = std::fs::write(tools_dir.join(MARKER), "1\n") {
@@ -1333,5 +1335,74 @@ mod tests {
 
         let changed = migrate_add_source_id_blocking(dir);
         assert!(!changed, "no tool.json → nothing to do");
+    }
+
+    // ── migrate_layout_fields_blocking ─────────────────────────────────────────
+    #[test]
+    fn migrate_layout_fields_document_becomes_tb_hidden() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // document 工具：type=→ layout="TB" + terminalHidden=true
+        write_tool_json(dir, "doc", r#"{"name":"doc","type":"document"}"#);
+
+        let changed = migrate_layout_fields_blocking(dir);
+        assert!(changed, "should report it migrated a field");
+
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.join("doc").join("tool.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(v.get("layout").and_then(|s| s.as_str()), Some("TB"));
+        assert_eq!(v.get("terminalHidden").and_then(|b| b.as_bool()), Some(true));
+        assert!(v.get("type").is_none(), "type field must be removed");
+        assert_eq!(v["name"], "doc", "other fields preserved");
+        // 标志文件写入
+        assert!(
+            dir.join(".migrated-layout").exists(),
+            "marker must be written after migration"
+        );
+    }
+
+    #[test]
+    fn migrate_layout_fields_is_idempotent_via_marker() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // 预置标志文件 = 已迁移完成。即便仍有旧 type 字段也必须跳过。
+        std::fs::write(dir.join(".migrated-layout"), "1\n").unwrap();
+        write_tool_json(dir, "doc", r#"{"name":"doc","type":"document"}"#);
+        let original = std::fs::read_to_string(dir.join("doc").join("tool.json")).unwrap();
+
+        let changed = migrate_layout_fields_blocking(dir);
+        assert!(changed, "marker exists → short-circuit returns true");
+        // tool.json 原样未动（仍有 type 字段）
+        let after = std::fs::read_to_string(dir.join("doc").join("tool.json")).unwrap();
+        assert_eq!(after, original, "tool.json must be untouched when marker present");
+        let v: serde_json::Value = serde_json::from_str(&after).unwrap();
+        assert!(v.get("type").is_some(), "type field preserved (migration skipped)");
+        assert!(v.get("layout").is_none(), "layout must not be added (migration skipped)");
+    }
+
+    #[test]
+    fn migrate_layout_fields_terminal_drops_type_no_layout() {
+        // terminal 工具：type 被去掉，但不写默认 layout/terminalHidden
+        let _dir = tmp();
+        let dir = _dir.path();
+        write_tool_json(dir, "t", r#"{"name":"t","type":"terminal"}"#);
+
+        let changed = migrate_layout_fields_blocking(dir);
+        assert!(changed, "type field removed → content changed");
+
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.join("t").join("tool.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(v.get("type").is_none(), "type field removed");
+        assert!(v.get("layout").is_none(), "terminal tools do not get default layout");
+        assert!(
+            v.get("terminalHidden").is_none(),
+            "terminal tools do not get default terminalHidden"
+        );
+        assert_eq!(v["name"], "t");
+        assert!(dir.join(".migrated-layout").exists());
     }
 }
