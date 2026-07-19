@@ -23,7 +23,7 @@ pub fn merge_tool_json(existing: &Value, patch: &Value) -> Value {
         }
     }
     // 裁掉被清空的 optional 字段（空字符串 = 清空）
-    for k in &["cwd", "rootDir", "tmux", "mdUrl", "group"] {
+    for k in &["cwd", "rootDir", "tmux", "mdUrl", "group", "type"] {
         if merged.get(*k).and_then(|v| v.as_str()) == Some("") {
             merged.remove(*k);
         }
@@ -207,6 +207,7 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
         use_remote: None,
         source_id: None,
         group: None,
+        tool_type: None,
     };
     if let Some(cwd) = trim_str_field(o, "cwd") {
         meta.cwd = Some(cwd);
@@ -244,6 +245,12 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
     }
     if let Some(g) = trim_str_field(o, "group") {
         meta.group = Some(g);
+    }
+    if let Some(t) = trim_str_field(o, "type") {
+        // 只接受 terminal / document，其它一律视为缺省。
+        if t == "terminal" || t == "document" {
+            meta.tool_type = Some(t);
+        }
     }
     meta
 }
@@ -501,6 +508,58 @@ mod tests {
         let t = bundle_with(json!({"name":"E","rootDir":"/srv/api"}));
         let r = scan_tool_risk(&t);
         assert!(r.is_empty(), "rootDir must not be a risk field");
+    }
+
+    #[test]
+    fn meta_parses_type_document() {
+        let raw = json!({ "type": "document" });
+        let m = parse_tool_meta(&raw, "t1");
+        assert_eq!(m.tool_type.as_deref(), Some("document"));
+    }
+
+    #[test]
+    fn meta_parses_type_terminal() {
+        let raw = json!({ "type": "terminal" });
+        let m = parse_tool_meta(&raw, "t1");
+        assert_eq!(m.tool_type.as_deref(), Some("terminal"));
+    }
+
+    #[test]
+    fn meta_type_defaults_none_when_missing() {
+        let raw = json!({});
+        let m = parse_tool_meta(&raw, "t1");
+        assert_eq!(m.tool_type, None);
+    }
+
+    #[test]
+    fn meta_drops_invalid_type_values() {
+        let raw = json!({ "type": "foo" });
+        let m = parse_tool_meta(&raw, "t1");
+        assert_eq!(m.tool_type, None);
+    }
+
+    #[test]
+    fn merge_prunes_cleared_type() {
+        let existing = json!({ "type": "document" });
+        let patch = json!({ "type": "" });
+        let merged = merge_tool_json(&existing, &patch);
+        assert!(merged.get("type").is_none());
+    }
+
+    #[test]
+    fn merge_keeps_type_when_set() {
+        let existing = json!({});
+        let patch = json!({ "type": "document" });
+        let merged = merge_tool_json(&existing, &patch);
+        assert_eq!(merged.get("type").and_then(|v| v.as_str()), Some("document"));
+    }
+
+    #[test]
+    fn merge_keeps_existing_type_when_patch_does_not_touch_it() {
+        let existing = json!({ "type": "document" });
+        let patch = json!({ "name": "New" });
+        let merged = merge_tool_json(&existing, &patch);
+        assert_eq!(merged.get("type").and_then(|v| v.as_str()), Some("document"));
     }
 
 }

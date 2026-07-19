@@ -168,6 +168,7 @@ export function HelpPane(props: {
           env: props.tool.meta.env,
           tmux: props.tool.meta.tmux,
           initCommands: props.tool.meta.initCommands,
+          type: props.tool.meta.type,
         };
         // 远程订阅的按钮：首次点击弹确认（不可信内容可能注入危险命令）。
         // 用户确认后记入集合，同一命令后续点击不再打扰。

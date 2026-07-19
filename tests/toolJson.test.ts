@@ -67,3 +67,24 @@ describe('mergeToolJson rootDir', () => {
     expect(merged.rootDir).toBe('/srv/api');
   });
 });
+
+describe('mergeToolJson type', () => {
+  it('prunes cleared type (empty string)', () => {
+    const existing = { type: 'document' };
+    const patch = { type: '' };
+    const merged = mergeToolJson(existing, patch);
+    expect('type' in merged).toBe(false);
+  });
+  it('keeps type=document when set', () => {
+    const existing = {};
+    const patch = { type: 'document' };
+    const merged = mergeToolJson(existing, patch);
+    expect(merged.type).toBe('document');
+  });
+  it('keeps existing type when patch does not touch it', () => {
+    const existing = { type: 'document' };
+    const patch = { name: 'New Name' };
+    const merged = mergeToolJson(existing, patch);
+    expect(merged.type).toBe('document');
+  });
+});

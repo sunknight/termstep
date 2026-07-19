@@ -95,6 +95,11 @@ impl PtyService {
     /// 进入时在锁保护下检查「已有 entry」或「已有哨兵」，任一为真则直接返回；
     /// 否则插入哨兵，释放锁后 spawn，完成（含失败）后移除哨兵。
     fn ensure(&self, handle: &AppHandle, tool_id: &str, opts: &PtySpawnOpts) {
+        // 防御性：document 型工具不应 spawn 终端。前端分发已避免调用，
+        // 这里兜底防止 bug / 残留调用创建无用 shell 进程。
+        if opts.tool_type.as_deref() == Some("document") {
+            return;
+        }
         // 双重检查 + 哨兵：在 ptys 锁与 in_progress 锁同时持有时判定，避免 TOCTOU。
         {
             let ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
