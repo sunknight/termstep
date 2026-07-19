@@ -15,23 +15,18 @@ export function EditorModal(props: {
     };
   }, []);
 
-  // Esc 关闭弹窗
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') props.onDone();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [props.onDone]);
-
   return (
     <div className="modal-overlay" onClick={props.onDone}>
       <div
         className="modal editor-modal"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') props.onDone();
+        }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="editor-modal-title"
+        tabIndex={-1}
       >
         <div className="modal-header">
           <span id="editor-modal-title">编辑工具：{props.tool.meta.name}</span>
