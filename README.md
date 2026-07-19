@@ -1,19 +1,20 @@
 # TermStep
 
-> 把任意 CLI 命令变成可点击的菜单按钮 —— 一个本地 macOS Electron 应用。
+> 把任意 CLI 命令变成可点击的菜单按钮，也能作为团队文档入口 —— 一个本地 macOS Tauri 应用。
 
-为每个「工具」分配一个**持久终端**和一个 **markdown 帮助页**；帮助页里的 ```` ```buttons ```` 代码块会渲染成一键执行的命令按钮。终端基于 node-pty + xterm.js，跑的是真实 shell。
+为每个「工具」分配一个**持久终端**和一个 **markdown 帮助页**；帮助页里的 ```` ```buttons ```` 代码块会渲染成一键执行的命令按钮。终端基于 portable-pty + xterm.js，跑的是真实 shell。也可以把工具设成**仅文档型**——只渲染一份 markdown 文档，不创建终端，方便不用 CLI 的同事查看项目文档、SOP、外部系统链接。
 
 ---
 
 ## ✨ 特色
 
 - **命令即按钮**：在 markdown 里写一行命令，就得到一个可点击按钮。复杂带参数的命令用 JSON 描述，点击后弹出参数表单，填完安全转义后执行。
-- **每个工具一个持久终端**：基于 node-pty 的真实 shell（zsh/bash），在真实 xterm.js 终端里运行；切换工具只切换可见性，终端进程常驻、历史不丢。
+- **每个工具一个持久终端**：基于 portable-pty 的真实 shell（zsh/bash），在真实 xterm.js 终端里运行；切换工具只切换可见性，终端进程常驻、历史不丢。
+- **也支持纯文档工具**：工具可设为「仅文档型」，只渲染 markdown 文档、不开终端——给不用 CLI 的产品/运营角色当文档入口。
 - **工具就是磁盘上的数据**：每个工具是一个目录（`tool.json` + `help.md`），不是代码。整个 UI 从扫描这些目录派生而来，可用任意编辑器改，也可在应用内编辑。
-- **磁盘改动自动刷新**：chokidar 监视工具目录，新建 / 编辑 / 删除 / 重排工具后 UI 自动更新，无需手动刷新状态。
+- **磁盘改动自动刷新**：文件监听监视工具目录，新建 / 编辑 / 删除 / 重排工具后 UI 自动更新，无需手动刷新状态。
 - **零配置即可用**：首次启动自动生成一个示例 Git 工具。
-- **纯本地、无后端**：所有数据在本机 `userData/tools` 下；不联网、不上传。
+- **纯本地、无后端**：所有数据在本机 `~/Library/Application Support/TermStep/` 下；不联网、不上传（仅「检查更新」按需拉取版本清单）。
 
 ---
 
@@ -21,12 +22,20 @@
 
 ### 工具管理
 - 侧边栏**新建 / 删除 / 拖拽排序**工具。
-- 应用内编辑器修改工具元数据（名称、图标、工作目录、shell、环境变量、tmux 会话、启动命令）和帮助 markdown。
-- **导入 / 导出**工具（JSON bundle），可单个导出或全部导出，方便备份与分享。
+- **工具分组**：编辑工具时选择已有分组或新建分组，侧栏按分组分区展示，分组可点击折叠/展开；同一分组内可拖动排序，也支持跨分组拖拽移动。
+- 应用内编辑器修改工具元数据（名称、图标、模式、分组、工作目录、工具根目录、shell、环境变量、tmux 会话、启动命令）和帮助 markdown。编辑以**弹窗（modal）**形式打开，不再占用右栏，可与工具列表和帮助页同时查看。
+- **导入 / 导出**工具（JSON bundle），可单个或全部导出，方便备份与分享。同一 bundle 重复导入会更新已有工具而非重复创建（按 `sourceId` 去重）。
 
-### 终端
+### 工具模式：终端型 / 仅文档型
+
+每个工具可选两种模式（编辑工具时单选）：
+
+- **终端型**（默认）：经典三栏——侧栏 / 终端 / 帮助页。帮助页里的按钮点击后在终端执行。完全向后兼容，不设模式的现有工具都是这一类。
+- **仅文档型**：不开终端，整个右侧合并为一个文档区，渲染 markdown 文档。给产品 / 运营角色当文档入口——查看 PRD、SOP、操作手册、外部系统链接。文档里的链接照常走应用内预览；按钮仍可渲染，但点击无动作（保留 `⌘/Ctrl + 点击` 复制命令）。
+
+### 终端（终端型工具）
 - 每个工具有独立、**懒加载且持久**的 xterm 终端：首次打开才创建，之后跨工具切换保持存活。
-- 顶栏实时显示当前 shell 的工作目录（解析自 OS pid，跟随你的 `cd`）。
+- 顶栏实时显示当前 shell 的工作目录（由后端 `lsof` 解析自 shell pid，跟随你的 `cd`）。
 - 「↻ 重启终端」按钮：shell 退出或卡住时一键拉起新 shell。
 - 支持 **tmux 会话**：配置会话名后，shell 以 `tmux new -A -s <name>` 启动（已存在则 attach）。
 - 支持 **initCommands**：工具打开时自动注入的启动命令。
@@ -54,6 +63,8 @@ git push # 推送
 - ` # 标签`（空格-井号-空格）覆盖按钮显示文字。
 - ` // edit` 后缀表示「粘贴不回车」（编辑模式：贴进终端后不自动按回车，方便你改完再执行）。
 - 行首 `//`（trim 后）表示该行是**普通文本**，渲染为标签/说明，与按钮交织排列；不可点击，也不进快捷命令下拉。`//` 靠位置区分：行首 = 文本，行尾 = edit 模式。
+
+**`@/` 工具主目录占位符** —— 命令里写 `@/`，点击执行时自动替换为工具的「工具根目录」（编辑工具时设置），未设置时依次回退到终端当前工作目录、用户主目录。方便写跨项目通用的按钮。
 
 **参数化按钮** —— ```` ```buttons-json ```` 围栏，JSON 描述，命令里用 `{{name}}` 占位，点击后弹表单：
 
@@ -86,31 +97,42 @@ git push # 推送
 - JSON 语法错误时，帮助页会显示醒目的红色提示，而不是整块消失。
 
 ### 全局快捷命令
-- 顶部 ⚡「快捷命令」下拉：一份独立 markdown 里的按钮，在整个应用范围可用，点击后在**当前激活工具**的终端里执行。同样支持参数化按钮。
+- 顶部 ⚡「快捷命令」下拉：一份独立 markdown 里的按钮，在整个应用范围可用，点击后在**当前激活工具**的终端里执行（仅文档型工具没有终端，快捷命令对其无效）。同样支持参数化按钮和 `@/` 占位符。
 
-### 帮助页
-- markdown 渲染（基于 markdown-it）；http(s) / mailto 链接在系统浏览器打开。
-- **远程 markdown**：工具可配置 `mdUrl` 订阅远程帮助页（只读），支持定时自动刷新与手动「重新读取」。
+### 帮助页 / 文档
+- markdown 渲染（基于 markdown-it），长内容自动分节折叠 + 配目录跳转。
+- **应用内预览**：markdown 链接 `[文字](href)` 点击后不离开当前工具，在弹层里直接预览——
+  - 网页链接（`http(s)://`）走 iframe 弹层；站点拒绝内嵌（GitHub/Google 等）时用弹层上的「↗ 在浏览器打开」走系统浏览器。
+  - 本地 / 远程文档（`.md` / `.markdown` / `.txt`）渲染成 markdown；本地相对路径基于工具工作目录解析，`~/path` 开头也能识别。
+  - `mailto:` 走系统邮件客户端。
+- **远程 markdown**：工具可配置 `mdUrl` 订阅远程帮助页 / 文档（只读），支持定时自动刷新与手动「重新读取」。文档来源优先用本地 `help.md`，配了 `mdUrl` 时作为补充。
+- `⌘/Ctrl + 点击` 命令按钮可复制命令到剪贴板（不执行）。
+
+### 配置版本控制
+- 工具数据目录是本地 **git 仓库**：每次保存自动快照提交，每个工具都有独立的配置记录历史，可在「配置记录」弹窗里查看。
 
 ---
 
 ## 🚀 安装与运行
 
 ```bash
-npm install        # 安装依赖（postinstall 会给 node-pty 的 spawn-helper 加可执行权限）
-npm run dev        # 启动开发模式（electron-vite dev，带 HMR）
+npm install        # 安装依赖
+npm run dev        # 启动开发模式（Tauri dev：Vite dev server + Rust 窗口 + HMR）
 ```
 
 其它命令：
 
 | 命令 | 说明 |
 |---|---|
-| `npm run typecheck` | TypeScript 类型检查（main/preload/shared + renderer 两份 tsconfig） |
+| `npm run dev:web` | 仅 Vite 渲染端 dev server（无原生窗口，调 UI 时用） |
+| `npm run typecheck` | TypeScript 类型检查（渲染端 + shared） |
 | `npm run test` | 运行 vitest 单测（node 环境） |
 | `npm run test:watch` | 单测监听模式 |
-| `npm run build` | 生产构建 → `out/{main,preload,renderer}` |
-| `npm run rebuild` | 为 Electron 重建 node-pty 原生模块 + chmod spawn-helper |
-| `npm run package` | 构建 + 打包 → `release/*.dmg`（未签名，仅当前架构） |
+| `npm run build` | 生产构建（tauri build） |
+| `npm run build:web` | 仅 Vite 构建 → `dist/`（被 tauri 消费） |
+| `npm run icon` | 从 `assets/icon.png` 重新生成 `src-tauri/icons/`（改图标后必须） |
+| `npm run version:set -- <x.y.z>` | 一键同步四处版本号（`package.json` / `Cargo.toml` / `tauri.conf.json` / `Cargo.lock`） |
+| `npm run release` | 构建 universal dmg 并拷到 `release/` |
 
 ---
 
@@ -120,15 +142,15 @@ npm run dev        # 启动开发模式（electron-vite dev，带 HMR）
   ```bash
   xattr -cr "/Applications/TermStep.app"
   ```
-- 要支持 Intel Mac，把 `electron-builder.yml` 里 `mac.target` 的 arch 改为 `[arm64, x64]`（或 `universal`）。
+- 要同时支持 Intel + Apple Silicon Mac，用 `npm run release`（构建 universal dmg）。
 - 正式签名 + 公证需要 Apple Developer ID。
-- node-pty 是原生模块：打包前务必 `npm run rebuild`，并保持 `asarUnpack: '**/node-pty/**'`，否则打包后 shell 静默启动失败。
+- PTY 是 Rust 原生实现（portable-pty），无需像 Node 原生模块那样 `rebuild`/`asarUnpack`——Tauri 打包会随应用一并编译。
 
 ---
 
 ## 🗂 工具数据格式
 
-每个工具是 `userData/tools/<id>/` 下的一个目录：
+每个工具是 `~/Library/Application Support/TermStep/configs/tools/<UUID>/` 下的一个目录：
 
 **`tool.json`** —— 工具元数据：
 
@@ -136,44 +158,55 @@ npm run dev        # 启动开发模式（electron-vite dev，带 HMR）
 {
   "name": "Git",
   "icon": "🌿",
-  "order": 0,
+  "type": "terminal",
+  "group": "版本控制",
   "cwd": "~/projects/myapp",
+  "rootDir": "~/projects/myapp",
   "shell": "/bin/zsh",
   "env": { "RAILS_ENV": "development" },
   "tmux": "myapp",
-  "initCommands": ["nvm use 20", "direnv allow"]
+  "initCommands": ["nvm use 20", "direnv allow"],
+  "mdUrl": "",
+  "useRemote": false,
+  "autoUpdateMinutes": 0,
+  "sourceId": "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 }
 ```
 
 | 字段 | 说明 |
 |---|---|
-| `name` / `icon` / `order` | 侧边栏显示名 / emoji 图标 / 排序 |
-| `cwd` | shell 启动目录（支持 `~`） |
-| `shell` | shell 路径，默认 `$SHELL` 再退回 `/bin/zsh` |
+| `name` / `icon` | 侧边栏显示名 / emoji 图标 |
+| `type` | 工具模式：`"terminal"`（默认，向后兼容）或 `"document"`（仅文档型，不开终端） |
+| `group` | 分组名（可选）；同分组工具在侧栏分区展示 |
+| `cwd` | shell 启动目录（支持 `~`）；仅终端型工具使用 |
+| `rootDir` | 工具根目录，供 `@/` 占位符引用（可选；未设时回退到 cwd 再到 `~`） |
+| `shell` | shell 路径，默认 `$SHELL` 再退回 `/bin/zsh`；**以登录 shell `-l` 启动**（让打包后能读到 homebrew PATH） |
 | `env` | 额外环境变量 |
 | `tmux` | tmux 会话名；设置后以 `tmux new -A -s <name>` 启动 |
 | `initCommands` | 启动时自动注入的命令 |
-| `mdUrl` | 远程帮助 markdown 的 URL（设置后可启用远程只读帮助） |
+| `mdUrl` | 远程帮助 markdown 的 URL 或本地路径（扩展名限 `.md`/`.markdown`/`.txt`） |
+| `useRemote` | 是否启用远程订阅模式（`true` 才读 `mdUrl`） |
+| `autoUpdateMinutes` | 远程模式自动刷新间隔（分钟），本地文件用 0 |
+| `sourceId` | 导入去重的稳定键（UUID）；同一 `sourceId` 的 bundle 重复导入会更新而非新建 |
 
-**`help.md`** —— 帮助页 markdown，其中 ```` ```buttons ```` / ```` ```buttons-json ```` 围栏渲染为命令按钮。
+**`help.md`** —— 帮助页 / 文档 markdown，其中 ```` ```buttons ```` / ```` ```buttons-json ```` 围栏渲染为命令按钮。
 
-> 数据目录随应用名派生。应用曾改名（`cmd_gui` / `cmd-gui` / `gui_anything` → `TermStep`）；`index.ts` 会一次性把旧名下的工具迁移过来，改名不会丢数据。若再次改名，扩展那个迁移列表即可。
+> 数据目录刻意按 productName（`TermStep`）派生，与更早的 Electron 时代路径一致，老用户零迁移。工具排序存在单独的 `configs/order.json`（不是每个 `tool.json` 里的 `order` 字段）。整个 `configs/` 是本地 git 仓库（配置版本控制）。
 
 ---
 
 ## 🏛 架构
 
-三个 Electron 进程，全 TypeScript，由 electron-vite 串联：
+**Tauri v2**（Rust 后端）+ **React 18 / TypeScript**（渲染端，WKWebView）+ **Vite**。
 
-- **main**（`src/main/`）：`index.ts`（生命周期 / 窗口 / 服务装配）、`ptyService.ts`（按 toolId 缓存的 node-pty 池）、`toolManager.ts`（chokidar 监视）、`toolsScanner.ts`（扫描工具目录）、`ipc.ts`（ipcMain 处理器）、`seed.ts`（首次运行示例工具）。
-- **preload**（`src/preload/`）：通过 contextBridge 暴露类型化的 `window.api`（contextIsolation 开、nodeIntegration 关）。这个 `api` 对象的形状**就是** IPC 契约。
-- **renderer**（`src/renderer/`）：React 18。`App.tsx` 是三栏布局（侧边栏 / 终端 / 帮助或编辑器）。
-- **shared**（`src/shared/`）：`types.ts`（类型 + `IPC` 通道名常量）、`buttonBlock.ts`（buttons 围栏解析与渲染）、`toolConfig.ts`、`buttonBlock` 等。
+- **后端**（`src-tauri/src/`）：`lib.rs`（Builder / setup / State 注入 / 命令注册）、`commands.rs`（所有 `#[tauri::command]`，薄封装）、`pty.rs`（portable-pty 池，按 toolId 缓存，含 generation guard 解决重启竞态）、`tools.rs`（扫描 + 远程 markdown + SSRF/敏感路径守卫）、`tool_io.rs`（CRUD / 排序索引 / 迁移）、`watcher.rs`（notify 文件监听）、`vcs.rs`（配置版本控制，调系统 git）、`updater.rs`（版本清单检查）。
+- **渲染端**（`src/renderer/`）：React 18。`App.tsx` 按 `tool.type` 分发布局——终端型走三栏（侧栏 / 终端 / 帮助页或编辑弹窗），文档型走两栏（侧栏 / DocumentPane）。
+- **共享**（`src/shared/`）：`types.ts`（类型 + `IPC` 通道名常量，三端共用）、`buttonBlock.ts`（buttons 围栏解析与渲染）、`toolJson.ts`（与后端对偶的合并逻辑）、`bundle.ts`（导入/导出 bundle）、`dangerous.ts`（危险命令检测）等。
 
-**IPC 契约**：`shared/types.ts` 定义一个含全部通道名的 `IPC` 常量对象，三端共用。新增一个 IPC 调用 = 加通道常量 → 在 `ipc.ts` 加 `ipcMain.handle` → 在 preload `window.api` 加方法。
+**IPC 契约**：`shared/types.ts` 定义一个含全部通道名的 `IPC` 常量对象，三端共用。新增一个 IPC 调用 = 加通道常量 → 在后端加 `#[tauri::command]`（命令名 = 通道名把 `:` → `_`）→ 在 `lib.rs` `generate_handler!` 注册 → 在渲染端 `lib/api.ts` 加方法。
 
 ---
 
 ## 🛠 技术栈
 
-Electron · React 18 · TypeScript · node-pty · xterm.js v5 · markdown-it · chokidar · electron-vite · vitest
+Tauri v2（Rust）· React 18 · TypeScript · portable-pty · xterm.js · markdown-it · notify · Vite · vitest
