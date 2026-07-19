@@ -4,13 +4,17 @@ import type { Tool, PtySpawnOpts } from '../../shared/types';
 import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
 import { api } from '../lib/api';
-import { copyOnModifier } from '../lib/clipboardToast';
+import { copyOnModifier, showToast } from '../lib/clipboardToast';
 
 // Global quick-command dropdown. The command list lives in a single markdown
 // file (read/written via api.quick) — NOT a tool. Its `buttons` blocks are
 // surfaced app-wide; clicking one runs the command in the ACTIVE tool's
 // terminal. "编辑" opens a modal that edits only that markdown.
-export function QuickCommands(props: { activeTool: Tool | null }) {
+export function QuickCommands(props: {
+  activeTool: Tool | null;
+  /** 终端是否被隐藏（运行时 state）。true 时点命令提示「请先打开终端」，不执行（⌘/Ctrl 复制照常）。 */
+  termHidden: boolean;
+}) {
   const [md, setMd] = useState('');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -53,6 +57,12 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
     // ⌘/Ctrl + 点击：复制命令到剪贴板，不输入终端。
     if (e && (e.metaKey || e.ctrlKey)) {
       void copyOnModifier(e, command);
+      setOpen(false);
+      return;
+    }
+    // 终端隐藏时：提示打开终端，不执行（复制照常）。
+    if (props.termHidden) {
+      showToast('请先打开终端');
       setOpen(false);
       return;
     }

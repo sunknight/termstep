@@ -5,7 +5,7 @@ import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
 import { substituteParams, substituteCwd } from '../../shared/buttonBlock';
 import { api } from '../lib/api';
-import { copyOnModifier } from '../lib/clipboardToast';
+import { copyOnModifier, showToast } from '../lib/clipboardToast';
 import { confirmDialog } from '../lib/dialog';
 import { classifyLink, isTxtPath } from '../../shared/previewLink';
 import type { PreviewRequest } from './PreviewOverlay';
@@ -57,10 +57,10 @@ export function HelpPane(props: {
    */
   sidebarToc?: boolean;
   /**
-   * 终端是否被隐藏（运行时 state）。Task 10 会据此切换文档的布局（整屏 vs 半屏）；
-   * 当前仅作为门控的占位 prop 传入，不参与本组件逻辑。
+   * 终端是否被隐藏（运行时 state）。true 时点命令按钮提示「请先打开终端」，
+   * 不执行命令（⌘/Ctrl 复制照常）。
    */
-  termHidden?: boolean;
+  termHidden: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastBtn = useRef<HTMLElement | null>(null);
@@ -185,6 +185,11 @@ export function HelpPane(props: {
         // ⌘/Ctrl + 点击：复制命令到剪贴板，不输入终端。
         if (e.metaKey || e.ctrlKey) {
           void copyOnModifier(e, command);
+          return;
+        }
+        // 终端隐藏时：点按钮提示打开终端，不执行（复制照常）。
+        if (props.termHidden) {
+          showToast('请先打开终端');
           return;
         }
         const edit = btn.dataset['edit'] === '1';

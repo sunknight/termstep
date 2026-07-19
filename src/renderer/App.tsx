@@ -334,7 +334,7 @@ export default function App() {
             </HoverTip>
           </span>
           <div className="term-actions">
-            <QuickCommands activeTool={active} />
+            <QuickCommands activeTool={active} termHidden={termHidden} />
             {active && (
               <>
                 <button

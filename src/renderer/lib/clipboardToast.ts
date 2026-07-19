@@ -12,7 +12,7 @@ export async function copyOnModifier(
   return true;
 }
 
-function showToast(text: string): void {
+export function showToast(text: string): void {
   const el = document.createElement('div');
   el.className = 'clipboard-toast';
   el.textContent = text;

@@ -24,7 +24,8 @@ export const termRegistry = {
 export function runCommand(toolId: string, command: string, edit: boolean, opts: PtySpawnOpts) {
   const term = termRegistry.get(toolId);
   if (!term) {
-    api.pty.write(toolId, command + (edit ? '' : '\r'), opts);
+    // 不应到达此处：调用方（HelpPane/QuickCommands）已在 termHidden 时拦截。
+    // 防御性静默返回，避免隐藏态残留写入 pty。
     return;
   }
   term.paste(command);
