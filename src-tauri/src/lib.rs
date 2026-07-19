@@ -54,6 +54,9 @@ pub fn run() {
                 // 给存量工具补 sourceId（跨导入去重的稳定匹配键）。只动 tool.json
                 // 内容，放最后，UUID/order 迁移之后。
                 let _ = tool_io::migrate_add_source_id_blocking(&tools_dir);
+                // 把旧 type 字段迁到 layout + terminalHidden（统一布局系统）。
+                // 放最后：依赖前面迁移把 tool.json 整理干净后再做字段转换。
+                let _ = tool_io::migrate_layout_fields_blocking(&tools_dir);
                 let td = tools_dir.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Ok(mut entries) = tokio::fs::read_dir(&td).await {

@@ -491,6 +491,52 @@ pub fn migrate_add_source_id_blocking(tools_dir: &Path) -> bool {
     changed
 }
 
+/// 把旧 `type` 字段迁移到 `layout` + `terminalHidden`（统一布局系统）。
+/// 遍历 configs/tools/*/tool.json，调用 pure::migrate_meta 转换字段，
+/// 仅当 tool.json 内容有变化时才写回（用「临时文件 + rename」原子写）。
+/// 幂等：标志文件 `configs/tools/.migrated-layout` 存在则直接返回 true。
+///
+/// 时序：在 UUID / order / sourceId 迁移之后调用——依赖前面把 tool.json
+/// 整理干净后再做字段转换。单个 tool.json 读写失败只跳过，不阻断启动。
+pub fn migrate_layout_fields_blocking(tools_dir: &Path) -> bool {
+    const MARKER: &str = ".migrated-layout";
+    if tools_dir.join(MARKER).exists() {
+        return true;
+    }
+    let Ok(entries) = std::fs::read_dir(tools_dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let tool_json = entry.path().join("tool.json");
+        let Ok(content) = std::fs::read_to_string(&tool_json) else {
+            continue; // 无 tool.json 或读失败——跳过，不阻断
+        };
+        let Ok(before) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue; // 解析失败——跳过（不破坏坏文件）
+        };
+        let after = crate::pure::migrate_meta(&before);
+        // 只有内容变化才写回（避免无谓 IO / watcher 抖动）。
+        if before == after {
+            continue;
+        }
+        let pretty = match serde_json::to_string_pretty(&after) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        // 原子写：临时文件 + rename（同目录 rename 原子）。
+        let tmp = entry.path().join(".tool.json.tmp");
+        if std::fs::write(&tmp, format!("{}\n", pretty)).is_err() {
+            continue;
+        }
+        let _ = std::fs::rename(&tmp, &tool_json);
+    }
+    // 所有处理完成（或本就无需处理）后写标志文件。
+    if let Err(e) = std::fs::write(tools_dir.join(MARKER), "1\n") {
+        eprintln!("migrate_layout_fields: write marker failed: {}", e);
+    }
+    true
+}
+
 /// 迁移完成标志文件名（相对 configs_dir）。存在即代表迁移已成功完成，可安全跳过。
 /// 必须在所有 rename 成功后、最后才写入——这样中途失败（rename 出错 / 进程被杀）
 /// 不会留下标志文件，下次启动会重试，旧 tools/ 不致被遗弃在旧位置。
