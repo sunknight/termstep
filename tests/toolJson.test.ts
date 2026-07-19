@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeToolJson } from '../src/shared/toolJson';
+import { mergeToolJson, migrateMeta } from '../src/shared/toolJson';
 
 describe('mergeToolJson', () => {
   it('clears mdUrl when the patch sends an empty string (the "URL won\'t unstick" bug)', () => {
@@ -86,5 +86,43 @@ describe('mergeToolJson type', () => {
     const patch = { name: 'New Name' };
     const merged = mergeToolJson(existing, patch);
     expect(merged.type).toBe('document');
+  });
+});
+
+describe('migrateMeta', () => {
+  it('converts type=document to layout=TB + terminalHidden=true and drops type', () => {
+    const before = { name: 'doc', type: 'document', cwd: '/x' };
+    const after = migrateMeta({ ...before });
+    expect(after).toEqual({ name: 'doc', cwd: '/x', layout: 'TB', terminalHidden: true });
+    expect('type' in after).toBe(false);
+  });
+
+  it('drops type=terminal and leaves layout/terminalHidden unset', () => {
+    const before = { name: 't', type: 'terminal', shell: 'zsh' };
+    const after = migrateMeta({ ...before });
+    expect(after).toEqual({ name: 't', shell: 'zsh' });
+    expect('type' in after).toBe(false);
+    expect('layout' in after).toBe(false);
+    expect('terminalHidden' in after).toBe(false);
+  });
+
+  it('drops legacy type field when empty string', () => {
+    const before = { name: 't', type: '' };
+    const after = migrateMeta({ ...before });
+    expect(after).toEqual({ name: 't' });
+    expect('type' in after).toBe(false);
+  });
+
+  it('preserves existing layout/terminalHidden (idempotent re-run)', () => {
+    const before = { name: 't', layout: 'TB', terminalHidden: false };
+    const after = migrateMeta({ ...before });
+    expect(after).toEqual({ name: 't', layout: 'TB', terminalHidden: false });
+  });
+
+  it('ignores unknown type values (treats as default)', () => {
+    const before = { name: 't', type: 'weird' };
+    const after = migrateMeta({ ...before });
+    expect(after).toEqual({ name: 't' });
+    expect('type' in after).toBe(false);
   });
 });

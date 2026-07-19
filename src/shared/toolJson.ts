@@ -29,3 +29,24 @@ export function mergeToolJson(
   }
   return merged;
 }
+
+/**
+ * 把旧 `type` 字段迁移到新的 `layout` + `terminalHidden` 字段（统一布局系统）。
+ * - `type:"document"` → `layout:"TB"` + `terminalHidden:true`（保留原「文档为主」观感）。
+ * - `type:"terminal"` / `type:""` / 未知值 / 缺失 → 不设 layout/terminalHidden（走默认 LR + 可见）。
+ * - 任何情况都删除 `type` 字段。
+ * 幂等：输入已无 `type` 字段则原样返回（layout/terminalHidden 不动）。
+ * 对偶 src-tauri/src/pure.rs migrate_meta。
+ */
+export function migrateMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(meta)) {
+    if (k === 'type') continue; // type 字段一律丢弃
+    if (meta[k] !== undefined) out[k] = meta[k];
+  }
+  if (meta.type === 'document') {
+    out.layout = 'TB';
+    out.terminalHidden = true;
+  }
+  return out;
+}

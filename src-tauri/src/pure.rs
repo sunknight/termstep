@@ -519,3 +519,57 @@ mod tests {
     }
 
 }
+
+/// 把旧 `type` 字段迁移到新的 `layout` + `terminalHidden` 字段（统一布局系统）。
+/// 对偶 src/shared/toolJson.ts migrateMeta。幂等：输入已无 `type` 则原样返回。
+pub fn migrate_meta(meta: &Value) -> Value {
+    let Some(o) = meta.as_object() else {
+        return meta.clone();
+    };
+    let mut out = serde_json::Map::new();
+    for (k, v) in o {
+        if k == "type" {
+            continue;
+        }
+        out.insert(k.clone(), v.clone());
+    }
+    if o.get("type").and_then(|v| v.as_str()) == Some("document") {
+        out.insert("layout".to_string(), Value::String("TB".to_string()));
+        out.insert("terminalHidden".to_string(), Value::Bool(true));
+    }
+    Value::Object(out)
+}
+
+#[cfg(test)]
+mod migrate_meta_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn document_becomes_tb_hidden() {
+        let before = json!({ "name": "doc", "type": "document", "cwd": "/x" });
+        let after = migrate_meta(&before);
+        assert_eq!(after, json!({ "name": "doc", "cwd": "/x", "layout": "TB", "terminalHidden": true }));
+    }
+
+    #[test]
+    fn terminal_drops_type_no_layout() {
+        let before = json!({ "name": "t", "type": "terminal", "shell": "zsh" });
+        let after = migrate_meta(&before);
+        assert_eq!(after, json!({ "name": "t", "shell": "zsh" }));
+    }
+
+    #[test]
+    fn idempotent_preserves_existing() {
+        let before = json!({ "name": "t", "layout": "TB", "terminalHidden": false });
+        let after = migrate_meta(&before);
+        assert_eq!(after, json!({ "name": "t", "layout": "TB", "terminalHidden": false }));
+    }
+
+    #[test]
+    fn unknown_type_dropped() {
+        let before = json!({ "name": "t", "type": "weird" });
+        let after = migrate_meta(&before);
+        assert_eq!(after, json!({ "name": "t" }));
+    }
+}
