@@ -167,6 +167,7 @@ pub fn run() {
             commands::pty_write,
             commands::pty_open,
             commands::pty_restart,
+            commands::pty_force_restart,
             commands::pty_resize,
             commands::pty_kill,
             commands::pty_cwd,

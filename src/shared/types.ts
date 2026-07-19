@@ -6,6 +6,7 @@ export const IPC = {
   PTY_WRITE: 'pty:write',
   PTY_OPEN: 'pty:open',
   PTY_RESTART: 'pty:restart',
+  PTY_FORCE_RESTART: 'pty:forceRestart',
   PTY_RESIZE: 'pty:resize',
   PTY_KILL: 'pty:kill',
   PTY_CWD: 'pty:cwd',

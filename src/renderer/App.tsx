@@ -324,17 +324,25 @@ export default function App() {
                 {active && (
                   <button
                     className="term-restart"
-                    title="重启终端"
-                    onClick={() => {
-                      termRegistry.get(active.meta.id)?.reset();
-                      api.pty.restart(active.meta.id, {
+                    title="重启终端（按住 ⌘ 强制重启：放弃旧终端，新起一个）"
+                    onClick={(e) => {
+                      const id = active.meta.id;
+                      const opts = {
                         cwd: active.meta.cwd,
                         shell: active.meta.shell,
                         env: active.meta.env,
                         tmux: active.meta.tmux,
                         initCommands: active.meta.initCommands,
                         type: active.meta.type,
-                      });
+                      };
+                      termRegistry.get(id)?.reset();
+                      if (e.metaKey) {
+                        // ⌘+点击：强制新起。普通重启失效时的逃生通道——清残留哨兵
+                        // + SIGKILL 整组（尽力杀，杀不掉留僵尸不阻塞）+ 强制 spawn。
+                        api.pty.forceRestart(id, opts);
+                      } else {
+                        api.pty.restart(id, opts);
+                      }
                     }}
                   >
                     ↻ 重启终端

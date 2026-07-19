@@ -775,6 +775,21 @@ pub async fn pty_restart(
     Ok(())
 }
 
+/// 强制重启（⌘+点击「重启终端」触发）：清残留哨兵 + kill 旧 entry + 强制 spawn。
+/// 用于普通 restart 失效时的逃生通道。详见 pty::PtyService::force_restart。
+#[tauri::command]
+pub async fn pty_force_restart(
+    handle: AppHandle,
+    pty: State<'_, PtyArc>,
+    tool_id: String,
+    opts: Option<crate::types::PtySpawnOpts>,
+) -> Result<(), String> {
+    validate_tool_id(&tool_id)?;
+    let opts = opts.unwrap_or_default();
+    lock_or_recover!(pty.inner()).force_restart(&handle, &tool_id, &opts);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn pty_resize(
     pty: State<'_, PtyArc>,

@@ -343,6 +343,20 @@ impl PtyService {
         self.ensure(handle, tool_id, opts);
     }
 
+    /// 强制重启（⌘+点击触发）：清掉残留哨兵 + kill 旧 entry（SIGKILL 整组）+
+    /// 强制 spawn 新 shell。与 restart 的区别：先清 in_progress 哨兵，保证 ensure
+    /// 一定走 spawn 路径——上次 spawn 若中途异常（panic/线程被杀）哨兵会残留，
+    /// 普通 restart 的 ensure 会因哨兵命中而跳过 spawn，导致"重启也无效"。
+    /// 旧进程尽力杀（reap_process_group），杀不掉的变僵尸但不阻塞新 shell。
+    pub fn force_restart(&self, handle: &AppHandle, tool_id: &str, opts: &PtySpawnOpts) {
+        self.in_progress
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(tool_id);
+        self.kill(tool_id);
+        self.ensure(handle, tool_id, opts);
+    }
+
     pub fn resize(&self, tool_id: &str, cols: u16, rows: u16) {
         self.desired.lock().unwrap_or_else(|e| e.into_inner()).insert(tool_id.to_string(), (cols, rows));
         let ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
