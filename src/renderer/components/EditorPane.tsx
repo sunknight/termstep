@@ -44,6 +44,9 @@ export function EditorPane(props: {
   const [mdUrl, setMdUrl] = useState(meta.mdUrl ?? '');
   const [autoUpdate, setAutoUpdate] = useState(meta.autoUpdateMinutes?.toString() ?? '');
   const [group, setGroup] = useState(meta.group ?? '');
+  const [typeMode, setTypeMode] = useState<'terminal' | 'document'>(
+    meta.type === 'document' ? 'document' : 'terminal',
+  );
   const [iconOpen, setIconOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +123,11 @@ export function EditorPane(props: {
       tmux: tmux.trim(),
       mdUrl: mdUrl.trim(),
       group: group.trim(),
+      // terminal 模式发空串让 mergeToolJson 裁掉 type 字段（保持 tool.json 干净，
+      // 与旧 terminal 文件一致）；document 保留显式 'document'。
+      // ToolMeta.type 的静态类型不含 ''，故此处断言为 ''——mergeToolJson 的
+      // PRUNE_WHEN_EMPTY_STRING 正是为 '' 设计的裁剪标记。
+      type: (typeMode === 'terminal' ? '' : 'document') as 'terminal' | 'document',
       initCommands: initList,
     };
     const mins = Number(autoUpdate);
@@ -219,6 +227,33 @@ export function EditorPane(props: {
                   <option key={g} value={g} />
                 ))}
               </datalist>
+            </label>
+          </div>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">模式 <em>仅文档=不创建终端，整个右半屏渲染文档；按钮无动作（保留 ⌘复制）</em></span>
+              <div className="mode-radio-group" role="radiogroup" aria-label="工具模式">
+                <label className="mode-radio">
+                  <input
+                    type="radio"
+                    name="tool-mode"
+                    value="terminal"
+                    checked={typeMode === 'terminal'}
+                    onChange={() => setTypeMode('terminal')}
+                  />
+                  <span>终端</span>
+                </label>
+                <label className="mode-radio">
+                  <input
+                    type="radio"
+                    name="tool-mode"
+                    value="document"
+                    checked={typeMode === 'document'}
+                    onChange={() => setTypeMode('document')}
+                  />
+                  <span>仅文档</span>
+                </label>
+              </div>
             </label>
           </div>
         </fieldset>

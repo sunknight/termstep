@@ -1174,3 +1174,17 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .version-item-hash { flex: 0 0 auto; font-family: var(--font-mono); font-size: 11px; color: var(--accent); min-width: 64px; }
 .version-item-time { flex: 0 0 auto; font-size: 10px; color: var(--text-3); min-width: 110px; }
 .version-item-msg { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.mode-radio-group {
+  display: inline-flex;
+  gap: 12px;
+}
+.mode-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.mode-radio input[type='radio'] {
+  margin: 0;
+}
