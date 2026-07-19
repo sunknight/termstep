@@ -41,11 +41,11 @@ pub struct ToolMeta {
     pub group: Option<String>,
     /// 布局方向：`"LR"` = 文档左/终端右（默认），`"TB"` = 文档上/终端下。
     /// 对偶 src/shared/types.ts 的 meta.layout。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
     /// 终端初始是否隐藏（配置默认值，运行时可被顶栏 toggle 覆盖）。
     /// 对偶 src/shared/types.ts 的 meta.terminalHidden。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal_hidden: Option<bool>,
 }
 

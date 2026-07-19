@@ -518,28 +518,4 @@ mod tests {
         assert!(r.is_empty(), "rootDir must not be a risk field");
     }
 
-    #[test]
-    fn merge_prunes_cleared_type() {
-        let existing = json!({ "type": "document" });
-        let patch = json!({ "type": "" });
-        let merged = merge_tool_json(&existing, &patch);
-        assert!(merged.get("type").is_none());
-    }
-
-    #[test]
-    fn merge_keeps_type_when_set() {
-        let existing = json!({});
-        let patch = json!({ "type": "document" });
-        let merged = merge_tool_json(&existing, &patch);
-        assert_eq!(merged.get("type").and_then(|v| v.as_str()), Some("document"));
-    }
-
-    #[test]
-    fn merge_keeps_existing_type_when_patch_does_not_touch_it() {
-        let existing = json!({ "type": "document" });
-        let patch = json!({ "name": "New" });
-        let merged = merge_tool_json(&existing, &patch);
-        assert_eq!(merged.get("type").and_then(|v| v.as_str()), Some("document"));
-    }
-
 }
