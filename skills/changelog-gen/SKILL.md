@@ -1,11 +1,160 @@
 ---
 name: changelog-gen
-description: "为 TermStep 项目写 CHANGELOG.md 版本条目并插入文件顶部。用户说「写 changelog / 更新版本记录 / 写发布说明 / 0.9.x 有哪些变化 / 把这版改动记下来」或打版本 tag 前后需要补充用户可见的变化说明时触发。本 skill 自己跑 git log 取提交、按「面向用户」原则提炼成条目、直接插入 CHANGELOG.md，不依赖先跑 set-version.mjs。绝不照抄 commit subject，绝不写模块名/函数名/数据字段/内部机制。"
+description: "TermStep 项目的发版向导：一步步问版本级别（大/中/小）→ 是否更新版本记录 → 是否提交推送，按回答自动完成「升版本号 + 写 CHANGELOG + 打 tag + push」。用户说「发版 / 发布新版本 / 打 tag / 升级版本 / 发布 0.9.x / 写 changelog / 更新版本记录」时触发。CHANGELOG 条目严格按「面向用户、不面向开发」原则从 git log 提炼，绝不照抄 commit subject，绝不写模块名/函数名/数据字段/内部机制。也支持只做其中一步（如只写 CHANGELOG、只打 tag）。"
 ---
 
-# TermStep CHANGELOG 生成器
+# TermStep 发版向导
 
-为 **TermStep** 项目（`/Users/sunknight/web/code/sk_ideas/termstep`）生成 CHANGELOG.md 版本条目，并插入文件顶部 `## [` 标题之前。
+为 **TermStep** 项目（`/Users/sunknight/web/code/sk_ideas/termstep`）按交互式流程完成发版：升版本号、写 CHANGELOG、提交、打 tag、推送——逐步问，按用户回答执行，免去手动一条条敲命令。
+
+**整体流程（4 步交互）**：
+
+```
+①版本级别? ──→ ②更新版本记录? ──→ ③提交? ──→ ④推送+打tag?
+   大/中/小        是/否             是/否        是/否
+```
+
+每一步**先问、再按回答执行**，不偷跑。用户随时可在某步答「否/跳过」停下来，已完成步骤保留。
+
+---
+
+## 第 1 步：确定新版本号
+
+**先读当前版本**：`package.json` 的 `version` 字段（形如 `0.9.6`）。
+
+**用 `AskUserQuestion` 问版本级别**（不要让用户手输版本号）：
+
+| 选项 | 语义化版本规则 | 例子（当前 0.9.6） |
+|------|---------------|-------------------|
+| 大版本（major） | 第一段 +1，后两段归 0；有不兼容/重大改动 | `1.0.0` |
+| 中版本（minor） | 第二段 +1，第三段归 0；有新功能 | `0.10.0` |
+| 小版本（patch） | 第三段 +1；仅修复或小调整 | `0.9.7` |
+
+问法示例：
+> 这版是什么级别的变更？
+> - 大版本（major）：不兼容/重大改动，`0.9.6` → `1.0.0`
+> - 中版本（minor）：有新功能，`0.9.6` → `0.10.0`
+> - 小版本（patch）：仅修复或小调整，`0.9.6` → `0.9.7`
+
+用户也可选「Other」手输自定义版本号（如预发布 `0.10.0-beta.1`）。
+
+**拿到版本号后立即执行**（**不再问**，这步是确定的）：
+
+```bash
+npm run version:set -- <新版本>
+```
+
+脚本会同步四处（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.lock`）。
+
+> ⚠️ **不加 `--tag`**：tag 放到第 4 步，与提交、推送一起决策。脚本末尾会打印一段「用 changelog-gen skill」的提示，那只是提示，无视即可——本 skill 正在驱动。
+
+---
+
+## 第 2 步：更新版本记录（CHANGELOG）
+
+**用 `AskUserQuestion` 问**：是否更新 CHANGELOG？
+
+- **是**（默认推荐）→ 按下面「CHANGELOG 生成流程」执行。
+- **否** → 跳过（如本版本无用户可见变化、或用户要手写）。**即使跳过，也建议留一行标题**，见「格式 · 无可见变化」。
+
+### CHANGELOG 生成流程
+
+1. **取提交范围**：`<最近 tag>..HEAD`。命令：
+   ```bash
+   git -C <项目根> log <最近tag>..HEAD --no-merges --format='- %s'
+   ```
+   最近 tag 取 `git tag -l --sort=-v:refname | head -1`。用户指定范围就用指定的。
+   - **git tag 边界只是下界参考，不是硬切线**。一条用户可感知的变化若横跨 tag（功能在 A 版本提交、体验打磨延续到 B 版本），归到「用户第一次完整感受到它」的版本——通常是**功能首次亮相的版本**，让用户看到「功能 + 体验收尾」一起出现，不要把收尾单列到下一版。
+     - 实例：0.9.5「跨分组拖拽」是本版本新功能，落点指示优化是这功能的体验收尾 → 归 0.9.5 合并成一条 Added。
+
+2. **读 CHANGELOG.md 顶部**，确认插入位置（第一个 `## [` 之前）和现有格式风格。
+
+3. **按「提炼规则」**（见下）把 commit subject 转成用户视角条目。**绝不照抄 subject**——subject 是面向开发的，必须转译。
+
+4. **按「格式」**组装条目，插入 CHANGELOG.md 顶部第一个 `## [` 标题**之前**。
+
+5. **过「自查清单」**，修完才算完成。
+
+---
+
+## 第 3 步：提交
+
+**先判断分支**（提交前必做）：
+
+```bash
+git branch --show-current    # 取当前分支
+```
+
+- **在 main** → 直接进「问是否提交」。
+- **不在 main**（在 feature/分支上）→ **停下，用 `AskUserQuestion` 问用户如何处理**：
+
+  | 选项 | 做什么 |
+  |------|--------|
+  | 合并到 main 再提交（推荐） | 见下方「合并到 main 流程」 |
+  | 就在当前分支提交 | 跳过合并，在当前分支 commit（适用于想发预发布版、或分支即发版分支的情况） |
+  | 取消 | 停止整个流程，工作区改动保留 |
+
+  **「合并到 main」流程**（用户选了这个才执行）：
+  ```bash
+  # 工作区有未提交改动（第 1、2 步产生的）→ 先暂存，避免 checkout 冲突
+  git stash push -u -m "release-wizard: <新版本> wip"
+  git checkout main
+  git merge --no-ff <原分支> -m "Merge branch '<原分支>'"
+  git stash pop    # 把第 1、2 步改动恢复到 main 上
+  ```
+  - 合并后**仍在 main**，继续「问是否提交」。**原 feature 分支不删**（留给用户处理）。
+  - `stash pop` 若冲突：停下报错，让用户手动解决，**不强行覆盖**。
+  - 若 main 落后远程：先停下提示用户 `git pull`，不自动 pull。
+
+**用 `AskUserQuestion` 问**：是否提交（git commit）？
+
+- **是** → 把第 1、2 步改动的文件提交：
+  ```bash
+  git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock
+  [ -n "$(git status --short CHANGELOG.md)" ] && git add CHANGELOG.md
+  git commit -m "chore(release): <新版本>"
+  ```
+  **一个提交**含全部版本相关改动（版本号 + CHANGELOG 一起），信息用 `chore(release): <版本>`。CHANGELOG 若在第 2 步选了「否」则不 add（脚本不动它）。
+
+- **否** → 保留工作区改动，跳到下一步。用户可能还想再加点东西再提交。
+
+---
+
+## 第 4 步：打 tag + 推送
+
+**用 `AskUserQuestion` 问**：是否打 tag 并推送？
+
+- **是（打 tag + push）**：
+  ```bash
+  git tag v<新版本>
+  git push origin <当前分支>
+  git push origin v<新版本>
+  ```
+  - **tag 打在当前分支 HEAD**（第 3 步若提交了，就是那个 commit；若没提交，就是当前 HEAD）。推荐先提交再打 tag，tag 指向 release commit。
+  - **预检**：打 tag 前先查 `git tag -l v<新版本>`，已存在则**停下问用户**（不要 `--force`，可能覆盖别人的 tag）。
+  - **当前分支**用 `git branch --show-current` 取，不要假设是 main。
+  - push 失败（如无权限、远程冲突）如实报错，不强行 `--force`。
+
+- **否** → 全部本地完成，告诉用户「未推送，手动 `git push origin <分支> --tags` 即可」。
+
+---
+
+## 完成总结
+
+四步走完后，给用户一个简短总结：
+
+```
+✓ 版本号：0.9.6 → 0.10.0（四处同步）
+✓ CHANGELOG：已插入 [0.10.0] 条目（2 Added）
+✓ 提交：abc1234 chore(release): 0.10.0
+✓ 推送：main + tag v0.10.0 已上 origin
+```
+
+若某步跳过，如实标注「（跳过）」。
+
+---
+
+# CHANGELOG 规则（第 2 步的细节，下面是原本独立的生成器内容，原样保留）
 
 ## 核心原则：面向用户，不面向开发
 
@@ -26,26 +175,6 @@ CHANGELOG.md 是给**用户**看的版本变动说明。条目必须用「用户
 - 用户能**做**什么新事：「可在编辑工具时选择或新建分组」「拖动工具调整顺序」
 - 用户能**看到**什么新东西：「左侧工具列表按分组分区展示」「网页链接可在弹层预览」
 - 用户的**问题被修好了**：「删除工具后分组标题不再消失」「`~` 开头的路径能正确识别」
-
-## 何时触发
-
-- 用户说「写 changelog / 更新版本记录 / 写发布说明 / 把这版改动记下来」→ 直接生成。
-- 用户准备打版本 tag（`npm run version:set -- <v> --tag`）前后 → 主动提醒/补 CHANGELOG。
-- 用户问「0.9.x 有哪些变化 / 这版做了什么」→ 读 CHANGELOG 回答，**不**触发生成。
-
-## 工作流
-
-1. **确认版本号和日期**。版本号从用户消息取（如「0.9.6」）；用户没给就读 `package.json` 的 `version` 字段 + 1 个 patch，或问。日期用今天（`date +%Y-%m-%d`），除非用户指定。
-2. **确定提交范围**：
-   - 默认 `<最近 tag>..HEAD`（与 `set-version.mjs` 一致的范围）。
-   - 用户指定范围（如 `v0.9.5..HEAD`、某 commit 之后）就用指定的。
-   - 取命令：`git -C <项目根> log <range> --no-merges --format='- %s'`
-   - **git tag 边界只是下界参考，不是硬切线**。一条用户可感知的变化若横跨 tag（功能在 A 版本提交、体验打磨延续到 B 版本，或实现散落在两次 release 之间），归到「用户第一次完整感受到它」的版本——通常是**功能首次亮相的版本**，让用户看到「这个功能 + 它的好体验」一起出现，而不是把收尾打磨单列在下一个版本让人摸不着头脑。反过来，若某次打磨独立于任何功能、单独发生在某个版本，就归那个版本。
-     - 实例：0.9.5「跨分组拖拽」是本版本新功能，落点指示优化是这功能的体验收尾（commit 落在拖拽实现周期内）→ 归 0.9.5，与功能合并成一条 Added；不要因为某条 commit 越过 tag 边界就单列或漏写。
-3. **读 CHANGELOG.md 顶部**，确认插入位置（第一个 `## [` 之前）和现有格式风格。
-4. **按「提炼规则」**把 commit subject 转成用户视角条目。**绝不照抄 subject**——subject 是面向开发的，必须转译。
-5. **按格式组装**条目（见下），插入 CHANGELOG.md 顶部。
-6. **自查**（见下），告诉用户结果，附「下一步：版本号/打 tag」提示。
 
 ## 提炼规则（subject → 用户视角）
 
@@ -176,19 +305,21 @@ CHANGELOG.md 是给**用户**看的版本变动说明。条目必须用「用户
 - 版本号整理，无面向用户的新功能。
 ```
 
-## 与脚本的关系
+## 与脚本/手动命令的关系
 
-- `npm run version:set -- <v> [--tag]` 只同步版本号 + 打 tag，**不碰 CHANGELOG**（脚本末尾会打印一段提示词，但本 skill 不依赖它——本 skill 自己取 git log）。
-- **推荐顺序**：先用本 skill 写 CHANGELOG 条目 → `git add CHANGELOG.md` → 再跑 `npm run version:set -- <v> --tag`（脚本会把版本文件一起 commit 打 tag；CHANGELOG 由你单独提交）。
-- 或反过来：先打 tag（确定版本号），再用本 skill 补 CHANGELOG——两种顺序都可，关键是**别忘写 CHANGELOG**。
+- 本 skill 是**一键发版**：内部调 `npm run version:set -- <v>` 升版本号、自己写 CHANGELOG、git commit/tag/push，免去手敲多条命令。
+- `scripts/set-version.mjs` **只负责升版本号**（同步四处），不碰 CHANGELOG、不自动打 tag（除非加 `--tag`，本 skill 不加——tag 决策放在第 4 步）。脚本末尾打印「用 changelog-gen skill」的提示，本 skill 触发时无视它。
+- 若用户只想升版本号不想走全流程，直接 `npm run version:set -- <v>` 即可，不必触发本 skill。
+- 若用户只想写 CHANGELOG 不发版，对本 skill 说「只写 CHANGELOG」/「跳过版本号和推送」，只执行第 2 步。
 
 ## 边界 / 不做什么
 
-- **不**改版本号（那是 `set-version.mjs` 的事）。
 - **不**改历史 CHANGELOG 条目（只新增，不重写——除非用户明确要求修订）。
 - **不**为同版本内自修的 bug 写 Fixed（用户没经历过）。
 - **不**写「重构」「补测试」「写文档」这类用户无感知的条目。
 - **不**照抄 commit subject，哪怕它看起来已经像用户语言——都要过一遍「用户能看懂吗」。
+- **不**在没问清的情况下 `--force` 推送或覆盖已存在的 tag。
+- **发版提交和 tag 打在 main 上**（第 3 步判断分支，feature 分支上会停下来问是否先合并回 main）。用户明确选择「就在当前分支提交」才例外。
 
 ---
 
@@ -205,8 +336,8 @@ CHANGELOG.md 是给**用户**看的版本变动说明。条目必须用「用户
    cp /Users/sunknight/web/code/sk_ideas/termstep/skills/changelog-gen/SKILL.md \
       /Users/sunknight/.zcode/skills/changelog-gen/SKILL.md
    ```
-3. 确认 frontmatter `name` = 目录名（`changelog-gen`），`description` 含触发词（changelog/版本记录/发布说明）。
+3. 确认 frontmatter `name` = 目录名（`changelog-gen`），`description` 含触发词（发版/打 tag/changelog/版本记录）。
 
 **不要**直接改 `~/.zcode/skills/` 里的副本——会脱离 git、丢失历史。
 
-**规则权威来源**：本 skill 的「面向用户」原则来自项目记忆 `topics/project_changelog-update-on-version.md`；提示词范围（`<tag>..HEAD`）来自 `scripts/set-version.mjs` 的 `buildChangelogPrompt`。这两处是单一真相源，本 skill 是它们的可触发封装。
+**规则权威来源**：本 skill 的「面向用户」原则来自项目记忆 `topics/project_changelog-update-on-version.md`；升版本号由 `scripts/set-version.mjs` 完成（本 skill 调用它）。这两处是单一真相源。
