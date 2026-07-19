@@ -4231,6 +4231,7 @@ dependencies = [
  "arboard",
  "chrono",
  "dirs 5.0.1",
+ "libc",
  "notify",
  "opener",
  "portable-pty",
