@@ -39,6 +39,17 @@ npm run release      # universal dmg 构建并拷到 release/
 
 **设置版本号**：`npm run version:set 0.9.3`（脚本 `scripts/set-version.mjs`）同步四处：`package.json`、`src-tauri/Cargo.toml`（[package] 段）、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.lock`（仅 `name = "termstep"` 紧随的那条 version，不会误伤其它 crate）。**不要手动逐个改，极易漏 Cargo.lock。** 支持 `--dry-run`。
 
+**发布新版本**（推荐用 `changelog-gen` skill 一键走完）：在 AI 对话里说「**用 changelog-gen 发版**」，skill 会按四步交互流程逐步问、按回答执行——升版本号 → 写 CHANGELOG → 提交 → 打 tag + 推送，免去手敲多条命令。流程要点：
+
+1. **版本级别**：skill 问大/中/小，按语义化版本递增对应段（大 `0.9.7→1.0.0` / 中 `→0.10.0` / 小 `→0.9.8`）。选定后自动 `npm run version:set -- <新版本>`（**不加 `--tag`**，tag 放第 4 步）。
+2. **CHANGELOG**：skill 取 `<最近 tag>..HEAD` 提交，按「面向用户、不面向开发」原则提炼成条目（绝不照抄 commit subject、绝不写模块名/函数名/数据字段），插入 `CHANGELOG.md` 顶部第一个 `## [` 之前。规则细节见 skill 本体 `skills/changelog-gen/SKILL.md`。
+3. **提交**：skill 先判断分支——**在 feature 分支上会停下来问是否先合并回 main**（发版提交应打在 main 上）；确认后 `git commit -m "chore(release): <版本>"`，版本号 + CHANGELOG 一个提交。
+4. **打 tag + 推送**：预检 `v<版本>` 不存在 → `git tag v<版本>` → `git push origin <分支>` + `git push origin v<版本>`。tag 打在 release commit 上。
+
+**手动发版**（不走 skill）：`npm run version:set -- <版本>` → 手写 CHANGELOG 条目 → `git add` 版本文件 + CHANGELOG → `git commit -m "chore(release): <版本>"` → `git tag v<版本>` → `git push origin main --tags`。CHANGELOG 必须手写，**脚本和 skill 都不替你决定怎么写**——skill 只是按规则辅助提炼。
+
+**注意**：发版前确认在 main 上（或打算从 feature 分支合并回 main）；本地 main 不落后远程（`git fetch` 后 `git log origin/main..main` 看本地领先、`git log main..origin/main` 看是否落后）；远程若已有同名 tag 会停下问，**绝不 `--force` 覆盖**。
+
 **端口 1420 冲突**：`npm run dev` 报 "Port 1420 is already in use" 时，`lsof -ti:1420 | xargs kill -9`（上个 Vite 没干净退出）。
 
 ---
@@ -268,7 +279,7 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 
 开始工作前，建议：
 1. **确认分支与状态**：`git status` + `git log --oneline -5`。主分支 `main`，git 用户 sunknight。
-2. **当前版本**：`package.json` 的 `version`（现 0.9.2）。改版本用 `npm run version:set`。
+2. **当前版本**：`package.json` 的 `version`（现 0.9.2）。升版本用 `npm run version:set`，**完整发版用 `changelog-gen` skill**（说「用 changelog-gen 发版」），见 §2「发布新版本」。
 3. **类型/测试基线**：改动前先 `npm run typecheck` + `npm run test` + `cargo test --manifest-path src-tauri/Cargo.toml` 确认全绿，再动。
 4. **改 IPC**：遵循四步（§5.1），三端都要改，否则类型断裂。
 5. **改用户数据格式**：考虑迁移（§6.5），迁移要幂等、同步、在 scan/seed/pty 之前、用标志文件。
