@@ -274,6 +274,7 @@ export default function App() {
               active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
             }
             onPreview={openPreview}
+            sidebarToc={documentMode}
           />
         </>
       ) : (
