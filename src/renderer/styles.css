@@ -1188,13 +1188,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .mode-radio input[type='radio'] {
   margin: 0;
 }
-.field-hint {
-  color: var(--text-3);
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 400;
-  line-height: 1.5;
-}
 
 /* 仅文档型工具（renderHelp documentMode）：撑满中+右栏位置。
    其它样式（顶栏/TOC/滚动条/边框）全部复用 .help-area / .help-toolbar /

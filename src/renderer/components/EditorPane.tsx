@@ -230,7 +230,9 @@ export function EditorPane(props: {
             </label>
           </div>
           <div className="field">
-            <span className="field-label">模式</span>
+            <span className="field-label">
+              模式 <em>普通=终端+文档模式；文档=文档优先模式，无终端</em>
+            </span>
             <div className="mode-radio-group" role="radiogroup" aria-label="工具模式">
               <label className="mode-radio">
                 <input
@@ -240,7 +242,7 @@ export function EditorPane(props: {
                   checked={typeMode === 'terminal'}
                   onChange={() => setTypeMode('terminal')}
                 />
-                <span>终端</span>
+                <span>普通</span>
               </label>
               <label className="mode-radio">
                 <input
@@ -250,10 +252,9 @@ export function EditorPane(props: {
                   checked={typeMode === 'document'}
                   onChange={() => setTypeMode('document')}
                 />
-                <span>仅文档</span>
+                <span>文档</span>
               </label>
             </div>
-            <em className="field-hint">仅文档=不创建终端，整个右半屏渲染文档；按钮无动作（保留 ⌘复制）</em>
           </div>
         </fieldset>
 
