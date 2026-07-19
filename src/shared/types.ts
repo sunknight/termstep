@@ -99,6 +99,11 @@ export interface PtySpawnOpts {
   env?: Record<string, string>;
   tmux?: string;
   initCommands?: string[];
+  /**
+   * 工具类型（对偶 Rust `PtySpawnOpts.tool_type`）。后端 `pty::ensure` 据此
+   * 防御性 skip document 型——前端不渲染终端已是主防线，这里是兜底。
+   */
+  type?: 'terminal' | 'document';
 }
 
 // Auto-update check state. The main process fetches a self-hosted JSON manifest

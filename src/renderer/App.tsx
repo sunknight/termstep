@@ -338,6 +338,7 @@ export default function App() {
                         env: active.meta.env,
                         tmux: active.meta.tmux,
                         initCommands: active.meta.initCommands,
+                        type: active.meta.type,
                       });
                     }}
                   >
