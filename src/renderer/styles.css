@@ -591,6 +591,18 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .field { display: flex; flex-direction: column; gap: 3px; }
 .field-label { color: var(--text-2); font-size: 11px; }
 .field-label em { color: var(--text-3); font-style: normal; font-weight: 400; }
+/* Two-column form row: pairs two .field blocks side by side (e.g. 名称/图标,
+   cwd/工具根目录). min-width:0 on each child keeps long inputs from forcing
+   the grid track wider than its fraction. */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.form-row .field {
+  min-width: 0;
+}
 .meta-form input, .meta-form textarea {
   padding: 6px 8px; font-size: 12px; color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -852,6 +864,61 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .help-modal { width: 720px; max-height: 86vh; }
 .help-modal-body { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
 .help-modal-body .help { font-size: 12px; }
+
+/* Editor modal: wider than default modal for comfortable editing. */
+.editor-modal {
+  width: 720px;
+  max-width: 90vw;
+  max-height: 90vh;
+}
+.editor-modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+}
+.editor-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.editor-modal .modal-header #editor-modal-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modal-close {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.modal-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+/* Inside the editor modal, the inner .editor should NOT scroll on its own —
+   the .modal-body above owns the scroll. Override the base .editor (which has
+   flex: 1 1 auto; min-height: 0; overflow-y: auto;). */
+.editor-modal .editor {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow-y: visible;
+}
+.editor-modal .editor-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
 .modal-actions { flex: 0 0 auto; display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
 .modal-actions button {
   padding: 7px 15px; font-size: 12px; cursor: pointer; color: var(--text);

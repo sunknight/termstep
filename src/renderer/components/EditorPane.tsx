@@ -161,76 +161,80 @@ export function EditorPane(props: {
       <div className="meta-form">
         <fieldset className="form-section">
           <legend>基本</legend>
-          <label className="field">
-            <span className="field-label">名称</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </label>
-          <div className="field">
-            <span className="field-label">图标</span>
-            <div className="icon-control" ref={iconWrapRef}>
-              <input
-                className="icon-input"
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-              />
-              <button
-                type="button"
-                className="icon-popup-toggle"
-                title="选择图标"
-                onClick={() => setIconOpen((v) => !v)}
-              >
-                ▾
-              </button>
-              {iconOpen && (
-                <div className="icon-popup" role="listbox" aria-label="常用图标">
-                  {COMMON_ICONS.map((ic) => (
-                    <button
-                      key={ic}
-                      type="button"
-                      className={'icon-cell' + (ic === icon ? ' selected' : '')}
-                      title={ic}
-                      onClick={() => {
-                        setIcon(ic);
-                        setIconOpen(false);
-                      }}
-                    >
-                      {ic}
-                    </button>
-                  ))}
-                </div>
-              )}
-                </div>
-              </div>
-              <label className="field">
-                <span className="field-label">
-                  分组 <em>留空 = 未分组；输入新名字即新建</em>
-                </span>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">名称</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            </label>
+            <div className="field">
+              <span className="field-label">图标</span>
+              <div className="icon-control" ref={iconWrapRef}>
                 <input
-                  list="ts-groups"
-                  value={group}
-                  onChange={(e) => setGroup(e.target.value)}
-                  placeholder="未分组"
+                  className="icon-input"
+                  value={icon}
+                  onChange={(e) => setIcon(e.target.value)}
                 />
-                <datalist id="ts-groups">
-                  {props.existingGroups.map((g) => (
-                    <option key={g} value={g} />
-                  ))}
-                </datalist>
-              </label>
-            </fieldset>
+                <button
+                  type="button"
+                  className="icon-popup-toggle"
+                  title="选择图标"
+                  onClick={() => setIconOpen((v) => !v)}
+                >
+                  ▾
+                </button>
+                {iconOpen && (
+                  <div className="icon-popup" role="listbox" aria-label="常用图标">
+                    {COMMON_ICONS.map((ic) => (
+                      <button
+                        key={ic}
+                        type="button"
+                        className={'icon-cell' + (ic === icon ? ' selected' : '')}
+                        title={ic}
+                        onClick={() => {
+                          setIcon(ic);
+                          setIconOpen(false);
+                        }}
+                      >
+                        {ic}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <label className="field">
+            <span className="field-label">
+              分组 <em>留空 = 未分组；输入新名字即新建</em>
+            </span>
+            <input
+              list="ts-groups"
+              value={group}
+              onChange={(e) => setGroup(e.target.value)}
+              placeholder="未分组"
+            />
+            <datalist id="ts-groups">
+              {props.existingGroups.map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
+          </label>
+        </fieldset>
 
         <fieldset className="form-section">
           <legend>终端</legend>
-          <label className="field">
-            <span className="field-label">起始目录 (cwd)</span>
-            <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="~" />
-          </label>
-          <label className="field">
-            <span className="field-label">
-              工具根目录 (@/) <em>留空同 cwd；按钮里 @/ 锚定此目录</em>
-            </span>
-            <input value={rootDir} onChange={(e) => setRootDir(e.target.value)} placeholder="留空同 cwd" />
-          </label>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">起始目录 (cwd)</span>
+              <input value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="~" />
+            </label>
+            <label className="field">
+              <span className="field-label">
+                工具根目录 (@/) <em>留空同 cwd；按钮里 @/ 锚定此目录</em>
+              </span>
+              <input value={rootDir} onChange={(e) => setRootDir(e.target.value)} placeholder="留空同 cwd" />
+            </label>
+          </div>
           <label className="field">
             <span className="field-label">
               tmux 会话名 <em>留空不开；已存在则 attach，否则新建</em>
