@@ -39,6 +39,8 @@ pub struct ToolMeta {
     /// 不影响执行。对偶 src/shared/types.ts 的 meta.group。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub tool_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
