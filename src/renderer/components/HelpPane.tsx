@@ -79,18 +79,13 @@ export function HelpPane(props: {
   // 渲染后把 H2 分节自动包裹成 <details>，H2 数 >= 阈值才启用。
   // 序言（H1 及第一个 H2 之前的内容）保留在 details 外，不折叠。
   // 直接给每个 details 绑 toggle 监听（toggle 不冒泡，事件代理收不到，必须绑目标）。
-  // sidebarToc（文档型主区）：忽略阈值，只要有 H2 就启用折叠 + 填充 TOC。
+  // sidebarToc（文档型主区）：忽略阈值，只要有 H2 就启用折叠 + 填充 TOC；
+  // 0 个 H2 时 toc 保持空数组，sidebar 仍渲染为空白占位（保证布局一致）。
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
     const h2s = Array.from(root.querySelectorAll('h2'));
     if (!props.sidebarToc && h2s.length < COLLAPSE_THRESHOLD) {
-      setToc([]);
-      setOpenIds(new Set());
-      return;
-    }
-    if (h2s.length === 0) {
-      // sidebarToc 下无 H2：不显示 sidebar（正文占满），避免空 sidebar 尴尬。
       setToc([]);
       setOpenIds(new Set());
       return;
@@ -313,9 +308,10 @@ export function HelpPane(props: {
     });
   };
 
-  const tocNode =
+  // TOC 内容（折叠按钮 + chip 列表）。终端型：H2>=阈值才生成；文档型：有 H2 才生成。
+  const tocContent =
     toc.length >= COLLAPSE_THRESHOLD || (props.sidebarToc && toc.length > 0) ? (
-      <div className={props.sidebarToc ? 'help-toc help-toc-sidebar' : 'help-toc'}>
+      <>
         <button type="button" className="help-toc-btn" onClick={toggleAll}>
           {allOpen ? '全部折叠' : '全部展开'}
         </button>
@@ -331,7 +327,7 @@ export function HelpPane(props: {
             {t.text}
           </button>
         ))}
-      </div>
+      </>
     ) : null;
 
   return (
@@ -339,8 +335,10 @@ export function HelpPane(props: {
       {prompt.node}
       {props.sidebarToc ? (
         // 文档型主区：TOC 作为左侧竖向 sidebar，与正文左右三七分、各自独立滚动。
+        // sidebar 容器总是渲染（即使 0 个 H2，保证布局一致——正文始终在右 70%）；
+        // 内容（折叠按钮 + chip）只在有 H2 时填充，否则空白占位。
         <div className="help-body">
-          {tocNode}
+          <aside className="help-toc help-toc-sidebar">{tocContent}</aside>
           <div className="help-scroll">
             <div className="help" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
           </div>
@@ -349,7 +347,7 @@ export function HelpPane(props: {
         <>
           {/* TOC 栏固定在文档滚动区上方（.help-scroll 的前一个兄弟），不参与滚动。
               按钮和 chip 同属一个 flex 流，多行 wrap 一起换行（按钮不单独成行）。 */}
-          {tocNode}
+          {tocContent && <div className="help-toc">{tocContent}</div>}
           {/* .help-scroll 是文档独立滚动容器；TOC 在它上方固定。 */}
           <div className="help-scroll">
             <div className="help" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
