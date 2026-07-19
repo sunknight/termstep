@@ -3,7 +3,7 @@ import { useTools } from './hooks/useTools';
 import { Sidebar } from './components/Sidebar';
 import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
-import { EditorPane } from './components/EditorPane';
+import { EditorModal } from './components/EditorModal';
 import { QuickAddModal } from './components/QuickAddModal';
 import { HelpModal } from './components/HelpModal';
 import { ConfigRecords } from './components/ConfigRecords';
@@ -242,13 +242,7 @@ export default function App() {
         ...(floating ? {} : { flex: `0 0 ${helpWidth}px` }),
       }}
     >
-      {active && editingId === active.meta.id ? (
-        <EditorPane
-          tool={active}
-          onDone={() => setEditingId(null)}
-          existingGroups={existingGroups}
-        />
-      ) : active ? (
+      {active ? (
         <>
           {!floating && (
             <div className="help-toolbar">
@@ -347,6 +341,13 @@ export default function App() {
         </div>
       </section>
       {!helpCollapsed && renderHelp(false)}
+      {editingId && active && (
+        <EditorModal
+          tool={active}
+          onDone={() => setEditingId(null)}
+          existingGroups={existingGroups}
+        />
+      )}
       {errors.length > 0 && <Notifications errors={errors} />}
       {quickAddOpen && active && (
         <QuickAddModal

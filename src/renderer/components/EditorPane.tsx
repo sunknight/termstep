@@ -83,20 +83,23 @@ export function EditorPane(props: {
   // stays effective (✓ stays on 本地) even while the 远程 tab is open for setup.
   const effective: 'local' | 'remote' = tab === 'remote' && mdUrl.trim() ? 'remote' : 'local';
 
-  // Close the icon popup on outside-click / Escape.
+  // Close the icon popup on outside-click or Escape.
   useEffect(() => {
     if (!iconOpen) return;
     const onDown = (e: MouseEvent) => {
       if (iconWrapRef.current && !iconWrapRef.current.contains(e.target as Node)) setIconOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIconOpen(false);
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation();
+        setIconOpen(false);
+      }
     };
     window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
     };
   }, [iconOpen]);
 
@@ -137,71 +140,88 @@ export function EditorPane(props: {
     }
   };
 
+  // Cmd/Ctrl + Enter 快速保存（用 ref 避免闭包捕获旧 state）
+  const saveRef = useRef(save);
+  saveRef.current = save;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        void saveRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div className="editor">
-      <div className="editor-header">编辑工具</div>
-
       {/* Always-visible main form */}
       <div className="meta-form">
         <fieldset className="form-section">
           <legend>基本</legend>
-          <label className="field">
-            <span className="field-label">名称</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </label>
-          <div className="field">
-            <span className="field-label">图标</span>
-            <div className="icon-control" ref={iconWrapRef}>
-              <input
-                className="icon-input"
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-              />
-              <button
-                type="button"
-                className="icon-popup-toggle"
-                title="选择图标"
-                onClick={() => setIconOpen((v) => !v)}
-              >
-                ▾
-              </button>
-              {iconOpen && (
-                <div className="icon-popup" role="listbox" aria-label="常用图标">
-                  {COMMON_ICONS.map((ic) => (
-                    <button
-                      key={ic}
-                      type="button"
-                      className={'icon-cell' + (ic === icon ? ' selected' : '')}
-                      title={ic}
-                      onClick={() => {
-                        setIcon(ic);
-                        setIconOpen(false);
-                      }}
-                    >
-                      {ic}
-                    </button>
-                  ))}
-                </div>
-              )}
-                </div>
-              </div>
-              <label className="field">
-                <span className="field-label">
-                  分组 <em>留空 = 未分组；输入新名字即新建</em>
-                </span>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">名称</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            </label>
+            <div className="field">
+              <span className="field-label">图标</span>
+              <div className="icon-control" ref={iconWrapRef}>
                 <input
-                  list="ts-groups"
-                  value={group}
-                  onChange={(e) => setGroup(e.target.value)}
-                  placeholder="未分组"
+                  className="icon-input"
+                  value={icon}
+                  onChange={(e) => setIcon(e.target.value)}
                 />
-                <datalist id="ts-groups">
-                  {props.existingGroups.map((g) => (
-                    <option key={g} value={g} />
-                  ))}
-                </datalist>
-              </label>
-            </fieldset>
+                <button
+                  type="button"
+                  className="icon-popup-toggle"
+                  title="选择图标"
+                  onClick={() => setIconOpen((v) => !v)}
+                >
+                  ▾
+                </button>
+                {iconOpen && (
+                  <div className="icon-popup" role="listbox" aria-label="常用图标">
+                    {COMMON_ICONS.map((ic) => (
+                      <button
+                        key={ic}
+                        type="button"
+                        className={'icon-cell' + (ic === icon ? ' selected' : '')}
+                        title={ic}
+                        onClick={() => {
+                          setIcon(ic);
+                          setIconOpen(false);
+                        }}
+                      >
+                        {ic}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">
+                分组 <em>留空 = 未分组；输入新名字即新建</em>
+              </span>
+              <input
+                list="ts-groups"
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
+                placeholder="未分组"
+              />
+              <datalist id="ts-groups">
+                {props.existingGroups.map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+        </fieldset>
 
         <fieldset className="form-section">
           <legend>终端</legend>
@@ -215,12 +235,14 @@ export function EditorPane(props: {
             </span>
             <input value={rootDir} onChange={(e) => setRootDir(e.target.value)} placeholder="留空同 cwd" />
           </label>
-          <label className="field">
-            <span className="field-label">
-              tmux 会话名 <em>留空不开；已存在则 attach，否则新建</em>
-            </span>
-            <input value={tmux} onChange={(e) => setTmux(e.target.value)} placeholder="dev" />
-          </label>
+          <div className="form-row">
+            <label className="field">
+              <span className="field-label">
+                tmux 会话名 <em>留空不开；已存在则 attach，否则新建</em>
+              </span>
+              <input value={tmux} onChange={(e) => setTmux(e.target.value)} placeholder="dev" />
+            </label>
+          </div>
           <label className="field">
             <span className="field-label">
               启动命令 <em>每行一条，进入终端后依次执行</em>
@@ -335,13 +357,13 @@ export function EditorPane(props: {
         )}
       </div>
 
+      {error && <div className="editor-error">{error}</div>}
       <div className="editor-actions">
         <button className="primary" onClick={save} disabled={saving}>
           {saving ? '保存中…' : '保存'}
         </button>
         <button onClick={props.onDone}>取消</button>
       </div>
-      {error && <div className="editor-error">{error}</div>}
     </div>
   );
 }
