@@ -37,7 +37,7 @@ export function ParamPromptModal(props: {
   const submit = () => {
     for (const p of spec.params) {
       if (p.required && !values[p.name].trim()) {
-        setError(`「${p.name}」为必填项`);
+        setError(`「${p.label ?? p.name}」为必填项`);
         return;
       }
     }
@@ -54,13 +54,16 @@ export function ParamPromptModal(props: {
         <div className="param-fields">
           {spec.params.map((p, i) => (
             <div className="param-field" key={p.name}>
-              <label>{p.name}{p.required ? ' *' : ''}</label>
+              <label>{p.label ?? p.name}{p.required ? ' *' : ''}</label>
               <input
                 ref={i === 0 ? firstRef : undefined}
                 type="text"
                 value={values[p.name]}
                 list={p.options ? `param-opt-${p.name}` : undefined}
                 onChange={(e) => setVal(p.name, e.target.value)}
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') submit();
                 }}

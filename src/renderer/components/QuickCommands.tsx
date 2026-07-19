@@ -142,6 +142,8 @@ export function QuickCommands(props: { activeTool: Tool | null }) {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               autoFocus
+              autoCorrect="off"
+              autoCapitalize="off"
               spellCheck={false}
               placeholder={'```buttons\npwd # 当前目录\nls -la\nclear\n```'}
             />

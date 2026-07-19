@@ -1,5 +1,9 @@
 export interface ButtonParam {
   name: string;
+  /** Display name shown on the form label; falls back to `name` when absent.
+   *  `name` stays the {{name}} placeholder key and the form state key, so a
+   *  human-readable label (with spaces/CJK) doesn't touch command substitution. */
+  label?: string;
   hint?: string;
   options?: string[];
   default?: string;
@@ -189,6 +193,7 @@ function coerceParams(raw: unknown[]): ButtonParam[] {
     const name = typeof o.name === 'string' ? o.name.trim() : '';
     if (!name) continue;
     const param: ButtonParam = { name };
+    if (typeof o.label === 'string' && o.label.trim()) param.label = o.label.trim();
     if (typeof o.hint === 'string') param.hint = o.hint;
     if (Array.isArray(o.options)) {
       const opts = o.options.filter((x): x is string => typeof x === 'string');

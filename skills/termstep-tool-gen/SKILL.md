@@ -83,14 +83,14 @@ uuidgen    # macOS 生成 UUID，如 E1B2C3D4-5678-90AB-CDEF-1234567890AB
     "command": "git commit -m {{message}}",
     "edit": true,
     "params": [
-      { "name": "message", "hint": "提交信息", "required": true }
+      { "name": "message", "label": "提交信息", "required": true }
     ]
   }
 ]
 ```
 
 - `command` 必填；`label` 缺省=command；`edit`/`required` **必须是 `true`**（不是 `"true"`）。
-- 参数：`name`（必填）/ `hint` / `options`（数组→下拉框）/ `default` / `required`。
+- 参数：`name`（必填，对应 `{{name}}` 占位符）/ `label`（表单显示名，缺省=name）/ `hint`（输入框下方提示）/ `options`（数组→下拉框）/ `default` / `required`。
 - **占位符 `{{name}}` 自动 POSIX 转义 → 两侧不要再加引号**。`"cmd -m {{x}}"` ✅；`"cmd -m \"{{x}}\""` ❌。
 - 占位符必须在 `params` 里声明，否则原样保留（调试时可见）。
 
@@ -316,7 +316,7 @@ npm run typecheck   # 类型检查
     "label": "设置版本号",
     "command": "npm run version:set {{version}}",
     "params": [
-      { "name": "version", "hint": "如 0.9.4", "required": true }
+      { "name": "version", "label": "版本号", "hint": "如 0.9.4", "required": true }
     ]
   }
 ]
@@ -347,7 +347,7 @@ git clean -fd           // edit   # 删除未跟踪文件
 - [ ] 围栏语言精确为 `buttons` / `buttons-json`
 - [ ] ` // edit` 有前导空格；行首 `//` 文本 / `#` 注释
 - [ ] buttons-json 是合法 JSON，`edit`/`required` 是 `true`
-- [ ] `{{name}}` 两侧无引号，且在 `params` 里声明
+- [ ] `{{name}}` 两侧无引号，且在 `params` 里声明；`name` 是机器名（英文标识符，对应占位符）时，加 `label` 给用户看中文显示名
 - [ ] 每条命令有文件证据，未编造
 - [ ] **主要脚本（package.json scripts / Makefile targets 等）在 markdown 主体有用途+调用方法说明**，不只是按钮
 - [ ] 危险命令有 `// edit` + `// ⚠️`
