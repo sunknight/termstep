@@ -336,13 +336,6 @@ export default function App() {
             {active && (
               <>
                 <button
-                  className="term-toggle"
-                  title={termHidden ? '显示终端' : '隐藏终端'}
-                  onClick={() => setTermHidden((v) => !v)}
-                >
-                  {termHidden ? '▸ 终端' : '▾ 终端'}
-                </button>
-                <button
                   className="term-restart"
                   title="重启终端"
                   onClick={() => {
@@ -358,6 +351,13 @@ export default function App() {
                   }}
                 >
                   ↻ 重启终端
+                </button>
+                <button
+                  className="term-toggle"
+                  title={termHidden ? '显示终端' : '隐藏终端'}
+                  onClick={() => setTermHidden((v) => !v)}
+                >
+                  {termHidden ? '▸ 终端' : '▾ 终端'}
                 </button>
                 <button
                   className="term-restart"
