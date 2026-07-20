@@ -62,9 +62,9 @@ export default function App() {
   // 文档折叠为浮动 Peek（per-tool，内存记忆，不持久化——app 重启恢复默认展开）。
   // 切换工具再回来时保持各自状态。
   const [docCollapsedMap, setDocCollapsedMap] = useState<Record<string, boolean>>({});
-  // 终端显隐（运行时状态）。初值取自当前工具的 meta.terminalHidden；
-  // 切换工具时重置（见下方 effect）。顶栏 toggle 改这个 state，不写回配置。
-  const [termHidden, setTermHidden] = useState<boolean>(false);
+  // 终端显隐（per-tool，内存记忆，不持久化）。首次访问某工具时用其
+  // meta.terminalHidden（配置默认值）初始化；之后 toggle 改这个 map，不写回配置。
+  const [termHiddenMap, setTermHiddenMap] = useState<Record<string, boolean>>({});
   // 文档 hover-peek：docCollapsed 时 hover 文档按钮 → 浮动展开（带 grace period）。
   const docPeek = usePeek();
   const docToggleRef = useRef<HTMLButtonElement>(null);
@@ -136,10 +136,15 @@ export default function App() {
     document.body.style.userSelect = 'none';
   };
 
-  // 切换工具时，termHidden 重置为新工具的 meta.terminalHidden（配置默认值）。
-  // 只依赖 activeId，不依赖 active 对象（每帧新对象会重置，丢失用户 toggle）。
+  // 切换工具时，若该工具尚未有运行时记录（首次访问），用 meta.terminalHidden
+  // （配置默认值）初始化；已有记录则保留（切换工具再回来保持 toggle 状态）。
+  // 只依赖 activeId，不依赖 active 对象（每帧新对象会重复触发，覆盖用户 toggle）。
   useEffect(() => {
-    setTermHidden(!!active?.meta.terminalHidden);
+    if (!active || !activeId) return;
+    setTermHiddenMap((m) => {
+      if (activeId in m) return m; // 已有记录，不动
+      return { ...m, [activeId]: !!active.meta.terminalHidden };
+    });
   }, [activeId]);
   useEffect(() => {
     localStorage.setItem('termstep:sidebar-collapsed', sidebarCollapsed ? '1' : '0');
@@ -299,6 +304,12 @@ export default function App() {
   // docCollapsed 把文档折为浮动 Peek（终端撑满）。派生自 per-tool map。
   const layout = active?.meta.layout ?? 'LR';
   const docCollapsed = !!activeId && !!docCollapsedMap[activeId];
+  // termHidden 派生：map 有记录用记录，否则用配置默认值（effect 会异步补进 map）。
+  const termHidden = activeId
+    ? activeId in termHiddenMap
+      ? termHiddenMap[activeId]
+      : !!active?.meta.terminalHidden
+    : false;
 
   return (
     <div className="app">
@@ -351,7 +362,11 @@ export default function App() {
                 <button
                   className="term-toggle"
                   title={termHidden ? '显示终端' : '隐藏终端'}
-                  onClick={() => setTermHidden((v) => !v)}
+                  onClick={() => {
+                    if (!active) return;
+                    const id = active.meta.id;
+                    setTermHiddenMap((m) => ({ ...m, [id]: !(id in m ? m[id] : !!active.meta.terminalHidden) }));
+                  }}
                 >
                   {termHidden ? '▸ 终端' : '▾ 终端'}
                 </button>
