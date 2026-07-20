@@ -333,17 +333,13 @@ impl PtyService {
 
     /// restart：kill 旧 shell（触发读 EOF → generation guard 清理），再 spawn 新的。
     /// 新 shell 的 generation 不同，旧 shell 的延迟退出因 generation 不匹配而 no-op。
+    ///
+    /// 先清 in_progress 哨兵：正常路径下 SentinelGuard 的 drop 会移除哨兵，但偶发
+    /// 竞态（spawn 线程被卡住、Tauri 运行时时序等）可能让哨兵残留在集合里，导致
+    /// ensure 命中「哨兵已存在」分支跳过 spawn——表现为「重启终端无效」。restart
+    /// 的语义是用户明确要求「杀旧的起新的」，此时清哨兵是安全的：即使有并发 spawn
+    /// 在进行，kill 会处理掉它，ensure 会重新 spawn 一个干净的。
     pub fn restart(&self, handle: &AppHandle, tool_id: &str, opts: &PtySpawnOpts) {
-        self.kill(tool_id);
-        self.ensure(handle, tool_id, opts);
-    }
-
-    /// 强制重启（⌘+点击触发）：清掉残留哨兵 + kill 旧 entry（SIGKILL 整组）+
-    /// 强制 spawn 新 shell。与 restart 的区别：先清 in_progress 哨兵，保证 ensure
-    /// 一定走 spawn 路径——上次 spawn 若中途异常（panic/线程被杀）哨兵会残留，
-    /// 普通 restart 的 ensure 会因哨兵命中而跳过 spawn，导致"重启也无效"。
-    /// 旧进程尽力杀（reap_process_group），杀不掉的变僵尸但不阻塞新 shell。
-    pub fn force_restart(&self, handle: &AppHandle, tool_id: &str, opts: &PtySpawnOpts) {
         self.in_progress
             .lock()
             .unwrap_or_else(|e| e.into_inner())
