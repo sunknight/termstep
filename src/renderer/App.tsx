@@ -59,10 +59,9 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     () => localStorage.getItem('termstep:sidebar-collapsed') === '1',
   );
-  // 文档折叠为浮动 Peek（保留旧 localStorage key 以兼容用户既有偏好）。
-  const [docCollapsed, setDocCollapsed] = useState<boolean>(
-    () => localStorage.getItem('termstep:help-collapsed') === '1',
-  );
+  // 文档折叠为浮动 Peek（per-tool，内存记忆，不持久化——app 重启恢复默认展开）。
+  // 切换工具再回来时保持各自状态。
+  const [docCollapsedMap, setDocCollapsedMap] = useState<Record<string, boolean>>({});
   // 终端显隐（运行时状态）。初值取自当前工具的 meta.terminalHidden；
   // 切换工具时重置（见下方 effect）。顶栏 toggle 改这个 state，不写回配置。
   const [termHidden, setTermHidden] = useState<boolean>(false);
@@ -145,10 +144,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('termstep:sidebar-collapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
-  // 文档折叠（Peek）：保留旧 key 以兼容既有用户偏好。
-  useEffect(() => {
-    localStorage.setItem('termstep:help-collapsed', docCollapsed ? '1' : '0');
-  }, [docCollapsed]);
   useEffect(() => {
     localStorage.setItem('termstep:term-size-lr', String(termSizeLr));
   }, [termSizeLr]);
@@ -301,8 +296,9 @@ export default function App() {
 
   // 统一布局：主区 = 顶栏 + 双面板主体（doc-pane | term-splitter | term-pane）。
   // layout(LR/TB) 决定 flex-direction；termHidden 运行时控制终端显隐；
-  // docCollapsed 把文档折为浮动 Peek（终端撑满）。
+  // docCollapsed 把文档折为浮动 Peek（终端撑满）。派生自 per-tool map。
   const layout = active?.meta.layout ?? 'LR';
+  const docCollapsed = !!activeId && !!docCollapsedMap[activeId];
 
   return (
     <div className="app">
@@ -364,8 +360,10 @@ export default function App() {
                   title={docCollapsed ? '展开文档（hover 预览）' : '折叠文档为浮动小窗'}
                   ref={docToggleRef}
                   onClick={() => {
+                    if (!active) return;
                     docPeek.close();
-                    setDocCollapsed((v) => !v);
+                    const id = active.meta.id;
+                    setDocCollapsedMap((m) => ({ ...m, [id]: !m[id] }));
                   }}
                   {...(docCollapsed ? docPeek.triggerProps : {})}
                 >
