@@ -333,7 +333,8 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .term-restart:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
-/* 终端显隐 toggle：与 .term-restart 同款（低可见、悬停高亮）。 */
+/* 终端/文档显隐 toggle：隐藏时低可见（与 .term-restart 同款）；显示时高亮
+   （accent 填充），用背景色直观表达「当前可见」。 */
 .term-toggle {
   padding: 6px 11px; font-size: 12px; line-height: 16px; cursor: pointer;
   color: var(--text-2); background: var(--surface);
@@ -341,15 +342,36 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .term-toggle:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+.term-toggle.active {
+  color: var(--accent); background: var(--accent-subtle); border-color: var(--accent-border);
+}
+.term-toggle.active:hover { background: var(--accent-weak); border-color: var(--accent); }
+/* 文档操作按钮（删除/导出/记录/重载/添加/编辑）：与 .term-restart 同款基础样式，
+   danger/primary 是强调修饰。这些按钮随文档上移到主顶栏的 .term-actions。 */
+.term-actions button.danger { color: var(--text-2); }
+.term-actions button.danger:hover {
+  color: var(--danger); border-color: var(--danger-border); background: var(--danger-subtle);
+}
+.term-actions button.primary {
+  margin-left: auto; background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.term-actions button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* 顶栏分组竖线分隔：左侧「重启/显隐终端/显隐文档」与右侧「文档编辑」两组之间。
+   容器 .term-actions 的 gap:6px 已提供左右留白，这里只补竖线本身。 */
+.term-actions-sep {
+  flex: 0 0 auto; width: 1px; height: 18px;
+  background: var(--border); align-self: center;
+}
 /* Global quick-command dropdown (backed by the _quick tool). */
 .quick-cmd { position: relative; }
+/* 普通按钮样式（与 .term-restart 同款，低可见、悬停高亮）。 */
 .quick-cmd-toggle {
   padding: 6px 11px; font-size: 12px; line-height: 16px; cursor: pointer;
-  color: var(--accent); background: var(--accent-subtle);
-  border: 1px solid var(--accent-border); border-radius: var(--radius-sm);
-  transition: background 0.12s, border-color 0.12s;
+  color: var(--text-2); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.quick-cmd-toggle:hover { background: var(--accent-weak); border-color: var(--accent); }
+.quick-cmd-toggle:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
 .quick-cmd-toggle:disabled { opacity: 0.45; cursor: default; }
 .quick-cmd-menu {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
@@ -625,38 +647,14 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 
 /* ----------------------------------------------------------------------------
-   帮助区：工具栏 + 编辑器
+   帮助区：文档滚动区（编辑/删除等按钮已在主顶栏 .term-actions）
    ------------------------------------------------------------------------- */
-/* 右列顶栏：与左、中列顶栏等高、固定不滚动。 */
-.help-toolbar {
-  flex: 0 0 var(--bar-h);
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 0 14px; border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
 /* 工具文档独立滚动区：顶栏固定、它单独滚。含 padding。 */
 .help-scroll {
   flex: 1 1 auto; min-height: 0;
   overflow-y: auto;
   padding: 14px;
 }
-.help-toolbar button {
-  padding: 6px 11px; font-size: 12px; line-height: 16px; cursor: pointer; color: var(--text);
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface);
-  transition: background 0.12s, border-color 0.12s;
-}
-.help-toolbar button:hover { background: var(--surface-2); border-color: var(--border-strong); }
-.help-toolbar button:disabled { opacity: 0.45; cursor: default; }
-/* 删除按钮：默认低可见（与普通按钮同色），悬停才显红——避免常态红色过于突兀。 */
-.help-toolbar button.danger { color: var(--text-2); border-color: var(--border); }
-.help-toolbar button.danger:hover {
-  color: var(--danger); border-color: var(--danger-border); background: var(--danger-subtle);
-}
-.help-toolbar button.primary {
-  margin-left: auto; background: var(--accent); border-color: var(--accent); color: #fff;
-}
-.help-toolbar button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 .editor {
   flex: 1 1 auto; min-height: 0;

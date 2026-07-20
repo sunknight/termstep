@@ -68,12 +68,11 @@ export default function App() {
   // 文档 hover-peek：docCollapsed 时 hover 文档按钮 → 浮动展开（带 grace period）。
   const docPeek = usePeek();
   const docToggleRef = useRef<HTMLButtonElement>(null);
-  // sidebar 宽度（跟 Sidebar 组件读同一个 localStorage key，用于算 Peek 浮动文档宽度）。
-  const sidebarWidth = Number(localStorage.getItem('termstep:sidebar-width')) || 180;
-  // LR 布局下的终端宽度（px），全局共享。
-  const [termSizeLr, setTermSizeLr] = useState<number>(() => {
-    const v = Number(localStorage.getItem('termstep:term-size-lr'));
-    return v >= 280 && v <= 1200 ? v : 560;
+  // LR 布局下的文档宽度（px），全局共享。文档是固定宽面板，终端弹性占剩余空间：
+  // 这样调整窗口尺寸时只改变终端宽度，文档宽度稳定不变（不被挤压）。
+  const [docSizeLr, setDocSizeLr] = useState<number>(() => {
+    const v = Number(localStorage.getItem('termstep:doc-size-lr'));
+    return v >= 280 && v <= 1000 ? v : 380;
   });
   // TB 布局下的终端高度（px），全局共享。
   const [termSizeTb, setTermSizeTb] = useState<number>(() => {
@@ -106,19 +105,19 @@ export default function App() {
   };
 
   // 终端/文档之间的拖动条。方向由当前工具的 layout 决定：
-  // LR = 左右拖（改 termSizeLr），TB = 上下拖（改 termSizeTb）。
+  // LR = 左右拖（改 docSizeLr，文档是固定宽面板），TB = 上下拖（改 termSizeTb，终端是固定高面板）。
   const startTermDrag = (e: React.MouseEvent) => {
     e.preventDefault();
     const layout = active?.meta.layout ?? 'LR';
     const startX = e.clientX;
     const startY = e.clientY;
-    const startLr = termSizeLr;
+    const startLr = docSizeLr;
     const startTb = termSizeTb;
-    // 终端在左（LR）/ 下（TB）：LR 光标向右移 = 终端变宽；TB 光标向上移 = 终端变高。
+    // LR：终端在左、文档在右，光标向左移 = 文档变窄；TB：文档在上、终端在下，光标向上移 = 终端变高。
     const onMove = (ev: MouseEvent) => {
       if (layout === 'LR') {
-        const w = Math.min(1200, Math.max(280, startLr + (ev.clientX - startX)));
-        setTermSizeLr(w);
+        const w = Math.min(1000, Math.max(280, startLr - (ev.clientX - startX)));
+        setDocSizeLr(w);
       } else {
         const h = Math.min(1200, Math.max(120, startTb + (startY - ev.clientY)));
         setTermSizeTb(h);
@@ -150,8 +149,8 @@ export default function App() {
     localStorage.setItem('termstep:sidebar-collapsed', sidebarCollapsed ? '1' : '0');
   }, [sidebarCollapsed]);
   useEffect(() => {
-    localStorage.setItem('termstep:term-size-lr', String(termSizeLr));
-  }, [termSizeLr]);
+    localStorage.setItem('termstep:doc-size-lr', String(docSizeLr));
+  }, [docSizeLr]);
   useEffect(() => {
     localStorage.setItem('termstep:term-size-tb', String(termSizeTb));
   }, [termSizeTb]);
@@ -260,41 +259,26 @@ export default function App() {
       floating={sidebarCollapsed}
     />
   );
-  // 文档区内容（docked 主区和折叠 Peek 共用同一份）：工具栏（删除/导出/记录/
-  // 重载/添加/编辑）+ HelpPane。外壳由调用方提供——docked 用 .doc-pane，Peek 用
-  // .doc-peek-body。docked 显示工具栏；Peek 顶部有独立 header，内容区不重复。
-  const renderDocContent = ({ withToolbar = true }: { withToolbar?: boolean } = {}) =>
+  // 文档区内容（docked 主区和折叠 Peek 共用同一份）：仅 HelpPane。
+  // 文档操作按钮（编辑/删除/导出/记录/重载/添加）已上移到主顶栏的 .term-actions，
+  // 与「重启终端」「显隐终端」「显隐文档」同行，保持视觉单一入口。
+  const renderDocContent = () =>
     active ? (
-      <>
-        {withToolbar && (
-          <div className="help-toolbar">
-            <button title="删除" className="danger" onClick={() => deleteTool(active.meta.id)}>删除</button>
-            <button title="导出该工具为 JSON" onClick={() => exportOne(active.meta.id)}>导出</button>
-            <button title="该工具的配置记录" onClick={() => setRecordsToolId(active.meta.id)}>记录</button>
-            {active.meta.useRemote && (
-              <button title="重新拉取远程内容" onClick={() => api.refreshMd()}>重载</button>
-            )}
-            {!active.meta.useRemote && (
-              <button title="快速添加命令（追加到末尾）" onClick={() => setQuickAddOpen(true)}>添加</button>
-            )}
-            <button title="编辑" className="primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
-          </div>
-        )}
-        {/* HelpPane 内部自行管理 TOC（固定）+ 文档滚动区（.help-scroll）。 */}
-        <HelpPane
-          tool={active}
-          activeToolId={active.meta.id}
-          isRemote={!!active.meta.useRemote}
-          markdown={
-            active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
-          }
-          onPreview={openPreview}
-          // 宽屏 TOC 仅在 docked 且终端隐藏（文档撑满主区）时启用；
-          // Peek 浮动时永远是窄屏，不开 sidebar TOC。
-          sidebarToc={termHidden && !docCollapsed}
-          termHidden={termHidden}
-        />
-      </>
+      <HelpPane
+        tool={active}
+        activeToolId={active.meta.id}
+        isRemote={!!active.meta.useRemote}
+        markdown={
+          active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
+        }
+        onPreview={openPreview}
+        // 宽屏 TOC（左章节右正文）的启用条件：
+        //   - TB 布局：文档始终横向铺满（宽屏）→ 永远 sidebar TOC（docked 时）；
+        //   - LR 布局：仅终端隐藏（文档撑满主区）时宽屏 → 那时才 sidebar TOC。
+        // Peek 浮动时（docCollapsed）永远是窄屏，不开 sidebar TOC。
+        sidebarToc={!docCollapsed && (layout === 'TB' || termHidden)}
+        termHidden={termHidden}
+      />
     ) : (
       <div className="placeholder">无选中工具</div>
     );
@@ -360,7 +344,7 @@ export default function App() {
                   ↻ 重启终端
                 </button>
                 <button
-                  className="term-toggle"
+                  className={`term-toggle ${termHidden ? '' : 'active'}`}
                   title={termHidden ? '显示终端' : '隐藏终端'}
                   onClick={() => {
                     if (!active) return;
@@ -371,7 +355,7 @@ export default function App() {
                   {termHidden ? '▸ 终端' : '▾ 终端'}
                 </button>
                 <button
-                  className="term-restart"
+                  className={`term-toggle ${docCollapsed ? '' : 'active'}`}
                   title={docCollapsed ? '展开文档（hover 预览）' : '折叠文档为浮动小窗'}
                   ref={docToggleRef}
                   onClick={() => {
@@ -384,6 +368,21 @@ export default function App() {
                 >
                   {docCollapsed ? '▤ 文档' : '▢ 文档'}
                 </button>
+                {/* 文档操作（编辑/删除/导出/记录/重载/添加）：始终显示，文档折叠为
+                    Peek 时也不隐藏——这些操作作用于工具本身（不依赖文档是否可见），
+                    且隐藏会导致编辑按钮的 margin-left:auto 跳到最右，产生布局抖动。
+                    与左侧布局按钮之间用竖线分隔，视觉上区分「布局/显隐」与「文档编辑」两组。 */}
+                <span className="term-actions-sep" aria-hidden="true" />
+                <button title="删除" className="term-restart danger" onClick={() => deleteTool(active.meta.id)}>删除</button>
+                <button title="导出该工具为 JSON" className="term-restart" onClick={() => exportOne(active.meta.id)}>导出</button>
+                <button title="该工具的配置记录" className="term-restart" onClick={() => setRecordsToolId(active.meta.id)}>记录</button>
+                {active.meta.useRemote && (
+                  <button title="重新拉取远程内容" className="term-restart" onClick={() => api.refreshMd()}>重载</button>
+                )}
+                {!active.meta.useRemote && (
+                  <button title="快速添加命令（追加到末尾）" className="term-restart" onClick={() => setQuickAddOpen(true)}>添加</button>
+                )}
+                <button title="编辑" className="term-restart primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
               </>
             )}
           </div>
@@ -398,7 +397,7 @@ export default function App() {
                 termHidden
                   ? { flex: 1, minWidth: 0 }
                   : layout === 'LR'
-                    ? { flex: `0 0 calc(100% - ${termSizeLr}px - 6px)`, minWidth: 0 }
+                    ? { flex: `0 0 ${docSizeLr}px`, minWidth: 0 }
                     : { flex: `0 0 calc(100% - ${termSizeTb}px - 6px)`, minHeight: 0 }
               }
             >
@@ -422,7 +421,7 @@ export default function App() {
                 : docCollapsed
                   ? { flex: 1, minWidth: 0 }
                   : layout === 'LR'
-                    ? { flex: `0 0 ${termSizeLr}px`, minWidth: 0 }
+                    ? { flex: '1 1 0', minWidth: 0 }
                     : { flex: `0 0 ${termSizeTb}px`, minHeight: 0 }
             }
           >
@@ -448,11 +447,11 @@ export default function App() {
               style={{
                 width:
                   layout === 'LR'
-                    ? `calc(100vw - ${sidebarWidth}px - ${termSizeLr}px - 6px)`
+                    ? `${docSizeLr}px`
                     : `${HELP_DEFAULT_WIDTH}px`,
               }}
             >
-              {renderDocContent({ withToolbar: false })}
+              {renderDocContent()}
             </div>
           </Peek>
         )}
