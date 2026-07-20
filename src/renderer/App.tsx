@@ -115,10 +115,10 @@ export default function App() {
     const startY = e.clientY;
     const startLr = termSizeLr;
     const startTb = termSizeTb;
-    // 终端在右/下：光标向左/上移 = 终端变大。
+    // 终端在左（LR）/ 下（TB）：LR 光标向右移 = 终端变宽；TB 光标向上移 = 终端变高。
     const onMove = (ev: MouseEvent) => {
       if (layout === 'LR') {
-        const w = Math.min(1200, Math.max(280, startLr + (startX - ev.clientX)));
+        const w = Math.min(1200, Math.max(280, startLr + (ev.clientX - startX)));
         setTermSizeLr(w);
       } else {
         const h = Math.min(1200, Math.max(120, startTb + (startY - ev.clientY)));
@@ -367,6 +367,13 @@ export default function App() {
                 >
                   ↻ 重启终端
                 </button>
+                <button
+                  className="term-restart"
+                  title={docCollapsed ? '展开文档' : '折叠文档为浮动小窗'}
+                  onClick={() => setDocCollapsed((v) => !v)}
+                >
+                  {docCollapsed ? '▤ 文档' : '▢ 文档'}
+                </button>
               </>
             )}
           </div>
@@ -386,14 +393,6 @@ export default function App() {
               }
             >
               {renderDocContent()}
-              {/* 文档折叠按钮（Peek）：放在文档区右上角 */}
-              <button
-                className="doc-collapse-btn"
-                title="折叠文档为浮动"
-                onClick={() => setDocCollapsed(true)}
-              >
-                ⤢
-              </button>
             </div>
           )}
           {/* 拖动条：终端隐藏或文档折叠时不渲染 */}

@@ -254,23 +254,19 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 .main-body.layout-lr { flex-direction: row; }
 .main-body.layout-tb { flex-direction: column; }
+/* LR：终端在左、文档在右（保持原三栏观感）。DOM 顺序是 doc→splitter→term，
+   用 order 把 term 挪到最前。TB 保持 DOM 顺序（文档上、终端下）。 */
+.main-body.layout-lr > .doc-pane { order: 3; }
+.main-body.layout-lr > .term-splitter { order: 2; }
+.main-body.layout-lr > .term-pane { order: 1; }
 
 .doc-pane {
   background: var(--surface); color: var(--text);
   display: flex; flex-direction: column; overflow: hidden;
-  position: relative; /* 给 doc-collapse-btn 定位 */
   min-width: 0; min-height: 0;
 }
-.layout-lr > .doc-pane { border-right: 1px solid var(--border); }
+.layout-lr > .term-pane { border-right: 1px solid var(--border); }
 .layout-tb > .doc-pane { border-bottom: 1px solid var(--border); }
-
-.doc-collapse-btn {
-  position: absolute; top: 6px; right: 6px;
-  z-index: 10; padding: 2px 8px;
-  background: transparent; border: 1px solid var(--border);
-  border-radius: var(--radius); cursor: pointer; color: var(--text-3);
-}
-.doc-collapse-btn:hover { background: var(--accent-weak); }
 
 .term-splitter { flex: 0 0 6px; z-index: 10; background: transparent; }
 .term-splitter.lr { cursor: col-resize; width: 6px; }
