@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTools } from './hooks/useTools';
 import { Sidebar } from './components/Sidebar';
 import { TerminalPane } from './components/TerminalPane';
@@ -11,6 +11,8 @@ import { QuickCommands } from './components/QuickCommands';
 import { Notifications } from './components/Notifications';
 import { HoverTip } from './components/HoverTip';
 import { PanelToggle } from './components/PanelToggle';
+import { Peek } from './components/Peek';
+import { usePeek } from './hooks/usePeek';
 import { PreviewOverlay } from './components/PreviewOverlay';
 import type { PreviewState, PreviewRequest } from './components/PreviewOverlay';
 import { termRegistry } from './lib/termRegistry';
@@ -19,8 +21,6 @@ import { confirmDialog, alertDialog } from './lib/dialog';
 
 // Right panel width bounds. Match the sidebar's range so the two sides feel
 // symmetric; the default keeps the old hardcoded 340px.
-const HELP_MIN_WIDTH = 200;
-const HELP_MAX_WIDTH = 560;
 const HELP_DEFAULT_WIDTH = 340;
 
 // 把导入预检返回的风险摘要格式化成确认对话框里的人类可读明细。
@@ -63,14 +63,14 @@ export default function App() {
   const [docCollapsed, setDocCollapsed] = useState<boolean>(
     () => localStorage.getItem('termstep:help-collapsed') === '1',
   );
-  // Peek 浮动层宽度（doc 折叠时用）。持久化如侧栏。
-  const [helpWidth] = useState<number>(() => {
-    const v = Number(localStorage.getItem('termstep:help-width'));
-    return v >= HELP_MIN_WIDTH && v <= HELP_MAX_WIDTH ? v : HELP_DEFAULT_WIDTH;
-  });
   // 终端显隐（运行时状态）。初值取自当前工具的 meta.terminalHidden；
   // 切换工具时重置（见下方 effect）。顶栏 toggle 改这个 state，不写回配置。
   const [termHidden, setTermHidden] = useState<boolean>(false);
+  // 文档 hover-peek：docCollapsed 时 hover 文档按钮 → 浮动展开（带 grace period）。
+  const docPeek = usePeek();
+  const docToggleRef = useRef<HTMLButtonElement>(null);
+  // sidebar 宽度（跟 Sidebar 组件读同一个 localStorage key，用于算 Peek 浮动文档宽度）。
+  const sidebarWidth = Number(localStorage.getItem('termstep:sidebar-width')) || 180;
   // LR 布局下的终端宽度（px），全局共享。
   const [termSizeLr, setTermSizeLr] = useState<number>(() => {
     const v = Number(localStorage.getItem('termstep:term-size-lr'));
@@ -149,9 +149,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('termstep:help-collapsed', docCollapsed ? '1' : '0');
   }, [docCollapsed]);
-  useEffect(() => {
-    localStorage.setItem('termstep:help-width', String(helpWidth));
-  }, [helpWidth]);
   useEffect(() => {
     localStorage.setItem('termstep:term-size-lr', String(termSizeLr));
   }, [termSizeLr]);
@@ -345,32 +342,30 @@ export default function App() {
                 </button>
                 <button
                   className="term-restart"
-                  title="重启终端（按住 ⌘ 强制重启：放弃旧终端，新起一个）"
-                  onClick={(e) => {
+                  title="重启终端"
+                  onClick={() => {
                     const id = active.meta.id;
-                    const opts = {
+                    termRegistry.get(id)?.reset();
+                    api.pty.restart(id, {
                       cwd: active.meta.cwd,
                       shell: active.meta.shell,
                       env: active.meta.env,
                       tmux: active.meta.tmux,
                       initCommands: active.meta.initCommands,
-                    };
-                    termRegistry.get(id)?.reset();
-                    if (e.metaKey) {
-                      // ⌘+点击：强制新起。普通重启失效时的逃生通道——清残留哨兵
-                      // + SIGKILL 整组（尽力杀，杀不掉留僵尸不阻塞）+ 强制 spawn。
-                      api.pty.forceRestart(id, opts);
-                    } else {
-                      api.pty.restart(id, opts);
-                    }
+                    });
                   }}
                 >
                   ↻ 重启终端
                 </button>
                 <button
                   className="term-restart"
-                  title={docCollapsed ? '展开文档' : '折叠文档为浮动小窗'}
-                  onClick={() => setDocCollapsed((v) => !v)}
+                  title={docCollapsed ? '展开文档（hover 预览）' : '折叠文档为浮动小窗'}
+                  ref={docToggleRef}
+                  onClick={() => {
+                    docPeek.close();
+                    setDocCollapsed((v) => !v);
+                  }}
+                  {...(docCollapsed ? docPeek.triggerProps : {})}
                 >
                   {docCollapsed ? '▤ 文档' : '▢ 文档'}
                 </button>
@@ -423,17 +418,28 @@ export default function App() {
             )}
           </div>
         </div>
-        {/* 文档折叠为 Peek（浮动层）：覆盖在 main-body 上方。 */}
+        {/* 文档折叠后：主区不渲染文档，终端撑满；hover 顶栏文档按钮 → Peek 浮动展开。
+            Peek 宽度：LR 跟 docked 右栏联动（calc 100vw - sidebar - 终端宽 - splitter），
+            TB（文档模式）用默认宽度。 */}
         {docCollapsed && active && (
-          <div className="doc-peek">
-            <div className="doc-peek-header">
-              <span>文档</span>
-              <button title="展开文档" onClick={() => setDocCollapsed(false)}>▾</button>
-            </div>
-            <div className="doc-peek-body" style={{ width: `${helpWidth}px` }}>
+          <Peek
+            open={docPeek.open}
+            side="right"
+            anchorRef={docToggleRef}
+            contentProps={docPeek.contentProps}
+          >
+            <div
+              className="doc-peek-body"
+              style={{
+                width:
+                  layout === 'LR'
+                    ? `calc(100vw - ${sidebarWidth}px - ${termSizeLr}px - 6px)`
+                    : `${HELP_DEFAULT_WIDTH}px`,
+              }}
+            >
               {renderDocContent({ withToolbar: false })}
             </div>
-          </div>
+          </Peek>
         )}
       </section>
       {editingId && active && (

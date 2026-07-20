@@ -286,20 +286,13 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   z-index: -1;
 }
 
-/* 文档 Peek（折叠态浮动层）：覆盖在 main-body 上方。 */
-.doc-peek {
-  position: absolute; top: 40px; right: 16px;
-  z-index: 50; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow-md); overflow: hidden;
+/* 文档 Peek 内容：作为 .peek 的子元素，撑满高度，内部 HelpPane 自行管理滚动。
+   宽度由 App.tsx 内联设置（LR 跟右栏联动、TB 用默认）。 */
+.doc-peek-body {
   display: flex; flex-direction: column;
+  min-width: 0; min-height: 0;
+  background: var(--surface); color: var(--text);
 }
-.doc-peek-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 10px; border-bottom: 1px solid var(--border);
-  font-size: 12px; color: var(--text-3);
-}
-.doc-peek-body { max-height: 70vh; overflow: auto; }
 
 /* ----------------------------------------------------------------------------
    中列：终端区域（标题栏 + 终端面板）

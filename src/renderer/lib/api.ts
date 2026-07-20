@@ -28,7 +28,6 @@ export const api = {
       invoke('pty_write', { toolId, data, opts }),
     open: (toolId: string, opts?: PtySpawnOpts) => invoke('pty_open', { toolId, opts }),
     restart: (toolId: string, opts?: PtySpawnOpts) => invoke('pty_restart', { toolId, opts }),
-    forceRestart: (toolId: string, opts?: PtySpawnOpts) => invoke('pty_force_restart', { toolId, opts }),
     resize: (toolId: string, cols: number, rows: number) => invoke('pty_resize', { toolId, cols, rows }),
     cwd: (toolId: string) => invoke<string>('pty_cwd', { toolId }),
     kill: (toolId: string) => invoke('pty_kill', { toolId }),
