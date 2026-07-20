@@ -289,7 +289,9 @@ export default function App() {
             active.meta.useRemote ? active.remoteMarkdown ?? '' : active.helpMarkdown
           }
           onPreview={openPreview}
-          sidebarToc={termHidden}
+          // 宽屏 TOC 仅在 docked 且终端隐藏（文档撑满主区）时启用；
+          // Peek 浮动时永远是窄屏，不开 sidebar TOC。
+          sidebarToc={termHidden && !docCollapsed}
           termHidden={termHidden}
         />
       </>
