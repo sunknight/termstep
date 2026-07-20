@@ -6,6 +6,7 @@ export const IPC = {
   PTY_WRITE: 'pty:write',
   PTY_OPEN: 'pty:open',
   PTY_RESTART: 'pty:restart',
+  PTY_FORCE_RESTART: 'pty:forceRestart',
   PTY_RESIZE: 'pty:resize',
   PTY_KILL: 'pty:kill',
   PTY_CWD: 'pty:cwd',
@@ -64,7 +65,7 @@ export interface ToolMeta {
   // 分组名（自由文本）。空/缺失 = 未分组。仅用于侧栏展示分区，不影响执行。
   group?: string;
   /**
-   * 布局方向。`"LR"` = 文档左/终端右（默认）；`"TB"` = 文档上/终端下。
+   * 布局方向。`"LR"` = 终端左/文档右（默认，原三栏观感）；`"TB"` = 文档上/终端下。
    * 仅工具配置控制（保存后生效），无运行时 toggle。
    */
   layout?: 'LR' | 'TB';
