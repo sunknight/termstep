@@ -1,9 +1,7 @@
 import { api } from './api';
 
-/**
- * 将命令复制到剪贴板并显示「已复制到剪贴板」toast。
- * copy-only 按钮与 ⌘/Ctrl 修饰键复制共用此核心逻辑。
- */
+// 仅复制命令到剪贴板并显示「已复制到剪贴板」toast（不经过终端执行）。
+// copy-only 按钮与 ⌘/Ctrl 修饰键复制共用此核心逻辑。
 export async function copyCommand(command: string): Promise<void> {
   await api.clipboard.writeText(command);
   showToast('已复制到剪贴板');

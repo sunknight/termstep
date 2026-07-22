@@ -616,6 +616,12 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 .cmd-btn:hover { background: var(--accent-weak); border-color: var(--accent); }
 .cmd-btn[data-edit="1"] { border-style: dashed; }
+/* copy-only 按钮（来自 ```buttons copy 代码块）前面加剪贴板图标，点击只复制命令
+   而不注入终端；边框保持实线默认样式，仅靠图标区分（避免与 edit 的虚线冲突）。 */
+.cmd-btn[data-copy="1"]::before {
+  content: '📋'; margin-right: 4px; font-size: 12px;
+  flex: 0 0 auto;
+}
 /* 远程订阅按钮（mdUrl 拉取的 markdown，来自不可信源）保留 data-remote 属性，
    由 HelpPane 的首次点击确认机制负责安全提示，不再加视觉左边框。 */
 /* Plain-text row inside a `buttons` block (a `//`-prefixed line). It deliberately
