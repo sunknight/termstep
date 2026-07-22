@@ -14,6 +14,7 @@ export interface ParsedButton {
   command: string;
   label: string;
   edit: boolean;
+  copy?: boolean;
   params?: ButtonParam[];
 }
 
@@ -23,6 +24,34 @@ export function escapeHtml(s: string): string {
 
 export function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, '&quot;');
+}
+
+// Parse the info string of a fenced block (everything after the opening ```)
+// into a type marker and a copy-only flag. `type` is `'buttons'` or
+// `'buttons-json'` when the FIRST whitespace-delimited token is one of those,
+// else `null` (the fence is not a buttons block and should render as a normal
+// code fence). `copyOnly` is true only when the type is a buttons block AND a
+// later token is exactly `copy` — the suffix that makes a block's buttons
+// copy-to-clipboard only (no terminal injection). Surrounding/extra whitespace
+// is tolerated; other tokens are ignored. Examples:
+//   'buttons'          -> { type: 'buttons', copyOnly: false }
+//   'buttons copy'     -> { type: 'buttons', copyOnly: true }
+//   'buttons-json copy'-> { type: 'buttons-json', copyOnly: true }
+//   'bash copy'        -> { type: null, copyOnly: false }  // suffix ignored for non-buttons
+//   ''                 -> { type: null, copyOnly: false }
+export function parseButtonsFenceInfo(info: string): {
+  type: 'buttons' | 'buttons-json' | null;
+  copyOnly: boolean;
+} {
+  const tokens = info.trim().split(/\s+/).filter((t) => t.length > 0);
+  if (tokens.length === 0) return { type: null, copyOnly: false };
+  const first = tokens[0];
+  if (first !== 'buttons' && first !== 'buttons-json') {
+    return { type: null, copyOnly: false };
+  }
+  const type: 'buttons' | 'buttons-json' = first;
+  const copyOnly = tokens.slice(1).includes('copy');
+  return { type, copyOnly };
 }
 
 const EDIT_SUFFIX = ' // edit';
@@ -59,8 +88,12 @@ export function parseButtonLine(raw: string): ParsedButton | null {
   return { command, label: label || command, edit };
 }
 
-export function renderButtonsBlock(code: string, opts?: { isRemote?: boolean }): string {
+export function renderButtonsBlock(
+  code: string,
+  opts?: { isRemote?: boolean; copyOnly?: boolean }
+): string {
   const remoteAttr = opts?.isRemote ? ' data-remote="1"' : '';
+  const copyAttr = opts?.copyOnly ? ' data-copy="1"' : '';
   const items: string[] = [];
   for (const raw of code.split('\n')) {
     const trimmed = raw.trim();
@@ -78,7 +111,7 @@ export function renderButtonsBlock(code: string, opts?: { isRemote?: boolean }):
     // text differs from the command, so hovering reveals the full command.
     const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
     items.push(
-      `<button class="cmd-btn"${remoteAttr}${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`
+      `<button class="cmd-btn"${copyAttr}${remoteAttr}${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`
     );
   }
   if (items.length === 0) return '';
@@ -105,22 +138,33 @@ export function buildMdAppend(currentMd: string, body: string): string {
 // blocks in a markdown doc. Used by the global quick-command dropdown, which
 // surfaces one tool's buttons app-wide. Order is document order; duplicates
 // across blocks kept. JSON fences are parsed via parseButtonsJson; errors are
-// ignored here (the dropdown just shows fewer buttons).
-const FENCE_RE = /```(buttons-json|buttons)[^\n]*\n([\s\S]*?)\n?```/g;
+// ignored here (the dropdown just shows fewer buttons). A ` copy` suffix on the
+// fence info stamps `copy: true` on every button parsed from that block (Task 2
+// routes those buttons to copy-only logic).
+const FENCE_RE = /```([^\n]*)\n([\s\S]*?)\n?```/g;
 export function parseButtonsFromMarkdown(markdown: string): ParsedButton[] {
   const out: ParsedButton[] = [];
   for (const match of markdown.matchAll(FENCE_RE)) {
-    const type = match[1];
+    const { type, copyOnly } = parseButtonsFenceInfo(match[1] ?? '');
+    if (type === null) continue;
     const body = match[2] ?? '';
     if (type === 'buttons-json') {
       const r = parseButtonsJson(body);
       // Errors are ignored here: the dropdown just shows fewer buttons. The
       // rendered help page surfaces the error via renderButtonsJsonBlock.
-      if ('buttons' in r) out.push(...r.buttons);
+      if ('buttons' in r) {
+        for (const b of r.buttons) {
+          if (copyOnly) b.copy = true;
+          out.push(b);
+        }
+      }
     } else {
       for (const line of body.split('\n')) {
         const b = parseButtonLine(line);
-        if (b) out.push(b);
+        if (b) {
+          if (copyOnly) b.copy = true;
+          out.push(b);
+        }
       }
     }
   }
@@ -210,8 +254,12 @@ function coerceParams(raw: unknown[]): ButtonParam[] {
 // serialized (and attribute-escaped) in data-params so the delegated click
 // handler can rebuild the form without a separate registry. A parse failure
 // renders a visible error block so the author sees the syntax problem.
-export function renderButtonsJsonBlock(code: string, opts?: { isRemote?: boolean }): string {
+export function renderButtonsJsonBlock(
+  code: string,
+  opts?: { isRemote?: boolean; copyOnly?: boolean }
+): string {
   const remoteAttr = opts?.isRemote ? ' data-remote="1"' : '';
+  const copyAttr = opts?.copyOnly ? ' data-copy="1"' : '';
   const r = parseButtonsJson(code);
   if ('error' in r) {
     return `<div class="cmd-error">⚠️ buttons-json 解析失败：${escapeHtml(r.error)}</div>`;
@@ -223,7 +271,7 @@ export function renderButtonsJsonBlock(code: string, opts?: { isRemote?: boolean
         ? ` data-params="${escapeAttr(JSON.stringify(b.params))}"`
         : '';
       const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
-      return `<button class="cmd-btn"${remoteAttr}${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}"${paramsAttr}>${escapeHtml(b.label)}</button>`;
+      return `<button class="cmd-btn"${copyAttr}${remoteAttr}${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}"${paramsAttr}>${escapeHtml(b.label)}</button>`;
     })
     .join('');
   return `<div class="cmd-buttons">${items}</div>`;
