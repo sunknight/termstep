@@ -20,16 +20,42 @@ let currentMode: ThemeMode = 'light';
 let currentResolved: ResolvedTheme = 'light';
 
 // ---- xterm 主题（两套）-------------------------------------------------
-// 只设置「界面色」（背景 / 前景 / 光标 / 选区），**不覆盖 ANSI 16 色调色板**。
-// 程序（shell PS1、tmux 状态栏等）通过 ANSI 颜色转义码自行着色，若在这里改写
-// black/red/.../brightWhite，会把它们定义的颜色全部替换掉——导致 tmux 和提示符
-// 变成奇怪的蓝。省略这些字段，xterm 即用内置标准 VGA 16 色透传，程序原色保留。
+// 省略 ANSI 16 色字段时，xterm 用内置 Tango 调色板。Tango 是**为深色背景**设计
+// 的（blue=#3465a4 沉中蓝、yellow=#c4a000 暗橄榄、black=#2e3436 炭黑），在深色
+// 主题下观感正合适，所以 xtermDark 不覆盖；但在浅色主题（白底）下同一套色会发暗
+// 发灰——典型表现：tmux `status-bg blue` 压一整条深蓝、`fg=yellow` 灰扑扑，比
+// Termius/iTerm2 等客户端里明显看不清。所以浅色主题必须换一套**为白底调过亮度/
+// 饱和度**的调色板。下面的色值采样自一个用户认可的 SSH 客户端浅色截图（像素级
+// 取色）：blue 是 Termius 风的鲜亮青蓝 #01a0e4（不是 Tango 的沉中蓝，也不是
+// iTerm2 Light 的纯蓝 #0225c7），yellow/black 同步用采样真实值，其余用低饱和
+// 柔和值不抢戏。背景近白 #f7f7f7——「浅蓝感」主要来自状态栏那条鲜亮青蓝。
 const xtermLight: ITheme = {
-  background: '#ffffff',
-  foreground: '#18181b',
-  cursor: '#3b82f6',
+  background: '#f7f7f7',
+  foreground: '#383a42',
+  cursor: '#01a0e4',
   cursorAccent: '#ffffff',
-  selectionBackground: 'rgba(59,130,246,0.18)',
+  selectionBackground: 'rgba(90,193,237,0.22)',
+  // ANSI 16 色：blue 采样自 Termius 风鲜亮青蓝，其余用低饱和柔和值。
+  // blue 分层：普通 blue 调淡（#5ac1ed）给 tmux status-bg 等大面积背景用，
+  // 不至于压一整条深蓝；brightBlue 鲜亮（#01a0e4 采样原值）给加粗/亮色蓝
+  // 文字用（ls 目录等），保证白底上仍清晰可读。tmux 配 status-bg blue 命中
+  // 普通 blue，status bar 因此变淡；加粗蓝文字命中 brightBlue，保持醒目。
+  black: '#090300',
+  red: '#d20f39',
+  green: '#40a02b',
+  yellow: '#c1b656',
+  blue: '#5ac1ed',
+  magenta: '#d4649c',
+  cyan: '#0598be',
+  white: '#f7f7f7',
+  brightBlack: '#5c5f77',
+  brightRed: '#e0405a',
+  brightGreen: '#56b32b',
+  brightYellow: '#d8c860',
+  brightBlue: '#01a0e4',
+  brightMagenta: '#e88bc4',
+  brightCyan: '#3bc4d8',
+  brightWhite: '#ffffff',
 };
 
 const xtermDark: ITheme = {
