@@ -56,7 +56,7 @@ uuidgen    # macOS 生成 UUID，如 E1B2C3D4-5678-90AB-CDEF-1234567890AB
 
 ## buttons 语法（核心）
 
-围栏语言**必须精确**是 `buttons` 或 `buttons-json`（trim 后等价，但不能有后缀）。
+围栏语言**必须精确**是 `buttons` 或 `buttons-json`，唯一允许的后缀是 ` copy`（见下「仅复制按钮」），其它后缀一律无效。
 
 ### `buttons` 围栏（每行一个按钮）
 
@@ -98,6 +98,24 @@ uuidgen    # macOS 生成 UUID，如 E1B2C3D4-5678-90AB-CDEF-1234567890AB
 
 - **buttons**：固定命令、无参数。
 - **buttons-json**：需用户填参（分支名、commit 信息、环境、文件名）。
+
+### 仅复制按钮（` copy` 后缀）
+
+在 `buttons` / `buttons-json` 后加一个空格和 `copy`，整块按钮就变成**仅复制**：点击只把命令复制到剪贴板（弹「已复制到剪贴板」toast），**不粘进终端、不弹参数表单、不做危险确认**。按钮前会显示一个 📋 图标做区分。
+
+````markdown
+```buttons copy
+ssh deploy@prod.example.com   # 连接生产（复制到剪贴板，不在本机执行）
+kubectl get pods -A           # 查 pod 列表
+docker run --rm -it myimage   # 复制后到目标机器粘贴执行
+```
+````
+
+`buttons-json copy` 同理——但注意：仅复制模式下不会弹参数表单，所以 `{{占位符}}` 会**原样复制**（与 `⌘/Ctrl+点击` 复制参数化按钮的行为一致）。需要填参的命令不要放 copy 块。
+
+**适用场景**：命令是给「在别处执行」准备的——比如要在远程服务器 / 另一台机器 / 另一个终端窗口粘贴的命令，或长命令想先复制出来再改。终端被隐藏的文档型工具里，copy 按钮不受影响（复制不需要终端）。
+
+**与普通 buttons 的取舍**：要在本工具终端执行的命令用普通 `buttons`；只想复制出去的用 ` copy`。两种块可以在同一个帮助页里混用，各写各的围栏。
 
 ## 文档与网页预览（markdown 链接）
 
@@ -344,7 +362,7 @@ git clean -fd           // edit   # 删除未跟踪文件
 ## 自查清单
 
 **help.md**：
-- [ ] 围栏语言精确为 `buttons` / `buttons-json`
+- [ ] 围栏语言精确为 `buttons` / `buttons-json`，仅复制块加 ` copy` 后缀（如 ` ```buttons copy `）
 - [ ] ` // edit` 有前导空格；行首 `//` 文本 / `#` 注释
 - [ ] buttons-json 是合法 JSON，`edit`/`required` 是 `true`
 - [ ] `{{name}}` 两侧无引号，且在 `params` 里声明；`name` 是机器名（英文标识符，对应占位符）时，加 `label` 给用户看中文显示名

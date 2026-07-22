@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock, buildMdAppend, substituteCwd } from '../src/shared/buttonBlock';
+import { parseButtonLine, renderButtonsBlock, parseButtonsFromMarkdown, escapeHtml, escapeAttr, parseButtonsJson, renderButtonsJsonBlock, buildMdAppend, substituteCwd, parseButtonsFenceInfo } from '../src/shared/buttonBlock';
 
 describe('parseButtonLine', () => {
   it('command only -> label is the command', () => {
@@ -97,12 +97,72 @@ describe('renderButtonsBlock', () => {
   });
 });
 
+describe('renderButtonsBlock copy-only', () => {
+  it('copyOnly: true emits data-copy="1"', () => {
+    expect(renderButtonsBlock('git status', { copyOnly: true })).toContain('data-copy="1"');
+  });
+
+  it('no copyOnly does NOT emit data-copy (not data-copy="0")', () => {
+    expect(renderButtonsBlock('git status')).not.toContain('data-copy');
+  });
+
+  it('copyOnly: false also does NOT emit data-copy', () => {
+    expect(renderButtonsBlock('git status', { copyOnly: false })).not.toContain('data-copy');
+  });
+
+  it('copy-only block renders one button per line, all with data-copy="1"', () => {
+    const html = renderButtonsBlock('git status\ngit push', { copyOnly: true });
+    expect(html.match(/<button/g)!.length).toBe(2);
+    expect(html.match(/data-copy="1"/g)!.length).toBe(2);
+  });
+
+  it('copy-only + labeled button still works together (data-copy and label)', () => {
+    const html = renderButtonsBlock('git status # 状态', { copyOnly: true });
+    expect(html).toContain('data-copy="1"');
+    expect(html).toContain('状态');
+  });
+});
+
 describe('escapers', () => {
   it('escapeHtml covers & < >', () => {
     expect(escapeHtml('a&b<c>')).toBe('a&amp;b&lt;c&gt;');
   });
   it('escapeAttr also covers quotes', () => {
     expect(escapeAttr('a"b')).toBe('a&quot;b');
+  });
+});
+
+describe('parseButtonsFenceInfo', () => {
+  it("'buttons' -> { type: 'buttons', copyOnly: false }", () => {
+    expect(parseButtonsFenceInfo('buttons')).toEqual({ type: 'buttons', copyOnly: false });
+  });
+
+  it("'buttons copy' -> { type: 'buttons', copyOnly: true }", () => {
+    expect(parseButtonsFenceInfo('buttons copy')).toEqual({ type: 'buttons', copyOnly: true });
+  });
+
+  it("'buttons-json' -> { type: 'buttons-json', copyOnly: false }", () => {
+    expect(parseButtonsFenceInfo('buttons-json')).toEqual({ type: 'buttons-json', copyOnly: false });
+  });
+
+  it("'buttons-json copy' -> { type: 'buttons-json', copyOnly: true }", () => {
+    expect(parseButtonsFenceInfo('buttons-json copy')).toEqual({ type: 'buttons-json', copyOnly: true });
+  });
+
+  it('extra whitespace is tolerated: "  buttons   copy  " -> copyOnly true', () => {
+    expect(parseButtonsFenceInfo('  buttons   copy  ')).toEqual({ type: 'buttons', copyOnly: true });
+  });
+
+  it("'python' -> { type: null, copyOnly: false }", () => {
+    expect(parseButtonsFenceInfo('python')).toEqual({ type: null, copyOnly: false });
+  });
+
+  it("'bash copy' -> { type: null, copyOnly: false } (copy suffix only applies to buttons types)", () => {
+    expect(parseButtonsFenceInfo('bash copy')).toEqual({ type: null, copyOnly: false });
+  });
+
+  it("'' (empty) -> { type: null, copyOnly: false }", () => {
+    expect(parseButtonsFenceInfo('')).toEqual({ type: null, copyOnly: false });
   });
 });
 
@@ -167,6 +227,36 @@ describe('parseButtonsFromMarkdown', () => {
       '```';
     const btns = parseButtonsFromMarkdown(md);
     expect(btns[0].params?.[0]).toEqual({ name: 'message', required: true });
+  });
+
+  it('```buttons copy stamps copy: true on collected buttons', () => {
+    const md = '```buttons copy\nls\npwd\n```';
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns.length).toBe(2);
+    expect(btns.every((b) => b.copy === true)).toBe(true);
+  });
+
+  it('```buttons-json copy stamps copy: true', () => {
+    const md = '```buttons-json copy\n{ "command": "ls" }\n```';
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns.length).toBe(1);
+    expect(btns[0].copy).toBe(true);
+  });
+
+  it('normal ```buttons does NOT set copy (undefined)', () => {
+    const md = '```buttons\nls\n```';
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns[0].copy).toBeUndefined();
+  });
+
+  it('mixed doc: copy flag is per-block, document order preserved', () => {
+    const md = '```buttons\ngit status\n```\n\n```buttons copy\nssh user@host\n```';
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns.length).toBe(2);
+    expect(btns[0].command).toBe('git status');
+    expect(btns[0].copy).toBeUndefined();
+    expect(btns[1].command).toBe('ssh user@host');
+    expect(btns[1].copy).toBe(true);
   });
 });
 
@@ -302,6 +392,16 @@ describe('renderButtonsJsonBlock', () => {
   });
   it('empty array -> empty string', () => {
     expect(renderButtonsJsonBlock('[]')).toBe('');
+  });
+});
+
+describe('renderButtonsJsonBlock copy-only', () => {
+  it('copyOnly: true emits data-copy="1"', () => {
+    expect(renderButtonsJsonBlock('{ "command": "ls" }', { copyOnly: true })).toContain('data-copy="1"');
+  });
+
+  it('no copyOnly does NOT emit data-copy', () => {
+    expect(renderButtonsJsonBlock('{ "command": "ls" }')).not.toContain('data-copy');
   });
 });
 

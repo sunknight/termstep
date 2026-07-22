@@ -4,7 +4,7 @@ import type { Tool, PtySpawnOpts } from '../../shared/types';
 import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
 import { api } from '../lib/api';
-import { copyOnModifier, showToast } from '../lib/clipboardToast';
+import { copyCommand, copyOnModifier, showToast } from '../lib/clipboardToast';
 
 // Global quick-command dropdown. The command list lives in a single markdown
 // file (read/written via api.quick) — NOT a tool. Its `buttons` blocks are
@@ -51,8 +51,14 @@ export function QuickCommands(props: {
 
   const prompt = useParamPrompt();
 
-  const run = (command: string, edit: boolean, params: ButtonParam[] | undefined, e?: React.MouseEvent) => {
+  const run = (command: string, edit: boolean, params: ButtonParam[] | undefined, copy: boolean, e?: React.MouseEvent) => {
     const a = props.activeTool;
+    // copy-only：只复制，不需要激活工具/终端。
+    if (copy) {
+      void copyCommand(command);
+      setOpen(false);
+      return;
+    }
     if (!a) return;
     // ⌘/Ctrl + 点击：复制命令到剪贴板，不输入终端。
     if (e && (e.metaKey || e.ctrlKey)) {
@@ -125,7 +131,7 @@ export function QuickCommands(props: {
                   key={`${b.command}-${i}`}
                   className={'cmd-btn compact' + (b.edit ? ' edit' : '')}
                   title={b.command}
-                  onClick={(e) => run(b.command, b.edit, b.params, e)}
+                  onClick={(e) => run(b.command, b.edit, b.params, b.copy === true, e)}
                 >
                   <span className="cmd-label">{b.label}</span>
                   {b.edit && <span className="cmd-edit-tag">编辑</span>}
