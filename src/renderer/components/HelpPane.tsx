@@ -5,7 +5,7 @@ import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
 import { substituteParams, substituteCwd } from '../../shared/buttonBlock';
 import { api } from '../lib/api';
-import { copyOnModifier, showToast } from '../lib/clipboardToast';
+import { copyCommand, copyOnModifier, showToast } from '../lib/clipboardToast';
 import { confirmDialog } from '../lib/dialog';
 import { classifyLink, isTxtPath } from '../../shared/previewLink';
 import type { PreviewRequest } from './PreviewOverlay';
@@ -182,6 +182,11 @@ export function HelpPane(props: {
       const btn = (e.target as HTMLElement).closest('.cmd-btn') as HTMLButtonElement | null;
       if (btn) {
         const command = btn.dataset['cmd'] ?? '';
+        // copy-only 按钮（```buttons copy 块）：只复制命令，不进终端（也无参数表单/危险确认）。
+        if (btn.dataset['copy'] === '1') {
+          void copyCommand(command);
+          return;
+        }
         // ⌘/Ctrl + 点击：复制命令到剪贴板，不输入终端。
         if (e.metaKey || e.ctrlKey) {
           void copyOnModifier(e, command);
