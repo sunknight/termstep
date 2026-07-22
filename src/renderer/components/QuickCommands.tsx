@@ -113,7 +113,7 @@ export function QuickCommands(props: {
           disabled={disabled}
           onClick={() => setOpen((v) => !v)}
         >
-          ⚡ 快捷命令
+          快捷命令
         </button>
         {open && (
           <div className="quick-cmd-menu">

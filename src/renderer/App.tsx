@@ -323,67 +323,73 @@ export default function App() {
             </HoverTip>
           </span>
           <div className="term-actions">
-            <QuickCommands activeTool={active} termHidden={termHidden} />
-            {active && (
+            {active ? (
               <>
-                <button
-                  className="term-restart"
-                  title="重启终端"
-                  onClick={() => {
-                    const id = active.meta.id;
-                    termRegistry.get(id)?.reset();
-                    api.pty.restart(id, {
-                      cwd: active.meta.cwd,
-                      shell: active.meta.shell,
-                      env: active.meta.env,
-                      tmux: active.meta.tmux,
-                      initCommands: active.meta.initCommands,
-                    });
-                  }}
-                >
-                  ↻ 重启终端
-                </button>
-                <button
-                  className={`term-toggle ${termHidden ? '' : 'active'}`}
-                  title={termHidden ? '显示终端' : '隐藏终端'}
-                  onClick={() => {
-                    if (!active) return;
-                    const id = active.meta.id;
-                    setTermHiddenMap((m) => ({ ...m, [id]: !(id in m ? m[id] : !!active.meta.terminalHidden) }));
-                  }}
-                >
-                  {termHidden ? '▸ 终端' : '▾ 终端'}
-                </button>
-                <button
-                  className={`term-toggle ${docCollapsed ? '' : 'active'}`}
-                  title={docCollapsed ? '展开文档（hover 预览）' : '折叠文档为浮动小窗'}
-                  ref={docToggleRef}
-                  onClick={() => {
-                    if (!active) return;
-                    docPeek.close();
-                    const id = active.meta.id;
-                    setDocCollapsedMap((m) => ({ ...m, [id]: !m[id] }));
-                  }}
-                  {...(docCollapsed ? docPeek.triggerProps : {})}
-                >
-                  {docCollapsed ? '▤ 文档' : '▢ 文档'}
-                </button>
-                {/* 文档操作（编辑/删除/导出/记录/重载/添加）：始终显示，文档折叠为
-                    Peek 时也不隐藏——这些操作作用于工具本身（不依赖文档是否可见），
-                    且隐藏会导致编辑按钮的 margin-left:auto 跳到最右，产生布局抖动。
-                    与左侧布局按钮之间用竖线分隔，视觉上区分「布局/显隐」与「文档编辑」两组。 */}
+                {/* 终端组：终端按钮在最右侧，快捷命令/重启终端向左展开。 */}
+                <div className="term-group">
+                  <QuickCommands activeTool={active} termHidden={termHidden} />
+                  <button
+                    className="term-restart"
+                    title="重启终端"
+                    onClick={() => {
+                      const id = active.meta.id;
+                      termRegistry.get(id)?.reset();
+                      api.pty.restart(id, {
+                        cwd: active.meta.cwd,
+                        shell: active.meta.shell,
+                        env: active.meta.env,
+                        tmux: active.meta.tmux,
+                        initCommands: active.meta.initCommands,
+                      });
+                    }}
+                  >
+                    重启终端
+                  </button>
+                  <button
+                    className={`term-toggle ${termHidden ? '' : 'active'}`}
+                    title={termHidden ? '显示终端' : '隐藏终端'}
+                    onClick={() => {
+                      if (!active) return;
+                      const id = active.meta.id;
+                      setTermHiddenMap((m) => ({ ...m, [id]: !(id in m ? m[id] : !!active.meta.terminalHidden) }));
+                    }}
+                  >
+                    ❯ 终端
+                  </button>
+                </div>
+                {/* 终端组与文档组之间的竖线分隔。 */}
                 <span className="term-actions-sep" aria-hidden="true" />
-                <button title="删除" className="term-restart danger" onClick={() => deleteTool(active.meta.id)}>删除</button>
-                <button title="导出该工具为 JSON" className="term-restart" onClick={() => exportOne(active.meta.id)}>导出</button>
-                <button title="该工具的配置记录" className="term-restart" onClick={() => setRecordsToolId(active.meta.id)}>记录</button>
-                {active.meta.useRemote && (
-                  <button title="重新拉取远程内容" className="term-restart" onClick={() => api.refreshMd()}>重载</button>
-                )}
-                {!active.meta.useRemote && (
-                  <button title="快速添加命令（追加到末尾）" className="term-restart" onClick={() => setQuickAddOpen(true)}>添加</button>
-                )}
-                <button title="编辑" className="term-restart primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
+                {/* 文档组：文档按钮在最左侧，删除/导出/记录/重载/添加/编辑向右展开。
+                    这些操作作用于工具本身（不依赖文档是否可见），文档折叠为 Peek 时也始终显示。 */}
+                <div className="term-group">
+                  <button
+                    className={`term-toggle ${docCollapsed ? '' : 'active'}`}
+                    title={docCollapsed ? '展开文档（hover 预览）' : '折叠文档为浮动小窗'}
+                    ref={docToggleRef}
+                    onClick={() => {
+                      if (!active) return;
+                      docPeek.close();
+                      const id = active.meta.id;
+                      setDocCollapsedMap((m) => ({ ...m, [id]: !m[id] }));
+                    }}
+                    {...(docCollapsed ? docPeek.triggerProps : {})}
+                  >
+                    📖 文档
+                  </button>
+                  <button title="删除" className="term-restart danger" onClick={() => deleteTool(active.meta.id)}>删除</button>
+                  <button title="导出该工具为 JSON" className="term-restart" onClick={() => exportOne(active.meta.id)}>导出</button>
+                  <button title="该工具的配置记录" className="term-restart" onClick={() => setRecordsToolId(active.meta.id)}>记录</button>
+                  {active.meta.useRemote && (
+                    <button title="重新拉取远程内容" className="term-restart" onClick={() => api.refreshMd()}>重载</button>
+                  )}
+                  {!active.meta.useRemote && (
+                    <button title="快速添加命令（追加到末尾）" className="term-restart" onClick={() => setQuickAddOpen(true)}>添加</button>
+                  )}
+                  <button title="编辑" className="term-restart primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
+                </div>
               </>
+            ) : (
+              <QuickCommands activeTool={active} termHidden={termHidden} />
             )}
           </div>
         </div>
