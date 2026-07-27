@@ -387,6 +387,8 @@ git clean -fd           // edit   # 删除未跟踪文件
 
 ## 落地提示（告诉用户）
 
+> **还没装 TermStep？** macOS 用户推荐 Homebrew：`brew tap sunknight/termstep && brew trust sunknight/termstep && brew install --cask termstep`，装完执行 `xattr -cr /Applications/TermStep.app` 解除 Gatekeeper 拦截（应用未签名）。或从 [GitHub Releases](https://github.com/sunknight/termstep/releases) 下载 dmg。详见 [README 安装说明](https://github.com/sunknight/termstep#-下载与安装普通用户)。
+
 **方式 A：导入 bundle（推荐，一键装好）**
 1. 打开 TermStep → 侧栏底部「导入」
 2. 选 `termstep-tool.json` → 确认风险提示（含 mdUrl+cwd，正常）
