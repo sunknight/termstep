@@ -127,7 +127,53 @@ kubectl get pods -A          # 查看 pod 列表
 
 ---
 
-## 🚀 安装与运行
+## 📥 下载与安装（普通用户）
+
+> TermStep 目前仅支持 **macOS**（Intel + Apple Silicon 通用），应用**未做代码签名**，首次打开需多走一步解除 Gatekeeper 拦截。任选下面一种方式安装。
+
+### 方式一：Homebrew（推荐）
+
+```bash
+# 1. 添加 tap 并信任（首次安装时需要）
+brew tap sunknight/termstep
+brew trust sunknight/termstep
+
+# 2. 安装
+brew install --cask termstep
+
+# 3. 解除 Gatekeeper 拦截（应用未签名，首次必做一次）
+xattr -cr /Applications/TermStep.app
+
+# 4. 打开
+open -a TermStep
+```
+
+之后升级只需：
+
+```bash
+brew upgrade --cask termstep
+# 若升级后仍提示「已损坏」，再跑一次：xattr -cr /Applications/TermStep.app
+```
+
+### 方式二：直接下载 dmg
+
+1. 前往 [Releases 页面](https://github.com/sunknight/termstep/releases)，下载最新版 `TermStep_<版本>_universal.dmg`。
+2. 双击打开 dmg，把 **TermStep.app** 拖入 `/Applications`。
+3. 解除 Gatekeeper 拦截（**首次打开前必做**，否则会提示「已损坏 / 无法验证开发者」）：
+   ```bash
+   xattr -cr /Applications/TermStep.app
+   ```
+4. 在启动台或 `/Applications` 双击 TermStep 打开。
+
+> 也可以不执行命令：在 `/Applications` 里**右键**点 TermStep.app →「打开」→ 弹窗选「打开」，同样能放行。
+
+### 关于「未签名」提示
+
+TermStep 是个人开发、免费分发，暂未购买 Apple Developer ID 做签名公证，所以 macOS 会拦截它。这**不是应用损坏**，执行一次 `xattr -cr` 或右键打开即可永久放行，之后正常使用不会再提示。
+
+---
+
+## 🚀 安装与运行（开发者）
 
 ```bash
 npm install        # 安装依赖
