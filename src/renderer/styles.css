@@ -622,6 +622,26 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   content: '📋'; margin-right: 4px; font-size: 12px;
   flex: 0 0 auto;
 }
+/* Tagged buttons (those carrying a `### tag=...` badge) flex apart so the
+   label sits left and the tag pill sits right. Scoped via :has() so legacy
+   tag-less buttons keep their flat text-node layout and existing assertions.
+   :has() is supported in Safari/WebKit 15.4+ (Tauri v2 ships far newer). */
+.cmd-btn:has(.cmd-tag) {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.cmd-btn:has(.cmd-tag) .cmd-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Badge pill at the right end of a tagged button. Subtle by default; the
+   data-tag-color attribute swaps the palette for red/amber/green/blue. */
+.cmd-tag {
+  flex: 0 0 auto; font-size: 10px; line-height: 1.4;
+  padding: 1px 6px; border-radius: 999px;
+  background: var(--accent-weak); color: var(--accent-hover);
+  border: 1px solid var(--accent-border);
+}
+.cmd-tag[data-tag-color="red"]   { background: var(--danger-subtle); color: var(--danger); border-color: var(--danger-border); }
+.cmd-tag[data-tag-color="amber"] { background: var(--warning-subtle); color: var(--warning); border-color: var(--warning-border); }
+.cmd-tag[data-tag-color="green"] { background: rgba(34,197,94,0.12); color: var(--success); border-color: rgba(34,197,94,0.35); }
+.cmd-tag[data-tag-color="blue"]  { background: var(--accent-subtle); color: var(--accent-hover); border-color: var(--accent-border); }
 /* 远程订阅按钮（mdUrl 拉取的 markdown，来自不可信源）保留 data-remote 属性，
    由 HelpPane 的首次点击确认机制负责安全提示，不再加视觉左边框。 */
 /* Plain-text row inside a `buttons` block (a `//`-prefixed line). It deliberately

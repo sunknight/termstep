@@ -98,6 +98,7 @@ termstep/
 ├── scripts/set-version.mjs   # 版本号同步脚本
 ├── assets/icon.png           # 应用图标源（tracked；icons/ 是生成的，gitignored）
 ├── docs/superpowers/         # 设计文档与实现计划（specs/ plans/）
+├── skills/                   # skill 源文件（changelog-gen / termstep-tool-gen），~/.zcode/skills 下软链指回这里（见 §11）
 └── ln_library_data -> ~/Library/Application Support/TermStep   # 用户数据软链
 ```
 
@@ -286,6 +287,7 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 6. **涉及远程/文件读取**：检查 SSRF/敏感路径/扩展名白名单/禁重定向/大小上限（§6.7）。
 7. **涉及 pty**：回顾 6 个微妙行为 + generation guard（§6.3）。
 8. **提交**：仅在被要求时提交/推送；在 `main` 上先开分支。本项目提交信息多为中文，前缀 `feat:`/`fix:`/`ui:`/`docs:`/`chore:`，常带版本号 `(0.9.x)`。
+9. **改 skill**：源在本项目 `skills/`，`~/.zcode/skills/` 下是软链——只改本项目源，别动 `~/.zcode` 副本（那里没有副本，见 §11）。
 
 ---
 
@@ -295,3 +297,19 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 - `README.md`：用户向介绍（**部分仍残留 Electron 表述**——node-pty/electron-vite/chokidar 等已过时，以本文为准）。
 - `docs/superpowers/specs/`：各特性设计文档（Tauri 迁移、按钮参数、折叠面板、更新检查、cmd-click 复制等）。
 - `docs/superpowers/plans/`：实现计划与进度（含 `tauri-migration-progress.md`、`todo.md`）。
+
+---
+
+## 11. skill 维护约定（重要，不可再出错）
+
+**`changelog-gen` 与 `termstep-tool-gen` 两个 skill 的源文件在本项目 `skills/`，`~/.zcode/skills/` 下是软链，不是副本。**
+
+- **源的唯一位置**：`skills/changelog-gen/SKILL.md`、`skills/termstep-tool-gen/SKILL.md`（已纳入 git）。
+- **`~/.zcode/skills/<name>` 是指向本项目 `skills/<name>` 的目录级软链**，与 `auv_kanban`/`sk_secrets` 的挂载方式一致：
+  ```
+  ~/.zcode/skills/changelog-gen      -> /Users/sunknight/web/code/sk_ideas/termstep/skills/changelog-gen
+  ~/.zcode/skills/termstep-tool-gen  -> /Users/sunknight/web/code/sk_ideas/termstep/skills/termstep-tool-gen
+  ```
+- **改 skill 只改本项目 `skills/` 下的源文件**（改完正常 `git commit`）。**绝不要**去改/重建 `~/.zcode/skills/` 下的副本——那里没有副本，改软链路径本身没意义；若误把软链替换成普通文件副本，会重新引入"改一处不同步"的老问题。
+- **软链断了（项目路径搬迁后）**：`ln -sfh <项目绝对路径>/skills/<name> ~/.zcode/skills/<name>` 重建即可，源文件不动。
+- **新增 skill 也照此办理**：源放本项目 `skills/`，`~/.zcode/skills/` 下挂软链，避免再次出现双副本。

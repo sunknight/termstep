@@ -135,6 +135,11 @@ export function QuickCommands(props: {
                 >
                   <span className="cmd-label">{b.label}</span>
                   {b.edit && <span className="cmd-edit-tag">编辑</span>}
+                  {b.tag && (
+                    <span className="cmd-tag" {...(b.tagColor ? { 'data-tag-color': b.tagColor } : {})}>
+                      {b.tag}
+                    </span>
+                  )}
                 </button>
               ))
             )}
@@ -150,7 +155,8 @@ export function QuickCommands(props: {
           <div className="modal quick-editor" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">编辑快捷命令</div>
             <div className="modal-hint">
-              用 <code>```buttons</code> 围栏块定义按钮，每行一条，语法 <code>命令 [# 标签] [// edit]</code>。
+              用 <code>```buttons</code> 围栏块定义按钮，每行一条，语法 <code>命令 [# 标签] [// edit]</code>；
+              需要标签或色标时可用结构化写法 <code>命令 ### label=标签; edit; tag=标记; tag-color=red</code>。
             </div>
             <textarea
               className="quick-editor-md"

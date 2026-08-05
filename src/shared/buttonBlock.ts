@@ -15,8 +15,17 @@ export interface ParsedButton {
   label: string;
   edit: boolean;
   copy?: boolean;
+  /** Badge text shown at the right end of the button (a small pill). Set via
+   *  the `### tag=...` structured-attrs syntax on a `buttons` line. */
+  tag?: string;
+  /** Badge color key: `red` / `amber` / `green` / `blue` (default grey when
+   *  absent or unrecognized). Set via `### tag-color=red`. */
+  tagColor?: string;
   params?: ButtonParam[];
 }
+
+/** Allowed badge color keys. Unknown values fall back to the default (grey). */
+const TAG_COLORS = new Set(['red', 'amber', 'green', 'blue']);
 
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -61,6 +70,15 @@ const EDIT_SUFFIX = ' // edit';
 // not a POSIX shell token, so a `//`-leading line is never a real command.
 const TEXT_PREFIX = '//';
 
+// Structured-attrs separator: `###` as a whitespace-delimited token (space or
+// line-start before it, space or line-end after it). The surrounding-whitespace
+// rule mirrors the legacy ` # ` label separator and avoids colliding with
+// commands that merely contain `#` (e.g. `echo a#b`, `git log`). `###` found
+// OUTSIDE quotes splits a line into `<command> ### <attrs>`, after which the
+// legacy ` # ` / ` // edit` rules do NOT apply to that line — one line uses
+// EITHER the structured `###` form OR the legacy suffixes, never both. Lines
+// without `###` keep parsing exactly as before (full back-compat).
+
 export function parseButtonLine(raw: string): ParsedButton | null {
   let line = raw.replace(/\s+$/, '');
   if (line.trim() === '') return null;
@@ -69,9 +87,21 @@ export function parseButtonLine(raw: string): ParsedButton | null {
   // lives in the md source only, never rendered or collected. Disambiguated
   // from the ` # ` label separator by position: `#` at line START = comment;
   // ` # ` mid-line = label. (No real command starts with `#` — it's a comment
-  // in shells too.) Checked before the label split so `# foo` isn't parsed as a
-  // (weird) button.
+  // in shells too.) Checked before the label split so `# foo` isn't parsed as
+  // a (weird) button.
   if (line.trim().startsWith('#')) return null; // line comment, not rendered
+  // Structured form: `command ### attrs...`. Find ` ### ` outside quotes; if
+  // present, the LEFT part is the command and the RIGHT part is parsed by the
+  // attribute parser. The legacy ` # ` / ` // edit` suffixes are intentionally
+  // NOT applied to structured lines.
+  const attrIdx = findAttrSeparator(line);
+  if (attrIdx !== -1) {
+    const command = line.slice(0, attrIdx).trim();
+    if (command === '') return null;
+    const attrs = parseButtonAttrs(line.slice(attrIdx + 3));
+    return { command, label: attrs.label ?? command, edit: attrs.edit, ...(attrs.tag !== undefined ? { tag: attrs.tag } : {}), ...(attrs.tagColor !== undefined ? { tagColor: attrs.tagColor } : {}) };
+  }
+  // Legacy form: trailing ` // edit` suffix, then optional ` # ` label split.
   let edit = false;
   if (line.endsWith(EDIT_SUFFIX)) {
     edit = true;
@@ -86,6 +116,156 @@ export function parseButtonLine(raw: string): ParsedButton | null {
   }
   if (command === '') return null;
   return { command, label: label || command, edit };
+}
+
+/** Find the first `###` separator that lies OUTSIDE double-quoted regions,
+ *  where `###` is a token: the char before it is whitespace OR it is at the
+ *  start of the line, AND the char after it is whitespace OR it is at the end
+ *  of the line. Returns the index of the first `#` (the command spans
+ *  `line.slice(0, idx)` — caller trims trailing space; attrs span
+ *  `line.slice(idx + 3)`). Returns -1 when none. The surrounding-whitespace
+ *  rule mirrors the legacy ` # ` label separator and avoids colliding with
+ *  commands that merely contain `#` (e.g. `echo a#b`). Tracking `"` skips
+ *  quoted command fragments such as `echo "a ### b"`. */
+function findAttrSeparator(line: string): number {
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      // `\"` inside a quoted region is an escaped quote (no toggle); a bare
+      // `"` toggles the in-quote state. This mirrors the value parser below.
+      if (inQuote && line[i - 1] === '\\') continue;
+      inQuote = !inQuote;
+      continue;
+    }
+    if (!inQuote && line.startsWith('###', i)) {
+      const leftOk = i === 0 || /\s/.test(line[i - 1]);
+      const rightOk = i + 3 >= line.length || /\s/.test(line[i + 3]);
+      if (leftOk && rightOk) return i;
+    }
+  }
+  return -1;
+}
+
+/** Parse the structured attribute string that follows `###` on a buttons line.
+ *  Grammar (lenient, degrades gracefully on any error):
+ *    attrs := pair (';' pair)*
+ *    pair  := [key] ['=' value]      — bare bool (`edit`) or `key=value`
+ *    value := bare-token | '"' ... '"'
+ *  Recognized keys: `label`, `tag`, `tag-color` (string); `edit`, `copy`
+ *  (bool — bare form means true). Unknown keys are ignored silently. A
+ *  semicolon inside a quoted value is literal. Malformed input never throws;
+ *  the offending pair is skipped so one bad attr doesn't kill the whole button.
+ */
+function parseButtonAttrs(attrStr: string): {
+  label?: string;
+  edit: boolean;
+  tag?: string;
+  tagColor?: string;
+} {
+  const result = { edit: false };
+  let label: string | undefined;
+  let tag: string | undefined;
+  let tagColor: string | undefined;
+  // Split on `;` but respect double-quoted regions (a `;` inside quotes is a
+  // literal part of the value, not a pair separator).
+  const pairs = splitAttrs(attrStr);
+  for (const pair of pairs) {
+    const trimmed = pair.trim();
+    if (trimmed === '') continue;
+    const eq = findEqOutsideQuote(trimmed);
+    let key: string;
+    let rawValue: string | undefined;
+    if (eq === -1) {
+      // Bare boolean token: `edit` ⟹ edit=true. No `=` → treat whole as a bool key.
+      key = trimmed.toLowerCase();
+      rawValue = 'true';
+    } else {
+      key = trimmed.slice(0, eq).trim().toLowerCase();
+      rawValue = trimmed.slice(eq + 1).trim();
+    }
+    const value = unquoteValue(rawValue);
+    switch (key) {
+      case 'edit':
+        if (value === 'true' || value === '1') result.edit = true;
+        else if (value === 'false' || value === '0') result.edit = false;
+        // any other value: ignore (lenient)
+        break;
+      case 'label':
+        if (value) label = value;
+        break;
+      case 'tag':
+        if (value) tag = value;
+        break;
+      case 'tag-color':
+      case 'tagcolor':
+        if (value && TAG_COLORS.has(value.toLowerCase())) tagColor = value.toLowerCase();
+        break;
+      default:
+        // Unknown key: ignore silently (forward-compatible).
+        break;
+    }
+  }
+  return {
+    ...(label !== undefined ? { label } : {}),
+    edit: result.edit,
+    ...(tag !== undefined ? { tag } : {}),
+    ...(tagColor !== undefined ? { tagColor } : {}),
+  };
+}
+
+/** Split the attrs string on top-level `;`, honoring double-quoted regions. */
+function splitAttrs(s: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '"') {
+      if (inQuote && s[i - 1] === '\\') {
+        cur += ch;
+        continue;
+      }
+      inQuote = !inQuote;
+      cur += ch;
+      continue;
+    }
+    if (ch === ';' && !inQuote) {
+      out.push(cur);
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** Find the first top-level `=` (outside quotes) — the key/value split point. */
+function findEqOutsideQuote(s: string): number {
+  let inQuote = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '"') {
+      if (inQuote && s[i - 1] === '\\') continue;
+      inQuote = !inQuote;
+      continue;
+    }
+    if (ch === '=' && !inQuote) return i;
+  }
+  return -1;
+}
+
+/** Strip a wrapping pair of double quotes and unescape `\"` → `"`, `\\` → `\`.
+ *  A value not wrapped in quotes is returned trimmed as-is. An unpaired quote
+ *  is kept literal (no toggle effect) — lenient fallback. */
+function unquoteValue(raw: string): string {
+  if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+    return raw
+      .slice(1, -1)
+      .replace(/\\(.)/g, (_m, c: string) => (c === '"' || c === '\\' ? c : '\\' + c));
+  }
+  return raw;
 }
 
 export function renderButtonsBlock(
@@ -107,11 +287,22 @@ export function renderButtonsBlock(
     }
     const b = parseButtonLine(raw);
     if (!b) continue;
-    // Only labeled buttons (command # label) get a tooltip — for them the visible
-    // text differs from the command, so hovering reveals the full command.
+    // Only labeled buttons (command # label, or ### label=...) get a tooltip —
+    // for them the visible text differs from the command, so hovering reveals
+    // the full command.
     const tip = b.label !== b.command ? ` data-tip="${escapeAttr(b.command)}"` : '';
+    // When a tag is present, render a structured button (label span + tag span)
+    // so CSS can flex them apart (label left, badge right). Without a tag the
+    // button stays a flat text node — keeping legacy `>label<` assertions valid.
+    let inner: string;
+    if (b.tag) {
+      const tagColorAttr = b.tagColor ? ` data-tag-color="${escapeAttr(b.tagColor)}"` : '';
+      inner = `<span class="cmd-label">${escapeHtml(b.label)}</span><span class="cmd-tag"${tagColorAttr}>${escapeHtml(b.tag)}</span>`;
+    } else {
+      inner = escapeHtml(b.label);
+    }
     items.push(
-      `<button class="cmd-btn"${copyAttr}${remoteAttr}${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${escapeHtml(b.label)}</button>`
+      `<button class="cmd-btn"${copyAttr}${remoteAttr}${tip} data-cmd="${escapeAttr(b.command)}" data-edit="${b.edit ? '1' : '0'}">${inner}</button>`
     );
   }
   if (items.length === 0) return '';

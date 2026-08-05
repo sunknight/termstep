@@ -8,6 +8,13 @@ import { api } from '../lib/api';
 import { getXtermTheme } from '../lib/theme';
 import { useTauriEvent } from '../hooks/useTauriEvent';
 
+// Squared pixel distance a left-button press must travel to count as a drag
+// (and thus keep its xterm selection). Presses that release within this radius
+// are treated as clicks and their single-point selection anchor is cleared, so
+// trackpad taps / click-to-focus / sub-pixel jitter leave no highlight. 5px
+// matches typical editor click-vs-drag thresholds and feels natural.
+const DRAG_THRESHOLD = 5;
+
 export function TerminalView(props: {
   toolId: string;
   spawnOpts: PtySpawnOpts;
@@ -16,6 +23,10 @@ export function TerminalView(props: {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  // Holds the teardown for the capture-phase mousedown/mouseup listeners that
+  // suppress stray selections (see the selection-jitter effect below). Rebuilt
+  // each time a terminal is (re)created in the active-effect.
+  const selectionCleanupRef = useRef<(() => void) | null>(null);
   // pty:data 订阅提到组件顶层：handler 通过 termRef 写入对应终端。
   // firstData 标志强制首帧重绘（xterm v5 首次 open+fit 后偶尔漏画 prompt）。
   const firstDataRef = useRef(true);
@@ -38,18 +49,15 @@ export function TerminalView(props: {
     if (!props.active) return;
 
     if (!termRef.current && containerRef.current) {
-      // macOptionClickForcesSelection: when an app captures the mouse (e.g. tmux
-      // `set -g mouse on`), xterm disables its selection service. On macOS the
-      // only way to force a native drag-selection through that capture is to hold
-      // Option (⌥) — but only if this option is on. Without it, Option+drag is
-      // reported to the app and the xterm selection never sticks, so users can't
-      // select-and-copy inside tmux. (The mouse-event dispatcher also honors this
-      // and skips reporting to the pty while Option is held.)
       const term = new Terminal({
         fontFamily: 'SF Mono, Menlo, monospace',
         fontSize: 13,
         scrollback: 5000,
-        macOptionClickForcesSelection: true,
+        // rightClickSelectsWord defaults to true on macOS (xterm's isMac). We
+        // have no context menu, so a right-click / two-finger tap would only
+        // flash a stray word selection with no way to act on it — disable it so
+        // right-clicks stay clean.
+        rightClickSelectsWord: false,
         theme: getXtermTheme(),
       });
       const fit = new FitAddon();
@@ -60,8 +68,7 @@ export function TerminalView(props: {
       termRegistry.set(props.toolId, term);
 
       // Copy-on-select (iTerm2-style): whenever the user makes (or extends) an
-      // xterm selection — including an Option-forced selection under tmux mouse
-      // capture — push it to the system clipboard. tmux's own mouse-mode
+      // xterm selection, push it to the system clipboard. tmux's own mouse-mode
       // selections never trigger this (they don't fire onSelectionChange), so
       // only real xterm selections are copied.
       term.onSelectionChange(() => {
@@ -129,6 +136,64 @@ export function TerminalView(props: {
       term.onResize(({ cols, rows }) => api.pty.resize(props.toolId, cols, rows));
     }
 
+    // Suppress stray xterm selections from bare clicks / tiny trackpad jitter.
+    // xterm has NO option to disable "mousedown establishes a selection anchor":
+    // handleMouseDown -> _handleSingleClick sets selectionStart on EVERY left
+    // press, then the mousemove listener (registered on mousedown) extends it
+    // into a visible highlight on any movement. So a click-to-focus or a tap
+    // with a few pixels of drift leaves an annoying highlight. macOptionClick-
+    // ForcesSelection / rightClickSelectsWord don't touch this main path, which
+    // is why the earlier round did not fix it.
+    //
+    // Fix: let xterm start its selection normally (so real DRAG selection keeps
+    // working from the press-down point), but watch the press in the CAPTURE
+    // phase on the outer .term container. On mouseup, if the pointer moved less
+    // than DRAG_THRESHOLD px since press-down, call clearSelection() to wipe the
+    // single-point anchor xterm just created — leaving clean clicks with no
+    // highlight. Only left-button (button 0) presses are tracked; right/middle
+    // click and program-mouse-mode (tmux `set -g mouse on`) are untouched
+    // because xterm short-circuits them before _handleSingleClick.
+    const downEl = containerRef.current;
+    if (downEl) {
+      let downX = 0;
+      let downY = 0;
+      let tracking = false;
+      const onDown = (e: MouseEvent) => {
+        // Only track plain left-button presses. Modifier-clicks (shift+click
+        // extends selection, alt+click column-selects, cmd/ctrl are copy) and
+        // multi-clicks (double/triple = word/line) are intentional and must be
+        // left entirely to xterm — never cleared by the jitter guard.
+        if (e.button !== 0 || e.detail > 1 || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) {
+          tracking = false;
+          return;
+        }
+        tracking = true;
+        downX = e.clientX;
+        downY = e.clientY;
+      };
+      const onUp = (e: MouseEvent) => {
+        if (!tracking) return;
+        tracking = false;
+        const dx = e.clientX - downX;
+        const dy = e.clientY - downY;
+        // Pure click or sub-threshold jitter: wipe the anchor xterm set on
+        // mousedown so no highlight lingers. A real drag exceeds the threshold
+        // and keeps its selection (xterm extended it via its own mousemove).
+        // (onDown already declined to track modifier-clicks and multi-clicks,
+        // so those intentional selections reach this point with tracking=false
+        // and are left untouched.)
+        if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) {
+          termRef.current?.clearSelection();
+        }
+      };
+      downEl.addEventListener('mousedown', onDown, true); // capture: fires before xterm
+      downEl.addEventListener('mouseup', onUp, true);
+      selectionCleanupRef.current = () => {
+        downEl.removeEventListener('mousedown', onDown, true);
+        downEl.removeEventListener('mouseup', onUp, true);
+      };
+    }
+
     // Defer fit + spawn to the next frame so the just-shown container is laid out.
     const raf = requestAnimationFrame(() => {
       const term = termRef.current;
@@ -184,6 +249,9 @@ export function TerminalView(props: {
         term.dispose();
         termRef.current = null;
       }
+      // Tear down the stray-selection capture listeners too.
+      selectionCleanupRef.current?.();
+      selectionCleanupRef.current = null;
     };
   }, []);
 

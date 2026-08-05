@@ -38,6 +38,120 @@ describe('parseButtonLine', () => {
   });
 });
 
+describe('parseButtonLine — `###` structured attrs', () => {
+  it('label= sets the button label', () => {
+    expect(parseButtonLine('git push ### label=推送')).toEqual({ command: 'git push', label: '推送', edit: false });
+  });
+
+  it('bare `edit` bool sets edit=true', () => {
+    expect(parseButtonLine('git commit ### label=提交; edit')).toEqual({ command: 'git commit', label: '提交', edit: true });
+  });
+
+  it('edit=true explicit also works', () => {
+    expect(parseButtonLine('git commit ### label=提交; edit=true')).toEqual({ command: 'git commit', label: '提交', edit: true });
+  });
+
+  it('edit=false disables edit', () => {
+    expect(parseButtonLine('git commit ### label=提交; edit=false')).toEqual({ command: 'git commit', label: '提交', edit: false });
+  });
+
+  it('tag= sets the tag field', () => {
+    const b = parseButtonLine('npm run build ### label=构建; tag=常用')!;
+    expect(b.command).toBe('npm run build');
+    expect(b.label).toBe('构建');
+    expect(b.tag).toBe('常用');
+    expect(b.tagColor).toBeUndefined();
+  });
+
+  it('tag-color= sets tagColor (lowercased)', () => {
+    const b = parseButtonLine('ssh x ### label=登录; tag=危险; tag-color=Red')!;
+    expect(b.tagColor).toBe('red');
+  });
+
+  it('unknown tag-color is dropped (graceful)', () => {
+    const b = parseButtonLine('ssh x ### label=登录; tag=危险; tag-color=pink')!;
+    expect(b.tagColor).toBeUndefined();
+  });
+
+  it('full combination: label + edit + tag + tag-color', () => {
+    const b = parseButtonLine('deploy.sh ### label=部署; edit; tag=高风险; tag-color=red')!;
+    expect(b).toEqual({ command: 'deploy.sh', label: '部署', edit: true, tag: '高风险', tagColor: 'red' });
+  });
+
+  it('attribute order is irrelevant', () => {
+    expect(parseButtonLine('x ### tag=t; label=L; edit')).toEqual({ command: 'x', label: 'L', edit: true, tag: 't' });
+  });
+
+  it('quoted value keeps embedded ; and =', () => {
+    const b = parseButtonLine('x ### label=L; tag="a; b=c"')!;
+    expect(b.tag).toBe('a; b=c');
+  });
+
+  it('quoted value unescapes \" and backslash', () => {
+    const b = parseButtonLine('x ### tag="say \\"hi\\" ok"')!;
+    expect(b.tag).toBe('say "hi" ok');
+  });
+
+  it('whitespace around ### is tolerated', () => {
+    expect(parseButtonLine('git push   ###   label=推送')).toEqual({ command: 'git push', label: '推送', edit: false });
+  });
+
+  it('### with no attrs is a plain button (no error)', () => {
+    expect(parseButtonLine('git push ###')).toEqual({ command: 'git push', label: 'git push', edit: false });
+  });
+
+  it('### with only whitespace attrs is a plain button', () => {
+    expect(parseButtonLine('git push ###   ')).toEqual({ command: 'git push', label: 'git push', edit: false });
+  });
+
+  it('legacy form is NOT applied to a ### line (no # label, no // edit)', () => {
+    // `### label=x` — the ` # ` and ` // edit` must not also fire.
+    const b = parseButtonLine('echo "hi" // edit ### label=say')!;
+    expect(b.command).toBe('echo "hi" // edit');
+    expect(b.label).toBe('say');
+    expect(b.edit).toBe(false); // ` // edit` ignored on structured lines
+  });
+
+  it('### inside double quotes in command does NOT split', () => {
+    const b = parseButtonLine('echo "a ### b"')!;
+    expect(b.command).toBe('echo "a ### b"');
+    expect(b.label).toBe('echo "a ### b"');
+  });
+
+  it('a#b (no surrounding spaces) is NOT a ### split', () => {
+    expect(parseButtonLine('echo a#b')).toEqual({ command: 'echo a#b', label: 'echo a#b', edit: false });
+  });
+
+  it('unknown key is ignored silently (forward-compatible)', () => {
+    const b = parseButtonLine('x ### label=L; futurekey=42')!;
+    expect(b.label).toBe('L');
+    expect((b as Record<string, unknown>)['futurekey']).toBeUndefined();
+  });
+
+  it('empty command before ### is null', () => {
+    expect(parseButtonLine('### label=x')).toBeNull();
+  });
+});
+
+describe('parseButtonLine — legacy back-compat (unchanged behavior)', () => {
+  // Regression guard: the new ### path must not perturb these legacy forms.
+  it('legacy ` # label` still works', () => {
+    expect(parseButtonLine('git status # 查看状态')).toEqual({ command: 'git status', label: '查看状态', edit: false });
+  });
+  it('legacy ` // edit` still works', () => {
+    expect(parseButtonLine('git commit -m "" // edit')).toEqual({ command: 'git commit -m ""', label: 'git commit -m ""', edit: true });
+  });
+  it('legacy ` # label // edit` still works', () => {
+    expect(parseButtonLine('git push # 推送 // edit')).toEqual({ command: 'git push', label: '推送', edit: true });
+  });
+  it('line-start # comment still null', () => {
+    expect(parseButtonLine('# comment')).toBeNull();
+  });
+  it('line-start // text still null', () => {
+    expect(parseButtonLine('// text')).toBeNull();
+  });
+});
+
 describe('renderButtonsBlock', () => {
   it('renders one button per non-blank line', () => {
     const html = renderButtonsBlock('git status\n\ngit push');
@@ -120,6 +234,72 @@ describe('renderButtonsBlock copy-only', () => {
     const html = renderButtonsBlock('git status # 状态', { copyOnly: true });
     expect(html).toContain('data-copy="1"');
     expect(html).toContain('状态');
+  });
+});
+
+describe('renderButtonsBlock — `###` tag badge', () => {
+  it('renders a tag badge as a right-end pill with data-tag-color', () => {
+    const html = renderButtonsBlock('deploy ### label=部署; tag=高危; tag-color=red');
+    expect(html).toContain('<span class="cmd-label">部署</span>');
+    expect(html).toContain('<span class="cmd-tag" data-tag-color="red">高危</span>');
+  });
+
+  it('tag without tag-color emits .cmd-tag with no data-tag-color', () => {
+    const html = renderButtonsBlock('x ### label=L; tag=常用');
+    expect(html).toContain('<span class="cmd-tag">常用</span>');
+    expect(html).not.toContain('data-tag-color');
+  });
+
+  it('command-only button (no ### ) stays a flat text node (legacy)', () => {
+    const html = renderButtonsBlock('git status');
+    expect(html).toContain('>git status<');
+    expect(html).not.toContain('cmd-label');
+    expect(html).not.toContain('cmd-tag');
+  });
+
+  it('### labeled button without tag stays a flat text node (legacy look)', () => {
+    const html = renderButtonsBlock('git push ### label=推送');
+    expect(html).toContain('>推送<');
+    expect(html).not.toContain('cmd-label');
+    expect(html).not.toContain('cmd-tag');
+  });
+
+  it('### tag button still carries data-tip when label differs from command', () => {
+    const html = renderButtonsBlock('deploy.sh ### label=部署; tag=高危');
+    expect(html).toContain('data-tip="deploy.sh"');
+    expect(html).toContain('data-cmd="deploy.sh"');
+    expect(html).toContain('data-edit="0"');
+  });
+
+  it('### edit=true button still sets data-edit="1"', () => {
+    const html = renderButtonsBlock('git commit ### label=提交; edit');
+    expect(html).toContain('data-edit="1"');
+  });
+});
+
+describe('parseButtonsFromMarkdown — `###` tag collection', () => {
+  it('collects tag fields from ### buttons across a buttons block', () => {
+    const md = [
+      '```buttons',
+      'git push ### label=推送; tag=常用',
+      'deploy.sh ### label=部署; tag=高危; tag-color=red',
+      'git status',
+      '```',
+    ].join('\n');
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns.map((b) => b.command)).toEqual(['git push', 'deploy.sh', 'git status']);
+    expect(btns[0].tag).toBe('常用');
+    expect(btns[0].tagColor).toBeUndefined();
+    expect(btns[1].tag).toBe('高危');
+    expect(btns[1].tagColor).toBe('red');
+    expect(btns[2].tag).toBeUndefined();
+  });
+
+  it('### tag button is collected even in a copy block (copy flag stacks)', () => {
+    const md = '```buttons copy\nx ### label=L; tag=t\n```';
+    const btns = parseButtonsFromMarkdown(md);
+    expect(btns[0].tag).toBe('t');
+    expect(btns[0].copy).toBe(true);
   });
 });
 
