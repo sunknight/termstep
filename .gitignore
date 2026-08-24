@@ -43,3 +43,9 @@ termstep-tool.json
 
 # TermStep 用户数据软链（指向 ~/Library/Application Support/TermStep，仅本机调试用）
 ln_config_data
+
+# codegraph 本地索引缓存（MCP 工具生成，可随时重建）
+.codegraph/
+
+# kanban 看板本地数据（任务/执行记录，本机工作流数据）
+.kanban/
