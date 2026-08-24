@@ -3,7 +3,7 @@ import { useTools } from './hooks/useTools';
 import { Sidebar } from './components/Sidebar';
 import { TerminalPane } from './components/TerminalPane';
 import { HelpPane } from './components/HelpPane';
-import { EditorModal } from './components/EditorModal';
+import { EditorPane } from './components/EditorPane';
 import { QuickAddModal } from './components/QuickAddModal';
 import { HelpModal } from './components/HelpModal';
 import { ConfigRecords } from './components/ConfigRecords';
@@ -18,6 +18,8 @@ import type { PreviewState, PreviewRequest } from './components/PreviewOverlay';
 import { termRegistry } from './lib/termRegistry';
 import { api } from './lib/api';
 import { confirmDialog, alertDialog } from './lib/dialog';
+import { resetTerminalModes } from './lib/termReset';
+import { showToast } from './lib/clipboardToast';
 
 // Right panel width bounds. Match the sidebar's range so the two sides feel
 // symmetric; the default keeps the old hardcoded 340px.
@@ -47,7 +49,9 @@ export default function App() {
     new Set(tools.map((t) => t.meta.group).filter((g): g is string => !!g)),
   );
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // 工具内编辑器（可多个同时打开）：key=打开编辑器的工具 id。编辑器实例随工具
+  // 常驻（切工具只隐藏不卸载，草稿保留），关闭（保存/确认丢弃）才从 map 移除。
+  const [editingIds, setEditingIds] = useState<Record<string, true>>({});
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // 配置记录 modal：null=关闭；string=per-tool（工具 id）；'__global__'=全部配置记录。
@@ -159,8 +163,23 @@ export default function App() {
     if (!activeId && tools.length > 0) setActiveId(tools[0].meta.id);
   }, [tools, activeId]);
 
+  // 编辑态随 tools 清理：工具被删（含导入替换/外部变更）时移除其编辑条目，
+  // 避免残留 key 让渲染层挂着不存在的工具。
+  useEffect(() => {
+    setEditingIds((m) => {
+      const ids = Object.keys(m);
+      if (ids.length === 0) return m;
+      const alive = new Set(tools.map((t) => t.meta.id));
+      const next = ids.filter((id) => alive.has(id));
+      if (next.length === ids.length) return m;
+      return Object.fromEntries(next.map((id) => [id, true as const]));
+    });
+  }, [tools]);
+
   // Poll the active shell's live cwd (resolved from its OS pid) so the terminal
   // header follows the user's `cd`. Cheap readlink, ~1.5s cadence.
+  // 同一轮询顺带取「前台程序退出回到 shell」跳变标志（SSH/tmux 异常断开后
+  // 鼠标追踪等 private mode 残留），静默复位 xterm —— 不清屏、不写 pty。
   useEffect(() => {
     if (!activeId) {
       setLiveCwd(null);
@@ -170,8 +189,14 @@ export default function App() {
     let timer: number | undefined;
     const tick = async () => {
       try {
-        const c = await api.pty.cwd(activeId);
-        if (!cancelled) setLiveCwd(c);
+        const { cwd, modesReset } = await api.pty.probe(activeId);
+        if (!cancelled) {
+          setLiveCwd(cwd);
+          if (modesReset) {
+            const term = termRegistry.get(activeId);
+            if (term) resetTerminalModes(term);
+          }
+        }
       } catch {
         // shell not spawned yet / gone — ignore
       }
@@ -190,12 +215,18 @@ export default function App() {
   const createTool = async () => {
     const id = await api.tool.create('新工具');
     setActiveId(id);
-    setEditingId(id);
+    setEditingIds((m) => ({ ...m, [id]: true }));
   };
   const deleteTool = async (id: string) => {
     if (!(await confirmDialog('删除该工具？', '删除工具'))) return;
     await api.tool.del(id);
     if (activeId === id) setActiveId(null);
+    setEditingIds((m) => {
+      if (!(id in m)) return m;
+      const next = { ...m };
+      delete next[id];
+      return next;
+    });
   };
   // Tool ordering is done by drag-and-drop in the sidebar now.
   const reorderTools = async (orderedIds: string[]) => {
@@ -256,6 +287,7 @@ export default function App() {
       onImport={importTools}
       onHelp={() => setHelpOpen(true)}
       onVersions={() => setRecordsToolId('__global__')}
+      editingIds={editingIds}
       floating={sidebarCollapsed}
     />
   );
@@ -330,6 +362,19 @@ export default function App() {
                   <QuickCommands activeTool={active} termHidden={termHidden} />
                   <button
                     className="term-restart"
+                    title="复位鼠标/备用屏等残留模式（SSH/tmux 异常断开后点击滚动变乱码时用）"
+                    onClick={() => {
+                      const term = termRegistry.get(active.meta.id);
+                      if (term) {
+                        resetTerminalModes(term);
+                        showToast('已复位终端模式');
+                      }
+                    }}
+                  >
+                    修复终端
+                  </button>
+                  <button
+                    className="term-restart"
                     title="重启终端"
                     onClick={() => {
                       const id = active.meta.id;
@@ -385,7 +430,7 @@ export default function App() {
                   {!active.meta.useRemote && (
                     <button title="快速添加命令（追加到末尾）" className="term-restart" onClick={() => setQuickAddOpen(true)}>添加</button>
                   )}
-                  <button title="编辑" className="term-restart primary" onClick={() => setEditingId(active.meta.id)}>编辑</button>
+                  <button title="编辑" className="term-restart primary" onClick={() => setEditingIds((m) => ({ ...m, [active.meta.id]: true }))}>编辑</button>
                 </div>
               </>
             ) : (
@@ -461,14 +506,37 @@ export default function App() {
             </div>
           </Peek>
         )}
+        {/* 工具内编辑层：盖住主区（顶栏+文档+终端），侧栏保留可点——切工具时
+            非激活工具的编辑器仅隐藏（display:none），EditorPane 常驻不卸载，
+            草稿保留；切回即恢复。关闭（保存/确认丢弃）才从 editingIds 移除。 */}
+        {tools
+          .filter((t) => editingIds[t.meta.id])
+          .map((t) => (
+            <div
+              key={t.meta.id}
+              className="editor-overlay"
+              role="dialog"
+              aria-label={`编辑工具 ${t.meta.name}`}
+              style={{ display: t.meta.id === activeId ? 'flex' : 'none' }}
+            >
+              <div className="editor-panel">
+                <EditorPane
+                  tool={t}
+                  active={t.meta.id === activeId}
+                  onDone={() =>
+                    setEditingIds((m) => {
+                      if (!(t.meta.id in m)) return m;
+                      const next = { ...m };
+                      delete next[t.meta.id];
+                      return next;
+                    })
+                  }
+                  existingGroups={existingGroups}
+                />
+              </div>
+            </div>
+          ))}
       </section>
-      {editingId && active && (
-        <EditorModal
-          tool={active}
-          onDone={() => setEditingId(null)}
-          existingGroups={existingGroups}
-        />
-      )}
       {errors.length > 0 && <Notifications errors={errors} />}
       {quickAddOpen && active && (
         <QuickAddModal

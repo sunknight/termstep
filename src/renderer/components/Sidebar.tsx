@@ -26,6 +26,8 @@ export function Sidebar(props: {
   onImport: () => void;
   onHelp: () => void;
   onVersions: () => void;
+  /** 打开着编辑器的工具（key=toolId）。行尾显示 ✏️ 标记。 */
+  editingIds: Record<string, boolean>;
   floating?: boolean;
 }) {
   const [width, setWidth] = useState<number>(() => {
@@ -356,6 +358,9 @@ export function Sidebar(props: {
           {t.meta.icon}
         </span>
         <span className="name">{t.meta.name}</span>
+        {props.editingIds[id] && (
+          <span className="edit-mark" title="编辑中" aria-label="编辑中">✏️</span>
+        )}
       </li>
     );
   };

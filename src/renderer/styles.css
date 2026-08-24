@@ -175,6 +175,12 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 13px;
 }
+/* 编辑中标记：该工具的工具内编辑器打开着（草稿保留，切走再切回不丢）。 */
+.sidebar .edit-mark {
+  flex: 0 0 auto;
+  font-size: 10px;
+  opacity: 0.85;
+}
 .new-tool {
   width: 100%; padding: 6px 11px; cursor: pointer; font-size: 12px;
   border: 1px dashed var(--border-strong); background: transparent;
@@ -685,16 +691,57 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   padding: 14px;
 }
 
+/* 工具内编辑层：盖住 .main-area 整个区域（顶栏 + 文档/终端主体），侧栏保留可点。
+   外观类似 modal：灰色遮罩 + 居中的边框面板（上限 900px），上下 padding 露出
+   少量灰边。z-index 150：盖住 doc-peek(50) 与顶栏；低于 toast(200) 与其他
+   modal(300)。遮罩点击不关闭（防误丢草稿，见 0001）。
+   注意：不要给这层加 backdrop-filter——absolute + display 切换的常驻层叠上
+   模糊，WebKit 会把子内容绘制错位（编辑器打开后表单与 tab 行之间出现空白，
+   点击触发重绘才消失），纯 rgba 遮罩无此问题。 */
+.editor-overlay {
+  position: absolute; inset: 0; z-index: 150;
+  display: flex; align-items: stretch; justify-content: center;
+  padding: 18px 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+/* modal 样式的编辑面板：宽度上限 900px，纵向撑满遮罩内容区（上下留灰边）。
+   isolation 隔离合成上下文，避免遮罩层与底下终端/顶栏层的重绘互相污染。 */
+.editor-panel {
+  flex: 0 1 900px;
+  min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  isolation: isolate;
+}
+/* 编辑器自己的固定标题栏（编辑工具名 + × 关闭），不随表单滚动。 */
+.editor-overlay .editor-header {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-size: 13px; font-weight: 600; color: var(--text);
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.editor-overlay .editor-title {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .editor {
   flex: 1 1 auto; min-height: 0;
   display: flex; flex-direction: column; overflow-y: auto;
   gap: 8px; padding: 14px;
 }
-.editor-header {
+/* 编辑器底栏：错误信息 + 保存/取消。固定在面板底部（滚动容器之外）——不用
+   sticky-in-scroll（WebKit 在 flex 滚动容器里对 sticky 元素有绘制错位问题族，
+   且富余空间出现时首次绘制可能把间距画错），固定底栏更稳也与 .modal-actions
+   模式一致。 */
+.editor-footer {
   flex: 0 0 auto;
-  font-size: 13px; font-weight: 600; color: var(--text);
-  padding-bottom: 7px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+  padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface);
 }
+.editor-footer .editor-error { margin-left: 12px; }
 /* The whole editor is one scroll region: when the window is short the form AND
    the markdown textarea scroll together. The textarea itself also scrolls
    internally for long content. */
@@ -709,23 +756,73 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .form-section legend {
   font-size: 10px; font-weight: 700; color: var(--accent); padding: 0 4px; letter-spacing: 0.5px;
 }
-.field { display: flex; flex-direction: column; gap: 3px; }
-.field-label { color: var(--text-2); font-size: 11px; }
-.field-label em { color: var(--text-3); font-style: normal; font-weight: 400; }
-/* Two-column form row: pairs two .field blocks side by side (e.g. 名称/图标,
-   cwd/工具根目录). min-width:0 on each child keeps long inputs from forcing
-   the grid track wider than its fraction. */
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  align-items: start;
+/* 紧凑行内字段：标签在左（固定宽，4 汉字 + ? 图标，全表单输入列对齐）、输入在右。
+ * 字段放在 12 栏 grid（.form-grid）里按 span 占位，见下方 .span* 规则。 */
+.field-in { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 标签定宽对齐：4em（11px 字号下 = 4 个汉字）+ ? 图标(14px)+间距(4px)。
+ * space-between 让 ? 恒靠右——各行的 ? 图标连成一条竖线，输入列起点一致。 */
+.fi-label {
+  flex: 0 0 auto; width: calc(4em + 18px);
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 4px;
+  font-size: 11px; color: var(--text-2); white-space: nowrap;
 }
-.form-row .field {
-  min-width: 0;
+.field-in input:not([type='checkbox']):not([type='radio']),
+.field-in textarea {
+  flex: 1 1 60px; min-width: 0;
+}
+/* 短字段（span4 格里的文本输入）限 10 汉字宽，避免撑满整格显得稀疏。 */
+.span4 input:not([type='checkbox']):not([type='radio']) {
+  max-width: calc(10em + 18px);
+}
+.field-in .num-input { flex: 0 0 auto; }
+.field-in .mode-radio-group { padding: 0; }
+/* 启动命令这类多行字段不用 CSS 高度：grid 内对 textarea 用百分比高度时
+ * WebKit 首帧会多算约一行（点击触发重排后塌回去，视觉上就是打开时多出
+ * ~20px 空白再跳动）。高度完全由 rows + 显式行高决定，确定且稳定。 */
+.field-in.area textarea { height: auto; }
+/* ? 悬停提示：气泡出现在图标下方（上方会被 .editor 滚动容器裁剪）。 */
+.fi-hint {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; flex: 0 0 auto;
+  border: 1px solid var(--border-strong); border-radius: 50%;
+  font-size: 10px; line-height: 1; color: var(--text-3);
+  cursor: help; user-select: none;
+}
+.fi-hint:hover { color: var(--accent); border-color: var(--accent); }
+.fi-hint::after {
+  content: attr(data-hint);
+  position: absolute; top: calc(100% + 6px); left: 0;
+  width: max-content; max-width: 260px; white-space: normal;
+  padding: 6px 9px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  color: var(--text); font-size: 11px; line-height: 1.5; text-align: left;
+  box-shadow: var(--shadow-lg); z-index: 80;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 0.12s;
+}
+.fi-hint:hover::after { opacity: 1; visibility: visible; }
+/* 12 栏表单网格：span4=1/3 行（名称/图标/分组/布局/隐藏终端/tmux）、
+ * span6=1/2 行（起始目录/根目录/启动命令）、span8=2/3（远程 URL）。
+ * 窄窗口退化为更少列（media query 降为 6 栏，span 按比例减半）。 */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  column-gap: 16px;
+  row-gap: 9px;
+  align-items: center;
+}
+.form-grid .span4 { grid-column: span 4; }
+.form-grid .span6 { grid-column: span 6; }
+.form-grid .span8 { grid-column: span 8; }
+@media (max-width: 760px) {
+  .form-grid { grid-template-columns: repeat(6, 1fr); }
+  .form-grid .span4 { grid-column: span 3; }
+  .form-grid .span6 { grid-column: span 3; }
+  .form-grid .span8 { grid-column: span 6; }
 }
 .meta-form input, .meta-form textarea {
-  padding: 6px 8px; font-size: 12px; color: var(--text);
+  padding: 6px 8px; font-size: 12px; line-height: 1.5; color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--surface); outline: none;
   font-family: inherit;
@@ -770,7 +867,7 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 /* Tabbed sub-region: the 本地/远程 tabs live inside this bordered box and swap
    only the markdown / URL content. The main form above stays always visible. */
 .md-subregion {
-  flex: 1 1 auto; min-height: 280px;
+  flex: 1 1 auto; min-height: 200px;
   display: flex; flex-direction: column; overflow: hidden;
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
 }
@@ -788,9 +885,60 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .editor-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 /* ✓ marks the EFFECTIVE source tab (the one the tool's help will use). */
 .editor-tabs .tab-check { color: var(--success); font-weight: 700; margin-right: 4px; }
+/* tabs 行右侧：### 属性快捷插入 chips + 语法速查入口。 */
+.editor-tabs-extra { margin-left: auto; display: flex; align-items: center; gap: 8px; padding-right: 8px; }
+.attr-chips { display: flex; gap: 4px; }
+.attr-chip {
+  padding: 2px 7px; font-size: 11px; font-family: var(--font-mono); line-height: 1.4;
+  cursor: pointer; color: var(--text-2); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 999px; white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+/* hover 用「.editor-tabs 」前缀提优先级——这两个按钮在 tabs 行内，否则会被
+   `.editor-tabs button:hover` 的 color 覆盖。chips hover 只变背景/文字，
+   不做边框高亮（边框亮色在 pill 上读起来像描边，太重）。 */
+.editor-tabs .attr-chip:hover { background: var(--accent-subtle); color: var(--accent); }
+.syntax-help-toggle {
+  padding: 4px 10px; font-size: 11px; cursor: pointer; white-space: nowrap;
+  color: var(--text-2); background: transparent; border: 0; border-radius: var(--radius-sm);
+  transition: background 0.12s, color 0.12s;
+}
+.editor-tabs .syntax-help-toggle:hover { color: var(--accent); background: var(--accent-subtle); }
+/* 语法速查弹层：fixed 定位（.md-subregion overflow:hidden 会裁剪 absolute，
+   fixed 不受祖先 overflow 影响），坐标由组件按锚点按钮算好传入。 */
+.syntax-help-pop {
+  position: fixed; z-index: 250; width: 400px; max-width: calc(100vw - 16px);
+  max-height: 62vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px; background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.syn-title {
+  font-size: 11px; font-weight: 600; color: var(--text);
+  padding-bottom: 4px; border-bottom: 1px solid var(--border);
+}
+.syn-row { display: flex; align-items: center; gap: 8px; }
+.syn-desc { flex: 0 0 140px; font-size: 11px; color: var(--text-2); }
+.syn-code {
+  flex: 1 1 auto; min-width: 0; font-family: var(--font-mono); font-size: 11px;
+  color: var(--text); background: var(--surface-inset);
+  padding: 3px 6px; border-radius: var(--radius-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.syn-copy {
+  flex: 0 0 auto; padding: 3px 8px; font-size: 11px; cursor: pointer; color: var(--text-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  transition: background 0.12s, color 0.12s;
+}
+.syn-copy:hover { background: var(--surface-2); color: var(--text); }
+.syn-foot {
+  font-size: 11px; color: var(--text-3); line-height: 1.5;
+  padding-top: 4px; border-top: 1px solid var(--border);
+}
 /* Local tab: the textarea is a direct child of the sub-region and fills it. */
 .md-subregion > .md-editor {
-  flex: 1 1 auto; min-height: 200px; border: 0; border-radius: 0;
+  flex: 1 1 auto; min-height: 140px; border: 0; border-radius: 0;
 }
 /* Remote tab: URL fields + a read-only preview; scrolls if it doesn't fit. */
 .md-remote-pane {
@@ -978,29 +1126,6 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .help-modal-body { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
 .help-modal-body .help { font-size: 12px; }
 
-/* Editor modal: wider than default modal for comfortable editing. */
-.editor-modal {
-  width: 720px;
-  max-width: 90vw;
-  max-height: 90vh;
-}
-.editor-modal .modal-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 0;
-}
-.editor-modal .modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.editor-modal .modal-header #editor-modal-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .modal-close {
   width: 26px;
   height: 26px;
@@ -1019,26 +1144,8 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   color: var(--text);
   border-color: var(--border-strong);
 }
-/* Inside the editor modal, the inner .editor should NOT scroll on its own —
-   the .modal-body above owns the scroll. Override the base .editor (which has
-   flex: 1 1 auto; min-height: 0; overflow-y: auto;). */
-.editor-modal .editor {
-  flex: 0 0 auto;
-  min-height: 0;
-  overflow-y: visible;
-}
-/* Sticky footer: 保存/取消 钉在 modal-body 可视区底部，长表单滚动时始终可见。
-   position: sticky + bottom:0 让它在 .modal-body（滚动容器）底部吸附；
-   不透明背景遮住下方滚过的内容，1px 上边框做分割。padding 与 .editor 一致。 */
-.editor-modal .editor-actions {
-  position: sticky;
-  bottom: 0;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  margin-top: 4px;
-  padding: 12px 0 0;
-}
-.modal-actions { flex: 0 0 auto; display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+/* 全部 modal 底部按钮统一左对齐（显式声明，固化约定）。 */
+.modal-actions { flex: 0 0 auto; display: flex; justify-content: flex-start; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
 .modal-actions button {
   padding: 7px 15px; font-size: 12px; cursor: pointer; color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);

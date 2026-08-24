@@ -153,11 +153,11 @@ termstep/
 
 ### 5.3 渲染端组件
 
-- **App.tsx**：三栏布局。状态：`activeId` / `editingId` / `liveCwd` / 侧栏与帮助栏的折叠态及宽度（都持久化到 localStorage）。每 ~1.5s 轮询当前 shell 的实时 cwd（`api.pty.cwd`）。两阶段导入：preview（选文件+解析+风险扫描，不写盘）→ 确认 → confirm（落盘）。
+- **App.tsx**：三栏布局。状态：`activeId` / `editingIds`（多工具编辑态，Record） / `liveCwd` / 侧栏与帮助栏的折叠态及宽度（都持久化到 localStorage）。每 ~1.5s 轮询当前 shell 的实时 cwd（`api.pty.probe`，顺带取模式复位标志）。两阶段导入：preview（选文件+解析+风险扫描，不写盘）→ 确认 → confirm（落盘）。
 - **TerminalPane**：每个工具一个 `TerminalView`，切工具只 toggle `display:none`。xterm Terminal + pty **懒创建**于首次激活，之后跨切换常驻。
 - **TerminalView**：xterm 实例 + fit；注意 `display:none` 容器首帧渲染坑（§6.2）。
 - **HelpPane**：markdown 渲染（markdown-it），拦截 `.cmd-btn` 点击 → `runCommand`；TOC + 长内容分节折叠。
-- **EditorPane**：CodeMirror 编辑 tool.json + help.md。
+- **EditorPane**（工具内编辑层）：**不是 modal**——在 `.main-area` 内以 `position:absolute` 覆盖层展开（盖住顶栏+文档+终端，侧栏保留可点，z-index 150）。每工具一个常驻实例（App 的 `editingIds`），切工具只 `display:none` 不卸载，**草稿保留**；可多工具同时编辑（侧栏 ✏️ 标记）。关闭（×/取消）经 `shared/editorDraft.ts` 脏检测，有未保存修改先 confirm 再丢弃；保存 last-writer-wins（编辑期间忽略磁盘变更，vcs 快照兜底）。表单是普通 textarea（无 CodeMirror）。
 - **Sidebar**：工具列表 + 拖拽排序 + 新建/删除/导入导出。
 - **QuickCommands**：全局快捷命令下拉（读 `quick-commands.md`，在当前激活终端执行）。
 - **ConfigRecords**：配置版本历史 modal（`__global__`=全部 / toolId=单工具）。
@@ -194,7 +194,8 @@ termstep/
 
 - 每个工具一个 xterm Terminal + portable-pty，**首次激活才创建**，之后跨工具切换常驻（`PtyService` 按 toolId 缓存）。
 - **坑**：绝不在 `display:none` 容器里创建 xterm —— 渲染器不画提示符。只在 tab 可见时创建，并在显示后用 `requestAnimationFrame` 调 `fit()`。
-- 实时 cwd：顶栏显示，由后端 `pty_cwd` 命令先试 lsof 取 shell pid 的 cwd，失败回退 meta.cwd 再回退 home。
+- 实时 cwd：顶栏显示，由后端 `pty_probe` 命令先试 lsof 取 shell pid 的 cwd，失败回退 meta.cwd 再回退 home。
+- **模式残留自动复位**：远程 tmux/全屏程序异常断开（SSH 掉线）没机会发 DECRST，鼠标追踪等 private mode 残留在 xterm.js → 点击/滚动被编码成 `0;61;22M` 类序列直写 pty 变乱码。`pty_probe` 轮询（复用 1.5s cwd 链路）用 `master.process_group_leader()`（tcgetpgrp）检测「前台程序 → shell」跳变，返回一次性 `modesReset` 标志（状态存 Rust `PtyEntry.fg_was_foreign`，工具切后台不丢）；前端 `termReset.ts` 收到后向 xterm **parser** 写 DECRST 序列复位——不清屏、不写 pty、不碰 `?2004`（zsh/zle 自管 bracketed paste）。序列幂等，vim/less 正常退出重复触发无害；本地 tmux 工具（child 被 `exec tmux` 替换）fg 恒等于自身，永不触发。顶栏「修复终端」按钮手动兜底（`exec ssh` 替换 shell 的场景检测不到）。
 
 ### 6.3 PtyService（`src-tauri/src/pty.rs`）
 
@@ -275,6 +276,7 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 15. **迁移幂等判断用标志文件**，不靠目录是否存在（§6.5）。
 16. **listen 是异步的**，`useTauriEvent` 包装，别把返回值直接当 effect cleanup。
 17. **scan 仅在 `useRemote:true` 才读 mdUrl** —— 否则指向 `~/Downloads` 等受 TCC 保护目录的 mdUrl 会每次扫描触发 macOS「想访问下载文件夹」弹窗（回归测试覆盖）。
+18. **macOS `ps -o tpgid` 不可靠**（返回值与进程自身 pgid 混同，实测互相矛盾）——前台进程组检测必须走 `master.process_group_leader()`（tcgetpgrp on master fd，portable-pty trait 自带），时间线已实证（§6.2 模式残留自动复位）。
 
 ---
 

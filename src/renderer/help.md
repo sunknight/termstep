@@ -28,40 +28,61 @@ TermStep 是一个本地 macOS 应用，把常用的 CLI 命令变成可点击�
 
 ## `buttons` 语法
 
-在帮助页的 markdown 中，用 ` ```buttons ` 围栏声明命令按钮。**每行一条命令**，渲染成一个按钮：
+在帮助页的 markdown 中，用 ` ```buttons ` 围栏声明命令按钮。**每行一条命令**，渲染成一个按钮。命令后面可用 ` ### ` 挂结构化属性（显示名、编辑模式、色标）：
 
 ````
 ```buttons
 git status
-git pull
-make build
+git push ### label=推送
+git commit -m "" ### label=提交; edit
+deploy.sh ### label=部署; tag=高危; tag-color=red
 ```
 ````
 
-### 按钮类型
+### `###` 属性（主推写法）
 
-| 写法 | 效果 |
+| 属性 | 作用 |
 |------|------|
-| `git status` | 普通按钮，点击执行 `git status` |
-| `git status # 状态` | 带标签的按钮，显示「状态」，执行 `git status`（标签和命令用 ` # ` 分隔） |
-| `docker run -it ubuntu // edit` | edit 模式：粘贴命令但**不回车**，让你修改后再执行 |
-| `// 这是说明文字` | 纯文本行（不是按钮），用作分组标题或注释 |
-| `# 这是一个注释` | 注释行，仅保留在源码中，**不渲染** |
+| `label=文字` | 按钮显示的文字（不写则显示命令本身） |
+| `edit` | 只粘贴到终端、**不回车**（编辑模式）；`edit=false` 关闭 |
+| `tag=文字` | 按钮右端的色标 badge |
+| `tag-color=red` | badge 颜色：`red` / `amber` / `green` / `blue`（不写为默认灰） |
 
-> **注意**：`#` 在行首是注释（不渲染）；` # ` 在行中间是标签分隔符。`//` 在行首是纯文本；` // edit` 在行尾是 edit 模式标记。
+**规则**：
+
+- 多属性用 `;` 分隔，顺序无关：`label=推送; tag=常用; edit`。
+- 布尔属性可裸写：`edit` 等价于 `edit=true`。
+- 值含 `;`、`=` 或引号时用**双引号**包裹：`tag="常用; 已验证"`；引号内 `\"` 转义双引号、`\\` 转义反斜杠。
+- `###` 是完整 token（前后须空白或行首/行尾），`echo a#b` 不会被误切；只写 `###` 无属性退化为普通按钮；未知属性静默忽略。
+- 一行只用一种形式：写了 ` ### ` 就不再解析该行的旧简写；不写则完全保持旧行为。
+
+### 旧简写（兼容，仍有效）
+
+| 旧写法 | 等价的主推写法 |
+|--------|----------------|
+| `git push # 推送` | `git push ### label=推送` |
+| `docker run -it ubuntu // edit` | `docker run -it ubuntu ### edit` |
+| `git push # 推送 // edit` | `git push ### label=推送; edit` |
+
+> **注意**：`#` 在行首是注释（不渲染）；` # ` 在行中间是旧标签分隔符。`//` 在行首是纯文本说明行（不是按钮）；` // edit` 在行尾是旧 edit 标记。存量帮助页零迁移，新旧可混用。
+
+### 围栏选项
+
+- ` ```buttons copy `：整块按钮只**复制**、不执行。
+- 命令需要**参数表单**时，改用 ` ```buttons-json `（见下节）。
 
 ### 完整示例
 
 ````
 ```buttons
 # Git 常用命令
-git status # 状态
-git pull
-git log --oneline -20 # 日志
+git status
+git pull ### label=拉取
+git log --oneline -20 ### label=日志; edit
 
-// Docker
+// Docker（纯文本说明行）
 docker ps
-docker run -it ubuntu // edit
+docker run -it ubuntu ### label=进容器; tag=常用; tag-color=green
 ```
 ````
 

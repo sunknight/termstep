@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Tool, ToolMeta } from '../../shared/types';
 import { api } from '../lib/api';
+import { draftFromTool, isDraftDirty, type EditorDraft } from '../../shared/editorDraft';
+import { insertButtonAttr, insertButtonsFence, type InsertAttrResult } from '../../shared/buttonAttrInsert';
+import { confirmDialog } from '../lib/dialog';
+import { SyntaxHelp } from './SyntaxHelp';
+
+// ### 属性快捷插入 chips（点击插到本地内容光标处，规则见 shared/buttonAttrInsert）。
+const ATTR_CHIPS = ['label=', 'edit', 'tag=', 'tag-color='];
 
 // A small, curated set of icons that read well at sidebar size. Shown in a
 // popup beside the icon input so it doesn't eat vertical space in the form.
@@ -30,16 +37,31 @@ const COMMON_ICONS = [
 const noTransform = {
   autoCorrect: 'off' as const,
   autoCapitalize: 'off' as const,
-  spellCheck: false as const,
+  spellCheck: false,
 };
+
+/** 表单字段标签旁的 ? 悬停提示：CSS tooltip（data-hint + ::after），hover 即显。 */
+function Hint(props: { text: string }) {
+  return (
+    <span className="fi-hint" data-hint={props.text} aria-label={props.text}>
+      ?
+    </span>
+  );
+}
 
 export function EditorPane(props: {
   tool: Tool;
   onDone: () => void;
   /** 已有分组名（去重），供分组输入下拉选择。 */
   existingGroups: string[];
+  /** 该编辑器当前是否可见（= 激活工具）。多编辑器常驻时，隐藏实例不响应 Cmd+Enter。 */
+  active: boolean;
 }) {
   const { meta } = props.tool;
+  // 多编辑器实例常驻时，radio name / datalist id 必须每实例唯一——它们是
+  // document 级键，重名会让不同工具的编辑器互相干扰单选与下拉建议。
+  const groupsListId = `ts-groups-${meta.id}`;
+  const layoutRadioName = `tool-layout-${meta.id}`;
   // The open tab is also the source selection: the checked (✓) tab is the
   // EFFECTIVE source — the one the tool's help will use.
   const [tab, setTab] = useState<'local' | 'remote'>(meta.useRemote ? 'remote' : 'local');
@@ -60,7 +82,24 @@ export function EditorPane(props: {
   const [error, setError] = useState<string | null>(null);
   const [previewMarkdown, setPreviewMarkdown] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [syntaxOpen, setSyntaxOpen] = useState(false);
   const iconWrapRef = useRef<HTMLDivElement>(null);
+  const mdRef = useRef<HTMLTextAreaElement>(null);
+  const syntaxBtnRef = useRef<HTMLButtonElement>(null);
+
+  // 快捷插入（shared 纯函数：属性片段 / 空 buttons 围栏）：按光标位置计算，
+  // 插入后光标落在建议位置（= 后 / 围栏内首行），下一帧恢复焦点再设置光标。
+  const applyInsert = (fn: (text: string, caret: number) => InsertAttrResult) => {
+    const ta = mdRef.current;
+    const caret = ta ? ta.selectionStart ?? markdownText.length : markdownText.length;
+    const r = fn(markdownText, caret);
+    setMarkdownText(r.text);
+    requestAnimationFrame(() => {
+      ta?.focus();
+      ta?.setSelectionRange(r.caret, r.caret);
+    });
+  };
+  const insertAttr = (attr: string) => applyInsert((t, c) => insertButtonAttr(t, c, attr));
 
   // Discard the preview whenever the URL field changes, so a stale fetch from a
   // previous URL is never shown as if it were current.
@@ -93,6 +132,35 @@ export function EditorPane(props: {
   // Remote can only be the effective source when a URL is set; otherwise local
   // stays effective (✓ stays on 本地) even while the 远程 tab is open for setup.
   const effective: 'local' | 'remote' = tab === 'remote' && mdUrl.trim() ? 'remote' : 'local';
+
+  // 挂载时的草稿快照，仅捕获一次：之后 tools:changed 刷新 props.tool 也不更新
+  // （表单 state 本就不随 prop 重置）。保存语义是 last-writer-wins，configs/ 下
+  // 有 vcs git 快照兜底，编辑期间的外部磁盘变更不做合并提醒。
+  const initialDraft = useMemo(() => draftFromTool(props.tool), []);
+
+  const currentDraft = (): EditorDraft => ({
+    name,
+    icon,
+    cwd,
+    rootDir,
+    tmux,
+    initCommands,
+    mdUrl,
+    autoUpdate,
+    group,
+    layout,
+    terminalHidden,
+    markdown: markdownText,
+    useRemote: effective === 'remote',
+  });
+
+  // × 与「取消」共用：有未保存修改先确认再丢弃；保存走 save()，不经过这里。
+  const close = async () => {
+    if (isDraftDirty(currentDraft(), initialDraft)) {
+      if (!(await confirmDialog('有未保存的修改，确定丢弃？', '放弃修改'))) return;
+    }
+    props.onDone();
+  };
 
   // Close the icon popup on outside-click or Escape.
   useEffect(() => {
@@ -161,6 +229,7 @@ export function EditorPane(props: {
   saveRef.current = save;
 
   useEffect(() => {
+    if (!props.active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -169,17 +238,46 @@ export function EditorPane(props: {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [props.active]);
+
+  // WKWebView：常驻编辑层从 display:none 切回可见（首次打开/切回工具）时，首次
+  // 绘制可能沿用过期的布局度量——表现为内容间距错误（如表单与 tab 行间出现空白，
+  // 窗口高于内容自然高度时才触发），任意点击触发重绘后才恢复。这里在变为可见时
+  // 主动强制一次同步布局（读几何）+ 层重绘（translateZ 写读），代替用户的那次点击。
+  useEffect(() => {
+    if (!props.active) return;
+    const panel = mdRef.current?.closest('.editor-panel') as HTMLElement | null;
+    if (!panel) return;
+    void panel.getBoundingClientRect();
+    panel.style.transform = 'translateZ(0)';
+    void panel.getBoundingClientRect();
+    panel.style.transform = '';
+  }, [props.active]);
 
   return (
-    <div className="editor">
-      {/* Always-visible main form */}
+    <>
+      {/* 编辑器以工具内覆盖层展开（盖住主区顶栏与面板，侧栏保留），这是它的固定标题栏。 */}
+      <div className="editor-header">
+        <span className="editor-title" title={props.tool.meta.name}>
+          编辑工具：{props.tool.meta.name}
+        </span>
+        <button
+          className="modal-close"
+          onClick={() => void close()}
+          aria-label="关闭"
+          title="关闭"
+        >
+          ×
+        </button>
+      </div>
+      <div className="editor">
+      {/* Always-visible main form（紧凑布局：标签同行 + 同类字段拼行，备注收进 ? 悬停） */}
       <div className="meta-form">
         <fieldset className="form-section">
           <legend>基本</legend>
-          <div className="form-row">
-            <label className="field">
-              <span className="field-label">名称</span>
+          <div className="form-grid">
+            <label className="field-in span4">
+              <span className="fi-label">名称</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -187,8 +285,8 @@ export function EditorPane(props: {
                 autoFocus
               />
             </label>
-            <div className="field">
-              <span className="field-label">图标</span>
+            <div className="field-in span4">
+              <span className="fi-label">图标</span>
               <div className="icon-control" ref={iconWrapRef}>
                 <input
                   className="icon-input"
@@ -224,92 +322,94 @@ export function EditorPane(props: {
                 )}
               </div>
             </div>
-          </div>
-          <div className="form-row">
-            <label className="field">
-              <span className="field-label">
-                分组 <em>留空 = 未分组；输入新名字即新建</em>
+            <label className="field-in span4">
+              <span className="fi-label">
+                分组
+                <Hint text="留空 = 未分组；输入新名字即新建" />
               </span>
               <input
-                list="ts-groups"
+                list={groupsListId}
                 value={group}
                 onChange={(e) => setGroup(e.target.value)}
                 placeholder="未分组"
                 {...noTransform}
               />
-              <datalist id="ts-groups">
+              <datalist id={groupsListId}>
                 {props.existingGroups.map((g) => (
                   <option key={g} value={g} />
                 ))}
               </datalist>
             </label>
-            <div className="field">
-              <span className="field-label">
-                布局方向 <em>LR=文档左/终端右；TB=文档上/终端下</em>
+            <div className="field-in span4">
+              <span className="fi-label">
+                布局
+                <Hint text="LR = 终端左/文档右（默认）；TB = 文档上/终端下" />
               </span>
               <div className="mode-radio-group" role="radiogroup" aria-label="布局方向">
                 <label className="mode-radio">
                   <input
                     type="radio"
-                    name="tool-layout"
+                    name={layoutRadioName}
                     value="LR"
                     checked={layout === 'LR'}
                     onChange={() => setLayout('LR')}
                   />
-                  <span>LR（左右）</span>
+                  <span>LR</span>
                 </label>
                 <label className="mode-radio">
                   <input
                     type="radio"
-                    name="tool-layout"
+                    name={layoutRadioName}
                     value="TB"
                     checked={layout === 'TB'}
                     onChange={() => setLayout('TB')}
                   />
-                  <span>TB（上下）</span>
+                  <span>TB</span>
                 </label>
               </div>
             </div>
-            <div className="field">
-              <span className="field-label">终端初始状态</span>
-              <label className="mode-radio">
-                <input
-                  type="checkbox"
-                  checked={terminalHidden}
-                  onChange={(e) => setTerminalHidden(e.target.checked)}
-                />
-                <span>默认隐藏终端（仅看文档；运行时可随时显示）</span>
-              </label>
-            </div>
+            <label className="field-in span4">
+              <span className="fi-label">
+                隐藏终端
+                <Hint text="默认隐藏（打开工具只看文档）；运行时可随时显示" />
+              </span>
+              <input
+                type="checkbox"
+                checked={terminalHidden}
+                onChange={(e) => setTerminalHidden(e.target.checked)}
+              />
+            </label>
           </div>
         </fieldset>
 
         <fieldset className="form-section">
           <legend>终端</legend>
-          <label className="field">
-            <span className="field-label">起始目录 (cwd)</span>
-            <input
-              value={cwd}
-              onChange={(e) => setCwd(e.target.value)}
-              placeholder="~"
-              {...noTransform}
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">
-              工具根目录 (@/) <em>留空同 cwd；按钮里 @/ 锚定此目录</em>
-            </span>
-            <input
-              value={rootDir}
-              onChange={(e) => setRootDir(e.target.value)}
-              placeholder="留空同 cwd"
-              {...noTransform}
-            />
-          </label>
-          <div className="form-row">
-            <label className="field">
-              <span className="field-label">
-                tmux 会话名 <em>留空不开；已存在则 attach，否则新建</em>
+          <div className="form-grid">
+            <label className="field-in span6">
+              <span className="fi-label">起始目录</span>
+              <input
+                value={cwd}
+                onChange={(e) => setCwd(e.target.value)}
+                placeholder="~"
+                {...noTransform}
+              />
+            </label>
+            <label className="field-in span6">
+              <span className="fi-label">
+                根目录
+                <Hint text="即按钮里的 @/；留空同起始目录" />
+              </span>
+              <input
+                value={rootDir}
+                onChange={(e) => setRootDir(e.target.value)}
+                placeholder="留空同起始目录"
+                {...noTransform}
+              />
+            </label>
+            <label className="field-in span6">
+              <span className="fi-label">
+                tmux
+                <Hint text="会话名；留空不开。已存在则 attach，否则新建" />
               </span>
               <input
                 value={tmux}
@@ -318,20 +418,21 @@ export function EditorPane(props: {
                 {...noTransform}
               />
             </label>
+            <label className="field-in span6 area">
+              <span className="fi-label">
+                启动命令
+                <Hint text="每行一条，进入终端后依次执行" />
+              </span>
+              <textarea
+                className="init-commands"
+                rows={2}
+                value={initCommands}
+                onChange={(e) => setInitCommands(e.target.value)}
+                placeholder={'cd ~/project\nsource venv/bin/activate'}
+                {...noTransform}
+              />
+            </label>
           </div>
-          <label className="field">
-            <span className="field-label">
-              启动命令 <em>每行一条，进入终端后依次执行</em>
-            </span>
-            <textarea
-              className="init-commands"
-              rows={3}
-              value={initCommands}
-              onChange={(e) => setInitCommands(e.target.value)}
-              placeholder={'cd ~/project\nsource venv/bin/activate'}
-              {...noTransform}
-            />
-          </label>
         </fieldset>
       </div>
 
@@ -358,11 +459,46 @@ export function EditorPane(props: {
             {effective === 'remote' && <span className="tab-check" aria-hidden>✓</span>}
             远程订阅
           </button>
+          <div className="editor-tabs-extra">
+            {tab === 'local' && (
+              <div
+                className="attr-chips"
+                role="toolbar"
+                aria-label="插入 ### 按钮属性"
+                title="插入到光标所在行；该行无 ### 时自动在行尾补"
+              >
+                <button
+                  type="button"
+                  className="attr-chip fence"
+                  onClick={() => applyInsert(insertButtonsFence)}
+                  title="在光标处插入空的 ```buttons 围栏块（光标所在行为空行时占用该行，否则新起一行）"
+                >
+                  {'```'}buttons
+                </button>
+                {ATTR_CHIPS.map((a) => (
+                  <button key={a} type="button" className="attr-chip" onClick={() => insertAttr(a)}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              ref={syntaxBtnRef}
+              type="button"
+              className="syntax-help-toggle"
+              onClick={() => setSyntaxOpen((v) => !v)}
+              title="buttons 语法速查"
+            >
+              ? 语法
+            </button>
+            {syntaxOpen && <SyntaxHelp anchorRef={syntaxBtnRef} onClose={() => setSyntaxOpen(false)} />}
+          </div>
         </div>
 
         {tab === 'local' ? (
           <textarea
             className="md-editor"
+            ref={mdRef}
             value={markdownText}
             onChange={(e) => setMarkdownText(e.target.value)}
             placeholder={'# 标题\n\n```buttons\nls\n```\n'}
@@ -377,43 +513,49 @@ export function EditorPane(props: {
             )}
             <fieldset className="form-section">
               <legend>远程订阅</legend>
-              <label className="field">
-                <span className="field-label">
-                  Markdown URL / 本地文件 <em>与本地独立；清空即恢复本地</em>
-                </span>
-                <div className="mdurl-control">
-                  <input
-                    value={mdUrl}
-                    onChange={(e) => setMdUrl(e.target.value)}
-                    placeholder="https://example.com/help.md 或 /Users/me/help.md"
-                    {...noTransform}
-                  />
-                  <button
-                    type="button"
-                    className="mdurl-pick"
-                    title="在 Finder 中选择本地 Markdown 文件（仅记录路径）"
-                    onClick={async () => {
-                      const res = await api.pickMdFile();
-                      if (!res.canceled) setMdUrl(res.path);
-                    }}
-                  >
-                    📂
-                  </button>
-                </div>
-              </label>
-              {mdUrl.trim() && (
-                <label className="field">
-                  <span className="field-label">自动更新间隔（分钟，0 = 不自动更新）</span>
-                  <input
-                    className="num-input"
-                    type="number"
-                    min={0}
-                    value={autoUpdate}
-                    onChange={(e) => setAutoUpdate(e.target.value)}
-                    placeholder="0"
-                  />
+              <div className="form-grid">
+                <label className="field-in span8">
+                  <span className="fi-label">
+                    URL
+                    <Hint text="Markdown URL 或本地文件路径；与本地内容独立，清空即恢复本地" />
+                  </span>
+                  <div className="mdurl-control">
+                    <input
+                      value={mdUrl}
+                      onChange={(e) => setMdUrl(e.target.value)}
+                      placeholder="https://example.com/help.md 或 /Users/me/help.md"
+                      {...noTransform}
+                    />
+                    <button
+                      type="button"
+                      className="mdurl-pick"
+                      title="在 Finder 中选择本地 Markdown 文件（仅记录路径）"
+                      onClick={async () => {
+                        const res = await api.pickMdFile();
+                        if (!res.canceled) setMdUrl(res.path);
+                      }}
+                    >
+                      📂
+                    </button>
+                  </div>
                 </label>
-              )}
+                {mdUrl.trim() && (
+                  <label className="field-in span4">
+                    <span className="fi-label">
+                      自动更新
+                      <Hint text="分钟；0 = 不自动更新" />
+                    </span>
+                    <input
+                      className="num-input"
+                      type="number"
+                      min={0}
+                      value={autoUpdate}
+                      onChange={(e) => setAutoUpdate(e.target.value)}
+                      placeholder="0"
+                    />
+                  </label>
+                )}
+              </div>
             </fieldset>
             <div className="md-head">
               <span>📡 远程内容（只读预览）</span>
@@ -436,13 +578,16 @@ export function EditorPane(props: {
         )}
       </div>
 
-      {error && <div className="editor-error">{error}</div>}
-      <div className="editor-actions">
-        <button className="primary" onClick={save} disabled={saving}>
-          {saving ? '保存中…' : '保存'}
-        </button>
-        <button onClick={props.onDone}>取消</button>
       </div>
-    </div>
+      <div className="editor-footer">
+        <div className="editor-actions">
+          <button className="primary" onClick={save} disabled={saving}>
+            {saving ? '保存中…' : '保存'}
+          </button>
+          <button onClick={() => void close()}>取消</button>
+        </div>
+        {error && <span className="editor-error">{error}</span>}
+      </div>
+    </>
   );
 }
