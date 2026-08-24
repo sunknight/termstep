@@ -39,12 +39,14 @@ npm run release      # universal dmg 构建并拷到 release/
 
 **设置版本号**：`npm run version:set 0.9.3`（脚本 `scripts/set-version.mjs`）同步四处：`package.json`、`src-tauri/Cargo.toml`（[package] 段）、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.lock`（仅 `name = "termstep"` 紧随的那条 version，不会误伤其它 crate）。**不要手动逐个改，极易漏 Cargo.lock。** 支持 `--dry-run`。
 
-**发布新版本**（推荐用 `changelog-gen` skill 一键走完）：在 AI 对话里说「**用 changelog-gen 发版**」，skill 会按四步交互流程逐步问、按回答执行——升版本号 → 写 CHANGELOG → 提交 → 打 tag + 推送，免去手敲多条命令。流程要点：
+**发布新版本**（推荐用 `release-wizard` skill 一键走完）：在 AI 对话里说「**用 release-wizard 发版**」（原名 changelog-gen，已更名），skill 会按四步交互流程逐步问、按回答执行——升版本号 → 写 CHANGELOG → 提交 → 打 tag + 推送，免去手敲多条命令。
+
+> `release-wizard` 是**全局通用发版 skill**（适用于所有项目），源在 `/Users/sunknight/web/code/sk_scripts/skills/release-wizard`，软链挂载于 `~/.zcode/skills/` 与 `~/.agents/skills/`（见 §11）。TermStep 专属约定（`npm run version:set` 四处同步、不加 `--tag`、`chore(release)` 提交、双 remote 推送、release-brew 后续）作为 skill 的项目参考文件放在 **`skills/release-wizard/references/termstep.md`**（sk_scripts 仓库，文件名 = 项目名），skill 发版时自动读取并优先遵循。流程要点（细节以参考文件为准）：
 
 1. **版本级别**：skill 问大/中/小，按语义化版本递增对应段（大 `0.9.7→1.0.0` / 中 `→0.10.0` / 小 `→0.9.8`）。选定后自动 `npm run version:set -- <新版本>`（**不加 `--tag`**，tag 放第 4 步）。
-2. **CHANGELOG**：skill 取 `<最近 tag>..HEAD` 提交，按「面向用户、不面向开发」原则提炼成条目（绝不照抄 commit subject、绝不写模块名/函数名/数据字段），插入 `CHANGELOG.md` 顶部第一个 `## [` 之前。规则细节见 skill 本体 `skills/changelog-gen/SKILL.md`。
+2. **CHANGELOG**：skill 取 `<最近 tag>..HEAD` 提交，按「面向用户、不面向开发」原则提炼成条目（绝不照抄 commit subject、绝不写模块名/函数名/数据字段），插入 `CHANGELOG.md` 顶部第一个 `## [` 之前。
 3. **提交**：skill 先判断分支——**在 feature 分支上会停下来问是否先合并回 main**（发版提交应打在 main 上）；确认后 `git commit -m "chore(release): <版本>"`，版本号 + CHANGELOG 一个提交。
-4. **打 tag + 推送**：预检 `v<版本>` 不存在 → `git tag v<版本>` → `git push origin <分支>` + `git push origin v<版本>`。tag 打在 release commit 上。
+4. **打 tag + 推送**：预检 `v<版本>` 不存在 → `git tag v<版本>` → `git push origin <分支>` + `git push origin v<版本>`。tag 打在 release commit 上；`github` 镜像留给后续 `scripts/release-brew.sh`。
 
 **手动发版**（不走 skill）：`npm run version:set -- <版本>` → 手写 CHANGELOG 条目 → `git add` 版本文件 + CHANGELOG → `git commit -m "chore(release): <版本>"` → `git tag v<版本>` → `git push origin main --tags`。CHANGELOG 必须手写，**脚本和 skill 都不替你决定怎么写**——skill 只是按规则辅助提炼。
 
@@ -98,7 +100,7 @@ termstep/
 ├── scripts/set-version.mjs   # 版本号同步脚本
 ├── assets/icon.png           # 应用图标源（tracked；icons/ 是生成的，gitignored）
 ├── docs/superpowers/         # 设计文档与实现计划（specs/ plans/）
-├── skills/                   # skill 源文件（changelog-gen / termstep-tool-gen），~/.zcode/skills 下软链指回这里（见 §11）
+├── skills/                   # 项目专属 skill 源文件（termstep-tool-gen），~/.zcode/skills 下软链指回这里（见 §11）
 └── ln_library_data -> ~/Library/Application Support/TermStep   # 用户数据软链
 ```
 
@@ -280,7 +282,7 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 
 开始工作前，建议：
 1. **确认分支与状态**：`git status` + `git log --oneline -5`。主分支 `main`，git 用户 sunknight。
-2. **当前版本**：`package.json` 的 `version`（现 0.9.2）。升版本用 `npm run version:set`，**完整发版用 `changelog-gen` skill**（说「用 changelog-gen 发版」），见 §2「发布新版本」。
+2. **当前版本**：`package.json` 的 `version`（现 0.9.2）。升版本用 `npm run version:set`，**完整发版用 `release-wizard` skill**（说「用 release-wizard 发版」），见 §2「发布新版本」。
 3. **类型/测试基线**：改动前先 `npm run typecheck` + `npm run test` + `cargo test --manifest-path src-tauri/Cargo.toml` 确认全绿，再动。
 4. **改 IPC**：遵循四步（§5.1），三端都要改，否则类型断裂。
 5. **改用户数据格式**：考虑迁移（§6.5），迁移要幂等、同步、在 scan/seed/pty 之前、用标志文件。
@@ -302,14 +304,23 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 
 ## 11. skill 维护约定（重要，不可再出错）
 
-**`changelog-gen` 与 `termstep-tool-gen` 两个 skill 的源文件在本项目 `skills/`，`~/.zcode/skills/` 下是软链，不是副本。**
+**项目专属 skill 的源文件在本项目 `skills/`，`~/.zcode/skills/` 下是指回源的目录级软链，不是副本。** 跨项目通用 skill 的源在 `sk_scripts` 仓库（见下）。
 
-- **源的唯一位置**：`skills/changelog-gen/SKILL.md`、`skills/termstep-tool-gen/SKILL.md`（已纳入 git）。
-- **`~/.zcode/skills/<name>` 是指向本项目 `skills/<name>` 的目录级软链**，与 `auv_kanban`/`sk_secrets` 的挂载方式一致：
+**本项目 `skills/` 现有**：
+
+- `termstep-tool-gen`：源 `skills/termstep-tool-gen/SKILL.md`（纳入 git），挂载方式与 `auv_kanban`/`sk_secrets` 一致：
   ```
-  ~/.zcode/skills/changelog-gen      -> /Users/sunknight/web/code/sk_ideas/termstep/skills/changelog-gen
   ~/.zcode/skills/termstep-tool-gen  -> /Users/sunknight/web/code/sk_ideas/termstep/skills/termstep-tool-gen
   ```
-- **改 skill 只改本项目 `skills/` 下的源文件**（改完正常 `git commit`）。**绝不要**去改/重建 `~/.zcode/skills/` 下的副本——那里没有副本，改软链路径本身没意义；若误把软链替换成普通文件副本，会重新引入"改一处不同步"的老问题。
-- **软链断了（项目路径搬迁后）**：`ln -sfh <项目绝对路径>/skills/<name> ~/.zcode/skills/<name>` 重建即可，源文件不动。
-- **新增 skill 也照此办理**：源放本项目 `skills/`，`~/.zcode/skills/` 下挂软链，避免再次出现双副本。
+
+**`release-wizard`（原 changelog-gen）已通用化并迁出本项目**（2026-08）：
+
+- 源：`/Users/sunknight/web/code/sk_scripts/skills/release-wizard`（独立 git 仓库；**通用规则只在那里改**）。
+- 挂载：`~/.zcode/skills/release-wizard` 与 `~/.agents/skills/release-wizard` 软链指回源。
+- TermStep 专属约定在 **`skills/release-wizard/references/termstep.md`**（sk_scripts 仓库，skill 按项目名自动读取并优先遵循；**改 TermStep 约定改那个文件**，不动通用规则）。
+
+**通用规则**：
+
+- 只改源文件，改完在源仓库正常 `git commit`。**绝不要**把 `~/.zcode/skills/` 下的软链替换成普通文件副本——会脱离 git、重新引入"改一处不同步"的老问题。
+- 软链断了（项目路径搬迁后）：`ln -sfh <源绝对路径> ~/.zcode/skills/<name>` 重建即可，源文件不动。
+- 新增 skill：**项目专属**的源放本项目 `skills/`；**跨项目通用**的源放 `sk_scripts/skills/`。都在 `~/.zcode/skills/`（需要时也在 `~/.agents/skills/`）挂目录级软链。

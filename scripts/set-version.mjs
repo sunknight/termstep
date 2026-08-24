@@ -205,13 +205,13 @@ if (tagResult) {
   console.log('（未 push，请手动 git push origin main --tags）');
 }
 
-// ── CHANGELOG：本脚本不碰 CHANGELOG。用 changelog-gen skill 一句话生成。
+// ── CHANGELOG：本脚本不碰 CHANGELOG。用 release-wizard skill 一句话生成。
 // skill 会自己 git log 取 <最近 tag>..HEAD 提交、按「面向用户」原则提炼、
 // 直接插入 CHANGELOG.md 顶部——无需复制粘贴提示词。
 console.log('');
 console.log('──────── CHANGELOG ────────');
-console.log('本脚本不写 CHANGELOG。用 changelog-gen skill 生成：');
-console.log(`  在 AI 对话里说「用 changelog-gen 写 ${version} 版本记录」`);
+console.log('本脚本不写 CHANGELOG。用 release-wizard skill 生成：');
+console.log(`  在 AI 对话里说「用 release-wizard 写 ${version} 版本记录」`);
 console.log('skill 会自动取提交、提炼成面向用户条目、插入 CHANGELOG.md 顶部。');
 console.log('──────────────────────────');
 console.log(dryRun ? '\n（dry-run，未写盘）\n' : '\n完成。\n');

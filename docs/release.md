@@ -27,7 +27,7 @@ cask 的 `url` 指向 GitHub Release 的 dmg asset，所以 **Release 必须先�
 
 ## 标准发版流程
 
-下面以发 `1.1.3` 为例。**推荐用 `changelog-gen` skill 一键走完前 4 步**（升版本 + 写 CHANGELOG + 提交 + 打 tag 推送），在对话里说「用 changelog-gen 发版」即可；之后的构建 + 发 Release + 更新 cask 需要手动跑。
+下面以发 `1.1.3` 为例。**推荐用 `release-wizard` skill 一键走完前 4 步**（升版本 + 写 CHANGELOG + 提交 + 打 tag 推送），在对话里说「用 release-wizard 发版」即可；之后的构建 + 发 Release + 更新 cask 需要手动跑。
 
 ### 第 1 步：升版本号
 
@@ -54,7 +54,7 @@ npm run version:set -- 1.1.3
 - 用「用户的问题被修好」的语言写。例如：删除工具后分组标题不再消失。
 ```
 
-规则细节见 `skills/changelog-gen/SKILL.md`。核心：**绝不照抄 commit subject，绝不写实现细节**。
+规则细节见全局 skill `release-wizard` 及其项目参考文件 `skills/release-wizard/references/termstep.md`（sk_scripts 仓库）。核心：**绝不照抄 commit subject，绝不写实现细节**。
 
 ### 第 3 步：提交（版本号 + CHANGELOG 一个提交）
 
@@ -174,52 +174,17 @@ open -a TermStep
 
 ---
 
-## 一键脚本（可选）
+## 一键脚本：`scripts/release-brew.sh`
 
-把第 5~9 步串成一条命令。在 `scripts/` 下新建 `release-brew.sh`：
+第 5~9 步已串成一条命令，脚本就在仓库里（`scripts/release-brew.sh`）。
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-VERSION="${1:?用法: ./scripts/release-brew.sh <版本号，如 1.1.3>}"
-TAP_REPO="sunknight/homebrew-termstep"
-APP_REPO="sunknight/termstep"
-DMG_NAME="TermStep_${VERSION}_universal.dmg"
-
-echo "==> 构建 universal dmg"
-npm run release
-
-echo "==> 计算 sha256"
-SHA=$(shasum -a 256 "release/${DMG_NAME}" | awk '{print $1}')
-echo "    sha256: ${SHA}"
-
-echo "==> 推送源码 + tag 到 GitHub 镜像"
-git push github main
-git push github "v${VERSION}"
-
-echo "==> 创建 GitHub Release 并上传 dmg"
-gh release create "v${VERSION}" \
-  --repo "${APP_REPO}" \
-  --title "${VERSION}" \
-  --notes "$(awk -v v="## \[${VERSION}\]" -v prev="## \[" '$0~v{f=1} f{print} prev&&$0~prev&&NR>1{exit}' CHANGELOG.md | sed -e '1d;/^## \[/{exit}')" \
-  "release/${DMG_NAME}"
-
-echo "==> 更新 cask（version + sha256）"
-TMP=$(mktemp -d)
-gh repo clone "${TAP_REPO}" "${TMP}"
-sed -i '' -E \
-  -e "s/^  version \".*\"/  version \"${VERSION}\"/" \
-  -e "s/^  sha256 \".*\"/  sha256 \"${SHA}\"/" \
-  "${TMP}/Casks/termstep.rb"
-( cd "${TMP}" && git add Casks/termstep.rb && git commit -m "termstep ${VERSION}" && git push )
-rm -rf "${TMP}"
-
-echo "==> 完成。用户现在可以 brew upgrade --cask termstep 拿到 ${VERSION}"
+./scripts/release-brew.sh 1.2.0
 ```
 
-> 用法：先走完第 1~4 步（升版本 + CHANGELOG + commit + tag 推 origin），再跑 `./scripts/release-brew.sh 1.1.3`。
-> 注意：CHANGELOG 抽取那行 `awk` 较脆弱，复杂情况建议手写 `--notes` 或先验证输出。
+脚本做的事：构建 universal dmg → 算 sha256 → 推源码 + tag 到 `github` 镜像 → 创建 GitHub Release 并上传 dmg（notes 自动从 CHANGELOG 抽取本版本小节）→ clone tap 仓库更新 cask 的 version + sha256 并 push。内含幂等检查：tag 不存在 / tag 不在 HEAD / GitHub Release 已存在 都会停下报错，绝不覆盖已发布版本。`gh` 命令自动注入代理 `127.0.0.1:7897`。
+
+> 用法：先走完第 1~4 步（升版本 + CHANGELOG + commit + tag 推 origin），再跑 `./scripts/release-brew.sh <版本>`。
 
 ---
 
