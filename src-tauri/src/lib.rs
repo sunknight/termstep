@@ -172,7 +172,7 @@ pub fn run() {
             commands::pty_restart,
             commands::pty_resize,
             commands::pty_kill,
-            commands::pty_cwd,
+            commands::pty_probe,
         ])
         .on_menu_event(|app, event| match event.id().as_ref() {
             "check_update" => {

@@ -4,6 +4,7 @@ import type {
   ScanResult,
   ToolMeta,
   PtySpawnOpts,
+  PtyProbeResult,
   UpdateState,
   CommitEntry,
   VcsDiff,
@@ -29,7 +30,7 @@ export const api = {
     open: (toolId: string, opts?: PtySpawnOpts) => invoke('pty_open', { toolId, opts }),
     restart: (toolId: string, opts?: PtySpawnOpts) => invoke('pty_restart', { toolId, opts }),
     resize: (toolId: string, cols: number, rows: number) => invoke('pty_resize', { toolId, cols, rows }),
-    cwd: (toolId: string) => invoke<string>('pty_cwd', { toolId }),
+    probe: (toolId: string) => invoke<PtyProbeResult>('pty_probe', { toolId }),
     kill: (toolId: string) => invoke('pty_kill', { toolId }),
   },
   tool: {

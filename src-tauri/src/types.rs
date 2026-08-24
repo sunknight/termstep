@@ -92,6 +92,15 @@ pub struct PtySpawnOpts {
     pub init_commands: Option<Vec<String>>,
 }
 
+/// pty_probe 命令返回：live cwd（含回退链）+ 一次性「建议复位终端模式」标志
+/// （检测到前台程序退出回到 shell 的跳变，见 pty.rs take_fg_reset_hint）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyProbeResult {
+    pub cwd: String,
+    pub modes_reset: bool,
+}
+
 // UpdateState 对齐 TS 的 discriminated union {status:'available', version, url, notes}。
 // 用 serde internally-tagged enum：序列化时 tag 字段 = "status"。
 #[derive(Debug, Clone, Serialize, Deserialize)]

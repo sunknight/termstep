@@ -58,6 +58,25 @@ pub fn expand_home(p: &str) -> String {
     p.to_string()
 }
 
+/// 前台进程组跳变判定（纯函数，便于单测）。
+/// 返回 (新的 fg_was_foreign, 是否产出一次性复位标志)。
+/// - fg <= 0（tcgetpgrp 失败/僵尸）或 shell pid 未知：状态保持，不产出。
+/// - fg == shell pgid：回到 shell；上次是外来程序 → 产出复位标志并清零。
+/// - fg != shell pgid（fg>0）：外来程序（ssh/vim/tmux client…）在前台，仅记录。
+fn fg_hint(fg: i32, shell: Option<u32>, prev_foreign: bool) -> (bool, bool) {
+    let Some(shell) = shell else {
+        return (prev_foreign, false);
+    };
+    if fg <= 0 {
+        return (prev_foreign, false);
+    }
+    if fg as u32 == shell {
+        (false, prev_foreign)
+    } else {
+        (true, false)
+    }
+}
+
 struct PtyEntry {
     /// 保留 master 以支持后续 resize（take_writer/try_clone_reader 不消耗 master）。
     master: Box<dyn MasterPty + Send>,
@@ -65,6 +84,10 @@ struct PtyEntry {
     killer: Mutex<Box<dyn portable_pty::ChildKiller + Send + Sync>>,
     pid: Option<u32>,
     generation: u64,
+    /// 上次轮询时前台进程组是否为「外来程序」（fg != shell pgid）。
+    /// 用于检测「前台程序退出回到 shell」跳变：SSH/tmux 异常断开时远程端
+    /// 没机会发 DECRST，鼠标追踪等 private mode 残留在前端 xterm.js 里。
+    fg_was_foreign: bool,
     /// 读线程句柄；存这里只为保持线程存活（JoinHandle drop 不 join 不杀线程）。
     _reader_thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -293,6 +316,7 @@ impl PtyService {
             killer: Mutex::new(killer),
             pid,
             generation,
+            fg_was_foreign: false,
             _reader_thread: Some(reader_thread),
         };
 
@@ -365,6 +389,20 @@ impl PtyService {
         self.ptys.lock().unwrap_or_else(|e| e.into_inner()).get(tool_id).and_then(|e| e.pid)
     }
 
+    /// 轮询前台进程组跳变：返回 true 表示「外来前台程序已退出、shell 取回前台」
+    /// 本次刚发生（一次性），前端应复位 xterm.js 的残留 private modes。
+    /// shell pid 即其 pgid（spawn 时 setsid 成 session leader），见 reap_process_group 注释。
+    pub fn take_fg_reset_hint(&self, tool_id: &str) -> bool {
+        let mut ptys = self.ptys.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(entry) = ptys.get_mut(tool_id) else {
+            return false;
+        };
+        let fg = entry.master.process_group_leader().unwrap_or(0);
+        let (now_foreign, hint) = fg_hint(fg, entry.pid, entry.fg_was_foreign);
+        entry.fg_was_foreign = now_foreign;
+        hint
+    }
+
     pub fn kill(&self, tool_id: &str) {
         let entry = self.ptys.lock().unwrap_or_else(|e| e.into_inner()).remove(tool_id);
         if let Some(entry) = entry {
@@ -398,5 +436,42 @@ impl PtyService {
             reap_process_group(pid);
         }
         self.desired.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fg_hint;
+
+    const SHELL: Option<u32> = Some(100);
+
+    #[test]
+    fn fg_hint_idle_shell_stays_quiet() {
+        // 一直是 shell 前台：不记录、不产出
+        assert_eq!(fg_hint(100, SHELL, false), (false, false));
+    }
+
+    #[test]
+    fn fg_hint_foreign_program_only_records() {
+        // 外来程序（ssh/vim）到前台：记录，但不产出
+        assert_eq!(fg_hint(200, SHELL, false), (true, false));
+        assert_eq!(fg_hint(200, SHELL, true), (true, false));
+    }
+
+    #[test]
+    fn fg_hint_transition_to_shell_emits_once() {
+        // 跳变「外来程序 → shell」：产出一次性标志并清零
+        assert_eq!(fg_hint(100, SHELL, true), (false, true));
+        // 再次轮询仍是 shell：安静
+        assert_eq!(fg_hint(100, SHELL, false), (false, false));
+    }
+
+    #[test]
+    fn fg_hint_unknown_fg_or_shell_keeps_state() {
+        // tcgetpgrp 失败 / shell pid 未知：保持状态，绝不误报
+        assert_eq!(fg_hint(0, SHELL, true), (true, false));
+        assert_eq!(fg_hint(-1, SHELL, true), (true, false));
+        assert_eq!(fg_hint(100, None, true), (true, false));
+        assert_eq!(fg_hint(200, None, false), (false, false));
     }
 }

@@ -794,29 +794,41 @@ pub async fn pty_kill(pty: State<'_, PtyArc>, tool_id: String) -> Result<(), Str
     Ok(())
 }
 
-// 实时 cwd：先试 lsof 拿 shell 的 cwd；拿不到则回退到工具 meta 的 cwd 或 home。
+// 终端探测：cwd 先试 lsof 拿 shell 的 cwd；拿不到则回退到工具 meta 的 cwd 或 home。
+// 同时轮询前台进程组跳变（「前台程序退出回到 shell」），产出一次性 modesReset
+// 标志——SSH/tmux 异常断开没机会发 DECRST，鼠标追踪等模式残留，前端据此复位。
 #[tauri::command]
-pub async fn pty_cwd(
+pub async fn pty_probe(
     pty: State<'_, PtyArc>,
     tools_dir: State<'_, ToolsDir>,
     tool_id: String,
-) -> Result<String, String> {
+) -> Result<crate::types::PtyProbeResult, String> {
     validate_tool_id(&tool_id)?;
+    let modes_reset = lock_or_recover!(pty.inner()).take_fg_reset_hint(&tool_id);
     let pid = lock_or_recover!(pty.inner()).pid_of(&tool_id);
     if let Some(cwd) = pid.and_then(crate::cwd::live_cwd) {
-        return Ok(cwd.to_string_lossy().to_string());
+        return Ok(crate::types::PtyProbeResult {
+            cwd: cwd.to_string_lossy().to_string(),
+            modes_reset,
+        });
     }
     // 回退：扫工具拿 meta.cwd，再不行 home
     let td = lock_or_recover!(&tools_dir.0).clone();
     let scan = crate::tools::scan_tools(&td).await;
     if let Some(t) = scan.tools.into_iter().find(|t| t.meta.id == tool_id) {
         if let Some(cwd) = t.meta.cwd {
-            return Ok(crate::pty::expand_home(&cwd));
+            return Ok(crate::types::PtyProbeResult {
+                cwd: crate::pty::expand_home(&cwd),
+                modes_reset,
+            });
         }
     }
-    Ok(dirs::home_dir()
-        .map(|h| h.to_string_lossy().to_string())
-        .unwrap_or_else(|| "~".to_string()))
+    Ok(crate::types::PtyProbeResult {
+        cwd: dirs::home_dir()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_else(|| "~".to_string()),
+        modes_reset,
+    })
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ export const IPC = {
   PTY_RESTART: 'pty:restart',
   PTY_RESIZE: 'pty:resize',
   PTY_KILL: 'pty:kill',
-  PTY_CWD: 'pty:cwd',
+  PTY_PROBE: 'pty:probe',
   TOOL_SAVE: 'tool:save',
   TOOL_APPEND_MD: 'tool:appendMd',
   TOOL_CREATE: 'tool:create',
@@ -103,6 +103,14 @@ export interface PtySpawnOpts {
   env?: Record<string, string>;
   tmux?: string;
   initCommands?: string[];
+}
+
+// pty:probe 返回。cwd 含回退链（live → meta.cwd → home）；modesReset 是一次性
+// 「前台程序退出回到 shell」标志——SSH/tmux 异常断开没发 DECRST，鼠标追踪等
+// private mode 残留，渲染端据此复位 xterm（termReset.ts，静默、不清屏）。
+export interface PtyProbeResult {
+  cwd: string;
+  modesReset: boolean;
 }
 
 // Auto-update check state. The main process fetches a self-hosted JSON manifest
