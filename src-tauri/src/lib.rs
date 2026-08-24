@@ -22,18 +22,27 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            // 用户数据路径：~/Library/Application Support/TermStep
-            // 故意用 productName（"TermStep"）而非 Tauri 默认的 identifier
-            // （"local.termstep"）派生，以与 Electron 时代的 userData 路径完全
-            // 一致——这样老用户的工具数据零丢失。app_data_dir() 会给出
-            // .../local.termstep，是错的。
-            let user_data_dir = app
+            // 用户数据根：~/.config/TermStep（XDG 风格，macOS 上也固定此路径）。
+            // 用 dirs::home_dir 拼接而非 app.path().config_dir()——后者在 macOS
+            // 返回 ~/Library/Application Support，与目标不符。
+            // 历史：Electron→Tauri 时代曾用 ~/Library/Application Support/TermStep
+            // （当时刻意与 Electron userData 一致求零迁移），该目录混入了 Chromium
+            // 运行时残留，现启动时自动搬迁到新根并清理（migrate_legacy_root）。
+            let user_data_dir = dirs::home_dir()
+                .expect("no home dir")
+                .join(".config")
+                .join("TermStep");
+            // 迁移时序（全部同步、幂等，在任何 scan/seed/pty 之前）：
+            // 0) 根搬迁：旧根（~/Library/Application Support/TermStep，派生方式与
+            //    老代码一致）的自有数据 → 新根；搬空后清理旧根。必须最先执行，
+            //    后续所有迁移作用于新根。
+            let legacy_root = app
                 .path()
                 .config_dir()
                 .expect("no config_dir")
                 .join("TermStep");
-            // 迁移时序（全部同步、幂等，在任何 scan/seed/pty 之前）：
-            // 1) 先把旧布局（tools/ + quick-commands.md 直接在 user_data_dir 下）
+            let _ = tool_io::migrate_legacy_root_blocking(&legacy_root, &user_data_dir);
+            // 1) 再把旧布局（tools/ + quick-commands.md 直接在 user_data_dir 下）
             //    搬到 configs/ 子目录（configs 成为 git 仓库根）。
             let _ = tool_io::migrate_to_configs_blocking(&user_data_dir);
             let configs_dir = user_data_dir.join("configs");
@@ -184,7 +193,8 @@ pub fn run() {
                     .clone();
                 let av = app.package_info().version.to_string();
                 // state_file 从 manage 的 UpdateStateFile 取（不能用 app_data_dir——
-                // 那会派生出 local.termstep 而非 TermStep 路径）。
+                // 那会按 identifier 派生出 .../local.termstep，而非
+                // ~/.config/TermStep 数据根）。
                 let sf = app
                     .state::<commands::UpdateStateFile>()
                     .inner()

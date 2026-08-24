@@ -42,4 +42,4 @@ termstep-tool.json
 .zcode/
 
 # TermStep 用户数据软链（指向 ~/Library/Application Support/TermStep，仅本机调试用）
-ln_library_data
+ln_config_data

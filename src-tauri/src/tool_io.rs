@@ -604,6 +604,96 @@ pub fn migrate_to_configs_blocking(user_data_dir: &Path) -> bool {
     changed
 }
 
+/// 根搬迁：旧根（Electron 时代 ~/Library/Application Support/TermStep）→
+/// 新根（~/.config/TermStep）。选择性只搬自有条目（configs/、update-state.json），
+/// 绝不碰旧根里的 Chromium 运行时残留（Cache/Cookies/Local Storage 等）与
+/// 用户手工备份（tools.bak-polluted）。
+///
+/// 遗留布局（tools/ + quick-commands.md 直接在根下）仅当新旧根都没有 configs/
+/// 时才搬——那是老版本直升用户的真数据，搬完后由 migrate_to_configs_blocking
+/// 包进 configs/。已有 configs/ 时旧根里的 tools/ 必是陈旧残留（迁移后应用只写
+/// configs/tools），留在原地按垃圾处理。
+///
+/// 清理旧根：搬迁后旧根不再残留任何有效自有条目时，删除整个旧根（含 Chromium
+/// 垃圾与手工备份，用户决策）。任一自有条目仍在旧根（rename 失败 / 新旧根同名
+/// 冲突而跳过）→ 保留旧根并告警——宁可留垃圾，不毁可能含数据的目录。
+///
+/// 幂等：同卷 rename 移走源即状态，源的存在性天然代替标志文件，无需 .migrated。
+/// 同步（std::fs）：必须在任何 scan/seed/pty 之前、在 migrate_to_configs_blocking
+/// 之前调用（迁移链第 0 步）。
+pub fn migrate_legacy_root_blocking(legacy_root: &Path, new_root: &Path) -> bool {
+    if !legacy_root.exists() {
+        return false; // 全新安装或已搬迁完毕
+    }
+    if let Err(e) = std::fs::create_dir_all(new_root) {
+        eprintln!("migrate_legacy_root: create_dir_all failed: {}", e);
+        return false;
+    }
+
+    // 已有 configs/（无论在哪一侧）→ 旧根的 tools//quick-commands.md 是陈旧残留，
+    // 不搬，随旧根清理。
+    let has_configs =
+        legacy_root.join("configs").exists() || new_root.join("configs").exists();
+
+    let mut changed = false;
+    for name in ["configs", "update-state.json"] {
+        if rename_owned(legacy_root, new_root, name) {
+            changed = true;
+        }
+    }
+    if !has_configs {
+        for name in ["tools", "quick-commands.md"] {
+            if rename_owned(legacy_root, new_root, name) {
+                changed = true;
+            }
+        }
+    }
+
+    // 清理判定：所有「应搬走的」自有条目都已不在旧根 → 剩下的全是垃圾，删整个旧根。
+    let blockers: &[&str] = if has_configs {
+        &["configs", "update-state.json"]
+    } else {
+        &["configs", "update-state.json", "tools", "quick-commands.md"]
+    };
+    if blockers.iter().all(|n| !legacy_root.join(n).exists()) {
+        match std::fs::remove_dir_all(legacy_root) {
+            Ok(()) => {
+                // 应用删除用户目录是重动作，必须留痕。
+                eprintln!(
+                    "migrate_legacy_root: removed legacy root {}",
+                    legacy_root.display()
+                );
+                changed = true;
+            }
+            Err(e) => eprintln!("migrate_legacy_root: remove old root failed: {}", e),
+        }
+    } else {
+        eprintln!(
+            "migrate_legacy_root: legacy root kept (owned entries remain): {}",
+            legacy_root.display()
+        );
+    }
+
+    changed
+}
+
+/// 搬单个自有条目：源存在且目标不存在时同卷 rename（原子、瞬时）；目标已存在 →
+/// 新数据优先，跳过不覆盖（降级再升级等边缘场景，两边数据都可能有效）。
+fn rename_owned(legacy_root: &Path, new_root: &Path, name: &str) -> bool {
+    let src = legacy_root.join(name);
+    let dst = new_root.join(name);
+    if !src.exists() || dst.exists() {
+        return false;
+    }
+    match std::fs::rename(&src, &dst) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("migrate_legacy_root: rename {} failed: {}", name, e);
+            false
+        }
+    }
+}
+
 /// tool_reorder：写排序索引 order.json（不再遍历各 tool.json）。对偶 TOOL_REORDER。
 pub async fn tool_reorder(tools_dir: &Path, ordered_ids: &[String]) -> std::io::Result<()> {
     write_order_index(tools_dir, ordered_ids).await
@@ -1260,6 +1350,105 @@ mod tests {
             dir.join("configs").join(MIGRATION_MARKER).exists(),
             "marker written even when nothing to move"
         );
+    }
+
+    // ── migrate_legacy_root_blocking ──────────────────────────────────────────
+    #[test]
+    fn migrate_legacy_root_moves_owned_and_cleans_old_root() {
+        // 典型升级场景：旧根有 configs/ + update-state.json + 陈旧 tools/ 残留 +
+        // Chromium 垃圾 + 手工备份 → 自有条目搬到新根，其余随旧根整体清理。
+        let _old = tmp();
+        let _new = tmp();
+        let o = _old.path();
+        let n = _new.path();
+        std::fs::create_dir_all(o.join("configs/tools/a")).unwrap();
+        std::fs::write(o.join("configs/tools/a/tool.json"), "{}").unwrap();
+        std::fs::write(o.join("update-state.json"), r#"{"version":"0.8.9"}"#).unwrap();
+        // 陈旧 tools/（已有 configs/ 时它是迁移前残留，不是真数据）
+        std::fs::create_dir_all(o.join("tools")).unwrap();
+        std::fs::write(o.join("tools/order.json"), "{}").unwrap();
+        // Chromium 运行时垃圾 + 用户手工备份
+        std::fs::create_dir_all(o.join("Cache")).unwrap();
+        std::fs::write(o.join("Cache/blob"), "x").unwrap();
+        std::fs::create_dir_all(o.join("tools.bak-polluted")).unwrap();
+
+        assert!(migrate_legacy_root_blocking(o, n));
+
+        assert!(n.join("configs/tools/a/tool.json").exists());
+        assert_eq!(
+            std::fs::read_to_string(n.join("update-state.json")).unwrap(),
+            r#"{"version":"0.8.9"}"#
+        );
+        assert!(!o.exists(), "legacy root must be cleaned after migration");
+        assert!(
+            !n.join("tools").exists(),
+            "stale tools/ must not be carried over"
+        );
+    }
+
+    #[test]
+    fn migrate_legacy_root_moves_legacy_layout_when_no_configs() {
+        // Electron 老版本直升：无 configs/，tools/ + quick-commands.md 是真数据，
+        // 原样搬到新根（后续由 migrate_to_configs_blocking 包进 configs/）。
+        let _old = tmp();
+        let _new = tmp();
+        let o = _old.path();
+        let n = _new.path();
+        std::fs::create_dir_all(o.join("tools/git")).unwrap();
+        std::fs::write(o.join("tools/git/tool.json"), "{}").unwrap();
+        std::fs::write(o.join("quick-commands.md"), "# quick").unwrap();
+        std::fs::create_dir_all(o.join("Cache")).unwrap();
+
+        assert!(migrate_legacy_root_blocking(o, n));
+
+        assert!(n.join("tools/git/tool.json").exists());
+        assert!(n.join("quick-commands.md").exists());
+        assert!(!o.exists(), "junk-only leftovers must be cleaned");
+    }
+
+    #[test]
+    fn migrate_legacy_root_noop_when_old_missing() {
+        let _old = tmp();
+        let _new = tmp();
+        // 旧根不存在的路径（全新安装或已搬迁）
+        let missing = _old.path().join("no-such-root");
+        assert!(!migrate_legacy_root_blocking(&missing, _new.path()));
+        assert!(!migrate_legacy_root_blocking(&missing, _new.path()));
+    }
+
+    #[test]
+    fn migrate_legacy_root_prefers_new_and_keeps_old_on_conflict() {
+        // 新旧根都有 configs/（降级再升级边缘）：不覆盖任何一边，保留旧根。
+        let _old = tmp();
+        let _new = tmp();
+        let o = _old.path();
+        let n = _new.path();
+        std::fs::create_dir_all(o.join("configs")).unwrap();
+        std::fs::write(o.join("configs/marker-old.txt"), "old").unwrap();
+        std::fs::create_dir_all(n.join("configs")).unwrap();
+        std::fs::write(n.join("configs/marker-new.txt"), "new").unwrap();
+
+        assert!(!migrate_legacy_root_blocking(o, n));
+
+        assert!(n.join("configs/marker-new.txt").exists(), "new data wins");
+        assert!(
+            o.join("configs/marker-old.txt").exists(),
+            "old root kept when owned entry remains"
+        );
+    }
+
+    #[test]
+    fn migrate_legacy_root_idempotent_after_success() {
+        let _old = tmp();
+        let _new = tmp();
+        let o = _old.path();
+        std::fs::create_dir_all(o.join("configs")).unwrap();
+        std::fs::write(o.join("configs/x"), "1").unwrap();
+
+        assert!(migrate_legacy_root_blocking(o, _new.path()));
+        // 旧根已清理，第二遍调用 no-op（幂等）
+        assert!(!migrate_legacy_root_blocking(o, _new.path()));
+        assert!(_new.path().join("configs/x").exists());
     }
 
     // ── new_source_id ──────────────────────────────────────────────────────────

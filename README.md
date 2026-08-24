@@ -14,7 +14,7 @@
 - **工具就是磁盘上的数据**：每个工具是一个目录（`tool.json` + `help.md`），不是代码。整个 UI 从扫描这些目录派生而来，可用任意编辑器改，也可在应用内编辑。
 - **磁盘改动自动刷新**：文件监听监视工具目录，新建 / 编辑 / 删除 / 重排工具后 UI 自动更新，无需手动刷新状态。
 - **零配置即可用**：首次启动自动生成一个示例 Git 工具。
-- **纯本地、无后端**：所有数据在本机 `~/Library/Application Support/TermStep/` 下；不联网、不上传（仅「检查更新」按需拉取版本清单）。
+- **纯本地、无后端**：所有数据在本机 `~/.config/TermStep/` 下；不联网、不上传（仅「检查更新」按需拉取版本清单）。
 
 ---
 
@@ -210,7 +210,7 @@ npm run dev        # 启动开发模式（Tauri dev：Vite dev server + Rust 窗
 
 ## 🗂 工具数据格式
 
-每个工具是 `~/Library/Application Support/TermStep/configs/tools/<UUID>/` 下的一个目录：
+每个工具是 `~/.config/TermStep/configs/tools/<UUID>/` 下的一个目录：
 
 **`tool.json`** —— 工具元数据：
 

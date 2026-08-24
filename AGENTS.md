@@ -101,7 +101,7 @@ termstep/
 ├── assets/icon.png           # 应用图标源（tracked；icons/ 是生成的，gitignored）
 ├── docs/superpowers/         # 设计文档与实现计划（specs/ plans/）
 ├── skills/                   # 项目专属 skill 源文件（termstep-tool-gen），~/.zcode/skills 下软链指回这里（见 §11）
-└── ln_library_data -> ~/Library/Application Support/TermStep   # 用户数据软链
+└── ln_config_data -> ~/.config/TermStep   # 用户数据软链
 ```
 
 构建产物（均 gitignored）：`dist/`（Vite 渲染端）、`out/`（旧 electron 残留，可忽略）、`release/`（dmg）、`src-tauri/target/`（Rust）、`src-tauri/icons/`、`src-tauri/gen/`。
@@ -221,7 +221,8 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 
 ### 6.5 迁移链（`src-tauri/src/tool_io.rs`，启动时同步执行）
 
-启动时在 `lib.rs setup()` 里、任何 scan/seed/pty **之前**、同步执行三步迁移（全部幂等）：
+启动时在 `lib.rs setup()` 里、任何 scan/seed/pty **之前**、同步执行四步迁移（全部幂等）：
+0. **`migrate_legacy_root_blocking`**：根搬迁——旧根 `~/Library/Application Support/TermStep`（Electron 时代数据根）的自有条目（`configs/`、`update-state.json`；无 configs 时含遗留 `tools/`、`quick-commands.md`）→ 新根 `~/.config/TermStep`。选择性 rename，**绝不碰**旧根里的 Chromium 运行时残留与用户手工备份；搬空有效自有条目后**删除整个旧根**（用户决策，2026-08）。幂等判断不用标志文件——同卷 rename 移走源，源的存在性即状态。任一自有条目仍在旧根（rename 失败/新旧同名冲突）→ 保留旧根不删。必须最先执行，后续迁移都作用于新根。
 1. **`migrate_to_configs_blocking`**：旧布局（`tools/` + `quick-commands.md` 直接在 user_data_dir）→ `configs/` 子目录（configs 成为 git 仓库根）。幂等判断**用 `configs/.migrated` 标志文件**（不用 configs 是否存在——create_dir 成功但 rename 失败会留空 configs，那种仍需重试）。标志文件必须在所有 rename 成功后才写。
 2. **`migrate_to_uuid_ids_blocking`**：旧 slug 目录名 → UUID（解决导入同名冲突）。已是合法 UUID（含版本位校验）跳过。
 3. **`migrate_order_to_index_blocking`**：每个 tool.json 的 `order` 字段 → 单一 `order.json` 索引，并清理 tool.json 的 order。必须在 UUID 迁移**之后**（索引存迁移后的 UUID 目录名）。
@@ -248,12 +249,12 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 
 ## 7. 存储位置
 
-- 用户数据：`app.path().config_dir().join("TermStep")` = `~/Library/Application Support/TermStep`。
-  - **故意用 productName（"TermStep"）而非 identifier（"local.termstep"）派生**，以与 Electron 时代 userData 路径完全一致——老用户零迁移。`app_data_dir()` 会给 `.../local.termstep`，是**错的**。
-  - 项目根的 `ln_library_data` 软链指向这里，方便直接查看用户数据。
-- 工具：`.../TermStep/configs/tools/<UUID>/`（configs/ 是 git 仓库根）。
-- 快捷命令：`.../TermStep/configs/quick-commands.md`。
-- 更新状态缓存：`.../TermStep/update-state.json`。
+- 用户数据根：`~/.config/TermStep`，由 `dirs::home_dir().join(".config").join("TermStep")` 派生（XDG 风格，macOS 上也固定此路径）。**不能**用 `app.path().config_dir()`（macOS 返回 `~/Library/Application Support`）或 `app_data_dir()`（按 identifier 给 `.../local.termstep`）。
+  - 历史：Electron→Tauri 时代曾用 `~/Library/Application Support/TermStep`（当时刻意与 Electron userData 一致求零迁移），2026-08 起迁到 `~/.config/TermStep`；旧根由启动迁移自动搬迁并清理（见 §6.5 第 0 步），老用户零感知。
+  - 项目根的 `ln_config_data` 软链指向这里，方便直接查看用户数据。
+- 工具：`~/.config/TermStep/configs/tools/<UUID>/`（configs/ 是 git 仓库根）。
+- 快捷命令：`~/.config/TermStep/configs/quick-commands.md`。
+- 更新状态缓存：`~/.config/TermStep/update-state.json`。
 
 ---
 
@@ -273,7 +274,7 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 12. **多个 `Mutex<PathBuf>` State 要 newtype** —— `ToolsDir`/`ConfigsDir`/`UpdateStateFile`，否则 Tauri 按类型查找冲突（§5.1）。
 13. **所有取锁用 `lock_or_recover!`** —— 跳过中毒锁，避免一处 panic 永久瘫痪子系统。
 14. **SSRF 守卫 scheme 大小写不敏感**（旧 bug：大写 scheme 绕过）；IPv4 等价写法（八进制/十六进制/前导零）一律拒（§6.7）。
-15. **迁移幂等判断用标志文件**，不靠目录是否存在（§6.5）。
+15. **迁移幂等判断**：目录内迁移用标志文件，不靠目录是否存在（§6.5）；根搬迁这类「rename 移走源」的迁移用源存在性判定即可，无需标志文件。
 16. **listen 是异步的**，`useTauriEvent` 包装，别把返回值直接当 effect cleanup。
 17. **scan 仅在 `useRemote:true` 才读 mdUrl** —— 否则指向 `~/Downloads` 等受 TCC 保护目录的 mdUrl 会每次扫描触发 macOS「想访问下载文件夹」弹窗（回归测试覆盖）。
 18. **macOS `ps -o tpgid` 不可靠**（返回值与进程自身 pgid 混同，实测互相矛盾）——前台进程组检测必须走 `master.process_group_leader()`（tcgetpgrp on master fd，portable-pty trait 自带），时间线已实证（§6.2 模式残留自动复位）。
@@ -287,7 +288,7 @@ portable-pty 池，keyed by toolId。**6 个微妙行为**（文件头注释列�
 2. **当前版本**：`package.json` 的 `version`（现 0.9.2）。升版本用 `npm run version:set`，**完整发版用 `release-wizard` skill**（说「用 release-wizard 发版」），见 §2「发布新版本」。
 3. **类型/测试基线**：改动前先 `npm run typecheck` + `npm run test` + `cargo test --manifest-path src-tauri/Cargo.toml` 确认全绿，再动。
 4. **改 IPC**：遵循四步（§5.1），三端都要改，否则类型断裂。
-5. **改用户数据格式**：考虑迁移（§6.5），迁移要幂等、同步、在 scan/seed/pty 之前、用标志文件。
+5. **改用户数据格式**：考虑迁移（§6.5），迁移要幂等、同步、在 scan/seed/pty 之前（幂等判定方式见坑点 15）。
 6. **涉及远程/文件读取**：检查 SSRF/敏感路径/扩展名白名单/禁重定向/大小上限（§6.7）。
 7. **涉及 pty**：回顾 6 个微妙行为 + generation guard（§6.3）。
 8. **提交**：仅在被要求时提交/推送；在 `main` 上先开分支。本项目提交信息多为中文，前缀 `feat:`/`fix:`/`ui:`/`docs:`/`chore:`，常带版本号 `(0.9.x)`。

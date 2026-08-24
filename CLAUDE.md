@@ -53,7 +53,7 @@ Tool meta `cwd`/`shell`/`env` flow as `PtySpawnOpts` into `PtyService::ensure` (
 `renderer/lib/markdown.ts` overrides the `fence` rule: a ` ```buttons ` fence is parsed by `shared/buttonBlock.ts` into `<button class="cmd-btn">` elements (one per line). A trailing ` // edit` on a line makes it paste-without-Enter (edit mode); otherwise the command is pasted and Enter is sent. A line whose trimmed content **starts with** `//` is rendered as a plain-text label (`<div class="cmd-text">`) instead of a button. A line whose trimmed content **starts with** `#` is a shell-style **comment** — it stays in the md source only and is never rendered. `HelpPane` delegates clicks on `.cmd-btn` to `runCommand`; text rows have no `data-cmd` and are ignored.
 
 ### Storage location
-Tools live under `app.path().app_data_dir()/tools` = `~/Library/Application Support/TermStep/tools` (Tauri v2's `app_data_dir` on macOS equals Electron's userData path — they're derived from the same bundle identifier `local.termstep`, so a rename to/from Electron needs no data migration).
+Data root is `~/.config/TermStep` (derived via `dirs::home_dir().join(".config/termstep")` — XDG-style even on macOS; do NOT use `app.path().config_dir()`, which returns `~/Library/Application Support` on macOS). Tools live under `~/.config/TermStep/configs/tools/<UUID>/` (configs/ is the vcs git root); `update-state.json` sits at the data root. Legacy installs at `~/Library/Application Support/TermStep` are migrated automatically on startup (`tool_io::migrate_legacy_root_blocking`, the chain's step 0), which also removes the old root once all owned entries (configs/, update-state.json) have been moved.
 
 ## Gotchas (non-obvious, learned the hard way)
 
