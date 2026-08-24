@@ -157,8 +157,9 @@ termstep/
 - **TerminalPane**：每个工具一个 `TerminalView`，切工具只 toggle `display:none`。xterm Terminal + pty **懒创建**于首次激活，之后跨切换常驻。
 - **TerminalView**：xterm 实例 + fit；注意 `display:none` 容器首帧渲染坑（§6.2）。
 - **HelpPane**：markdown 渲染（markdown-it），拦截 `.cmd-btn` 点击 → `runCommand`；TOC + 长内容分节折叠。
-- **EditorPane**（工具内编辑层）：**不是 modal**——在 `.main-area` 内以 `position:absolute` 覆盖层展开（盖住顶栏+文档+终端，侧栏保留可点，z-index 150）。每工具一个常驻实例（App 的 `editingIds`），切工具只 `display:none` 不卸载，**草稿保留**；可多工具同时编辑（侧栏 ✏️ 标记）。关闭（×/取消）经 `shared/editorDraft.ts` 脏检测，有未保存修改先 confirm 再丢弃；保存 last-writer-wins（编辑期间忽略磁盘变更，vcs 快照兜底）。表单是普通 textarea（无 CodeMirror）。
-- **Sidebar**：工具列表 + 拖拽排序 + 新建/删除/导入导出。
+- **EditorPane**（工具内编辑层）：**不是 modal**——在 `.main-body` 内以 `position:absolute` 覆盖层展开（只盖文档+终端主体，**顶栏与侧栏保留可点**，z-index 150；覆盖态下顶栏操作按钮经 `.term-header.overlay-open` 隐藏锁定，仅 ☰ 工具列表开关可点）。每工具一个常驻实例（App 的 `editingIds`），切工具只 `display:none` 不卸载，**草稿保留**；可多工具同时编辑（侧栏 ✏️ 标记）。关闭（×/取消）经 `shared/editorDraft.ts` 脏检测，有未保存修改先 confirm 再丢弃；保存 last-writer-wins（编辑期间忽略磁盘变更，vcs 快照兜底）。表单是普通 textarea（无 CodeMirror）。
+- **Sidebar**：工具列表 + 拖拽排序 + 新建/删除/导入导出。顶行有 ‹ 收起按钮（编辑/预览覆盖层盖住主区顶栏，折叠入口放侧栏内才始终可点；顶栏 ☰ 展开按钮仅折叠态渲染）。
+- **PreviewOverlay**（工具内预览层）：与编辑层同形态的 `.main-body` 内 absolute 覆盖层（z-index 150，顶栏/侧栏可点、顶栏按钮同样锁定），但面板**全宽**（编辑限 900px）。每工具一个常驻实例（App 的 `previews: Record<toolId, PreviewState>`），切工具只 `display:none` 不卸载（iframe 不重载），侧栏**无**标记。web(iframe)/md/txt/loading/error 五态；Esc 按 `active` prop 门控（多常驻实例都挂全局监听会全体响应）；点遮罩直接关（无草稿）。
 - **QuickCommands**：全局快捷命令下拉（读 `quick-commands.md`，在当前激活终端执行）。
 - **ConfigRecords**：配置版本历史 modal（`__global__`=全部 / toolId=单工具）。
 - **ParamPromptModal / QuickAddModal / HelpModal**：各种弹窗。

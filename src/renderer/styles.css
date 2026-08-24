@@ -119,14 +119,26 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   overflow: visible; /* 设置面板需从底部向上滑出、越过列表区，故不裁剪 */
   color: var(--text);
 }
-/* 顶部顶栏：与中、右列顶栏等高，固定不滚动。放「新建工具」。 */
+/* 顶部顶栏：与中、右列顶栏等高，固定不滚动。放「‹ 收起」+「新建工具」。 */
 .sidebar-top {
   flex: 0 0 var(--bar-h);
-  display: flex; align-items: center;
+  display: flex; align-items: center; gap: 6px;
   padding: 0 8px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
+/* 收起侧栏的 ‹ 图标按钮：尺寸/交互与顶栏 .panel-toggle 一致（28×28、透明底、
+   hover 提亮）。放侧栏内是刻意的——编辑/预览覆盖层盖住主区顶栏，这里始终可点。 */
+.sidebar-collapse {
+  flex: 0 0 auto;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; line-height: 1; padding: 0;
+  color: var(--text-2); background: transparent;
+  border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar-collapse:hover { background: var(--surface-2); color: var(--text); }
 /* 中间工具列表：唯一可滚动区域。 */
 .sidebar-list {
   list-style: none; padding: 8px; margin: 0;
@@ -182,10 +194,12 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   opacity: 0.85;
 }
 .new-tool {
-  width: 100%; padding: 6px 11px; cursor: pointer; font-size: 12px;
+  flex: 1 1 auto; min-width: 0;
+  padding: 6px 11px; cursor: pointer; font-size: 12px;
   border: 1px dashed var(--border-strong); background: transparent;
   color: var(--text-2); border-radius: var(--radius-sm);
   line-height: 16px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .new-tool:hover {
@@ -256,7 +270,8 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 }
 .main-body {
   flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden;
-  position: relative; /* 给 .term-pane.hidden（absolute 定位）做尺寸基准 */
+  position: relative; /* .term-pane.hidden 与编辑/预览覆盖层（absolute inset:0）的
+     定位与尺寸基准：覆盖层只盖主体，顶栏在其外保持露出可点 */
 }
 .main-body.layout-lr { flex-direction: row; }
 .main-body.layout-tb { flex-direction: column; }
@@ -327,6 +342,15 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .term-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+/* 编辑/预览覆盖层打开时（App 派生 .overlay-open）：顶栏的终端/文档操作按钮整体
+   隐藏禁点——这些按钮作用于被覆盖的终端/文档区，覆盖态下点击会产生错乱状态
+   （如隐藏终端、重开编辑器）。只留 ☰ 工具列表开关（.panel-toggle，不在
+   .term-actions 内）可点，保证覆盖态下仍能收起/展开工具列表。
+   用 visibility:hidden 而非 pointer-events:none：后者只挡指针，按钮仍可被
+   Tab 聚焦后回车触发；visibility 连焦点与 Tab 序一并移除，且保留布局占位。 */
+.term-header.overlay-open .term-actions {
+  visibility: hidden;
+}
 /* 按钮分组容器：终端组在左、文档组在右，中间以 .term-actions-sep 竖线分隔。
    每组内按钮紧凑排列，整体宽度由内容决定。 */
 .term-group { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
@@ -691,9 +715,11 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   padding: 14px;
 }
 
-/* 工具内编辑层：盖住 .main-area 整个区域（顶栏 + 文档/终端主体），侧栏保留可点。
+/* 工具内编辑层：挂在 .main-body 内，absolute inset:0 只盖文档/终端主体，
+   顶栏与侧栏保留可点（顶栏操作按钮经 .term-header.overlay-open 锁定）——
+   折叠态 ☰ 展开按钮在顶栏，必须始终可达。
    外观类似 modal：灰色遮罩 + 居中的边框面板（上限 900px），上下 padding 露出
-   少量灰边。z-index 150：盖住 doc-peek(50) 与顶栏；低于 toast(200) 与其他
+   少量灰边。z-index 150：盖住主体内容；低于侧栏 peek(160)、toast(200) 与其他
    modal(300)。遮罩点击不关闭（防误丢草稿，见 0001）。
    注意：不要给这层加 backdrop-filter——absolute + display 切换的常驻层叠上
    模糊，WebKit 会把子内容绘制错位（编辑器打开后表单与 tab 行之间出现空白，
@@ -1155,10 +1181,32 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .modal-actions button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .modal-actions button:disabled { opacity: 0.6; cursor: default; }
 
-/* PreviewOverlay: 弹层式网页/文档预览。比其他 modal 更宽更高，沉浸式预览。
-   复用 .modal-overlay / .modal，仅增加尺寸 + 自定义工具栏/body。
+/* PreviewOverlay: 工具内预览层，同 .editor-overlay 形态——挂 .main-body 内
+   只盖文档/终端主体，顶栏与侧栏保留可点（顶栏按钮经 .overlay-open 锁定）；
+   实例随工具常驻（切工具只隐藏不卸载）。
+   面板不限宽（编辑限 900px，预览全宽沉浸式）；同样不加 backdrop-filter
+   （WebKit 常驻层叠模糊绘制错位，见 .editor-overlay 注释）。
+   点遮罩关闭（预览无草稿，区别于编辑器的防误关）。z-index 150：盖住主体；
+   低于侧栏 peek(160)、toast(200) 与其他 modal(300)。
    web 用 iframe；md 复用 .help 排版（缩小字号适配弹层）；txt 用 <pre>。 */
-.preview-modal { width: 95vw; max-width: 1400px; max-height: 90vh; height: 90vh; }
+.preview-overlay {
+  position: absolute; inset: 0; z-index: 150;
+  display: flex; align-items: stretch; justify-content: center;
+  padding: 18px 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+/* 全宽 modal 面板：占满遮罩内容区（仅留 padding 灰边）。 */
+.preview-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  isolation: isolate;
+}
 .preview-toolbar {
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
   padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px;
@@ -1230,7 +1278,9 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
    from the terminal. The whole overlay (incl. any inner padding) captures
    hover, bridging the toggle→panel transit so the panel never snaps shut. */
 .peek {
-  z-index: 50;
+  /* 160：高于编辑/预览覆盖层(150)——覆盖层打开时 hover ☰ 仍能浮出工具列表
+     （peek 要浮在覆盖层遮罩之上）；低于 toast(200) 与 modal(300)。 */
+  z-index: 160;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border);
   border-top: 0;
@@ -1241,7 +1291,9 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 /* The docked panels are stretched by the flex row; inside the fixed peek they
    need an explicit height so their own overflow-y scrolling works. */
 .peek > * { height: 100%; }
-/* Collapse/expand + hover-peek toggle, one at each end of the term-header. */
+/* Collapse/expand + hover-peek toggle, one at each end of the term-header.
+   左侧 ☰ 只在侧栏折叠时渲染（展开态的收起按钮在侧栏顶行 .sidebar-collapse），
+   右侧文档切换恒在。 */
 .panel-toggle {
   flex: 0 0 auto;
   width: 28px; height: 28px;
@@ -1252,6 +1304,10 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   transition: background 0.12s, color 0.12s;
 }
 .panel-toggle:hover { background: var(--surface-2); color: var(--text); }
+/* ☰ 展开按钮与侧栏顶行 ‹ 收起按钮（.sidebar-collapse）是同一控件的两个状态，
+   左缘必须重合，切换时按钮不能横向跳动。‹ 在 .sidebar-top 的 8px 内边距里，
+   ☰ 在 .term-header 的 12px 里 —— 负边距抵消 4px 差值（两处 padding 改动需同步）。 */
+.panel-toggle.pt-left { margin-left: -4px; }
 
 /* Active-tool badge shown in the term-header when the sidebar is collapsed
    (the highlighted list entry is no longer visible). Sits right after the path.

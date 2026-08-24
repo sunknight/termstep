@@ -3,8 +3,8 @@ import { md } from '../lib/markdown';
 import { api } from '../lib/api';
 
 // 「请打开预览」的请求（由 HelpPane 链接点击产生，App 消费）。
-// App 收到后启动对应流程：web 直接 setPreview；doc 先 setPreview(loading) 再
-// fetch_md_preview 再 setPreview(md/txt/error)。
+// App 收到后启动对应流程：web 直接写入；doc 先 loading 再
+// fetch_md_preview 再 md/txt/error。
 export type PreviewRequest =
   | { type: 'web'; url: string; title: string }
   | { type: 'doc'; url: string; title: string; isTxt: boolean };
@@ -21,11 +21,16 @@ export type PreviewState =
   | { kind: 'loading'; title: string }
   | { kind: 'error'; title: string; message: string };
 
-// 弹层预览。复用现有 .modal-overlay / .modal 模式（同 z-index 300、Esc 关闭、点背景关闭）。
-// 相比其他 modal 更宽更高（.preview-modal），适合沉浸式预览网页与文档。
-// 工具栏极简：左侧标题，右侧动作（web 有「在浏览器打开」+ 关闭，文档仅关闭）。
-export function PreviewOverlay(props: { state: PreviewState; onClose: () => void }) {
-  const { state, onClose } = props;
+// 工具内预览层的面板内容。App 在 .main-area 内渲染 .preview-overlay（遮罩 + 显隐）
+// 与 .preview-panel（全宽面板），本组件只渲染工具栏 + body。实例随工具常驻：切工具
+// 仅隐藏不卸载（iframe 不重载、渲染状态保留），关闭才销毁。Esc 按 active 门控——
+// 多个常驻实例都挂全局监听会全体响应（同编辑器 Cmd+Enter 的坑）。
+export function PreviewOverlay(props: {
+  state: PreviewState;
+  active: boolean;
+  onClose: () => void;
+}) {
+  const { state, active, onClose } = props;
 
   // md 内容预渲染（仅 md 态需要，txt/loading/error/web 不用）。
   const mdHtml = useMemo(
@@ -33,66 +38,65 @@ export function PreviewOverlay(props: { state: PreviewState; onClose: () => void
     [state],
   );
 
-  // Esc 关闭（与其他 modal 一致）。
+  // Esc 关闭（与其他 modal 一致），仅当前可见实例响应。
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [active, onClose]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal preview-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="preview-toolbar">
-          <span className="preview-title" title={state.title}>
-            {state.kind === 'web' ? '🔗' : state.kind === 'error' ? '⚠️' : '📄'} {state.title}
-          </span>
-          <div className="preview-actions">
-            {state.kind === 'web' && (
-              <button
-                className="preview-ext"
-                title="在默认浏览器打开"
-                onClick={() => void api.shell.openExternal(state.url)}
-              >
-                ↗ 在浏览器打开
-              </button>
-            )}
-            <button className="preview-close" title="关闭 (Esc)" onClick={onClose}>
-              ✕
-            </button>
-          </div>
-        </div>
-        <div className="preview-body">
+    <>
+      <div className="preview-toolbar">
+        <span className="preview-title" title={state.title}>
+          {state.kind === 'web' ? '🔗' : state.kind === 'error' ? '⚠️' : '📄'} {state.title}
+        </span>
+        <div className="preview-actions">
           {state.kind === 'web' && (
-            <iframe
-              className="preview-iframe"
-              src={state.url}
-              title={state.title}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-              referrerPolicy="no-referrer"
-            />
+            <button
+              className="preview-ext"
+              title="在默认浏览器打开"
+              onClick={() => void api.shell.openExternal(state.url)}
+            >
+              ↗ 在浏览器打开
+            </button>
           )}
-          {state.kind === 'md' && (
-            <div className="preview-scroll">
-              <div className="help" dangerouslySetInnerHTML={{ __html: mdHtml }} />
-            </div>
-          )}
-          {state.kind === 'txt' && (
-            <pre className="preview-pre">{state.content}</pre>
-          )}
-          {state.kind === 'loading' && (
-            <div className="preview-status">加载中…</div>
-          )}
-          {state.kind === 'error' && (
-            <div className="preview-status preview-error">
-              <div className="preview-error-icon">⚠️</div>
-              <div className="preview-error-msg">{state.message}</div>
-            </div>
-          )}
+          <button className="preview-close" title="关闭 (Esc)" onClick={onClose}>
+            ✕
+          </button>
         </div>
       </div>
-    </div>
+      <div className="preview-body">
+        {state.kind === 'web' && (
+          <iframe
+            className="preview-iframe"
+            src={state.url}
+            title={state.title}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+            referrerPolicy="no-referrer"
+          />
+        )}
+        {state.kind === 'md' && (
+          <div className="preview-scroll">
+            <div className="help" dangerouslySetInnerHTML={{ __html: mdHtml }} />
+          </div>
+        )}
+        {state.kind === 'txt' && (
+          <pre className="preview-pre">{state.content}</pre>
+        )}
+        {state.kind === 'loading' && (
+          <div className="preview-status">加载中…</div>
+        )}
+        {state.kind === 'error' && (
+          <div className="preview-status preview-error">
+            <div className="preview-error-icon">⚠️</div>
+            <div className="preview-error-msg">{state.message}</div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }

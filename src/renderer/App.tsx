@@ -56,8 +56,10 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   // 配置记录 modal：null=关闭；string=per-tool（工具 id）；'__global__'=全部配置记录。
   const [recordsToolId, setRecordsToolId] = useState<string | null>(null);
-  // 预览弹层：null=关闭；否则展示网页/文档/加载中/错误态之一。
-  const [preview, setPreview] = useState<PreviewState | null>(null);
+  // 工具内预览弹层（可多个同时打开）：key=打开预览的工具 id，值=该工具当前
+  // 展示的网页/文档/加载中/错误态。实例随工具常驻（切工具只隐藏不卸载，iframe
+  // 不重载），关闭才从 map 移除。
+  const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
   const [liveCwd, setLiveCwd] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
@@ -86,26 +88,45 @@ export default function App() {
 
   // 打开预览弹层。web 直接展示；doc 先 loading 再 fetch_md_preview（远程/本地统一复用）。
   // 本地路径已由 HelpPane 基于工具 cwd 解析为绝对路径后传入 url。
+  // key 捕获发起时的 activeId：async 期间用户可能切走工具，结果仍写回发起工具。
   const openPreview = async (req: PreviewRequest) => {
+    const id = activeId;
+    if (!id) return;
     if (req.type === 'web') {
-      setPreview({ kind: 'web', url: req.url, title: req.title });
+      setPreviews((m) => ({ ...m, [id]: { kind: 'web', url: req.url, title: req.title } }));
       return;
     }
-    setPreview({ kind: 'loading', title: req.title });
+    setPreviews((m) => ({ ...m, [id]: { kind: 'loading', title: req.title } }));
     try {
       const r = await api.fetchMdPreview(req.url);
-      if (r.error) {
-        setPreview({ kind: 'error', title: req.title, message: r.error });
-      } else {
-        setPreview(
-          req.isTxt
+      // 完成态写入前确认预览未被关掉（loading 期间关闭则不复活）。
+      setPreviews((m) => {
+        if (!(id in m)) return m;
+        if (r.error) {
+          return { ...m, [id]: { kind: 'error', title: req.title, message: r.error } };
+        }
+        return {
+          ...m,
+          [id]: req.isTxt
             ? { kind: 'txt', title: req.title, content: r.markdown }
             : { kind: 'md', title: req.title, content: r.markdown },
-        );
-      }
+        };
+      });
     } catch (e) {
-      setPreview({ kind: 'error', title: req.title, message: String(e) });
+      setPreviews((m) =>
+        id in m ? { ...m, [id]: { kind: 'error', title: req.title, message: String(e) } } : m,
+      );
     }
+  };
+
+  // 关闭某工具的预览（×/Esc/点遮罩共用）。
+  const closePreview = (id: string) => {
+    setPreviews((m) => {
+      if (!(id in m)) return m;
+      const next = { ...m };
+      delete next[id];
+      return next;
+    });
   };
 
   // 终端/文档之间的拖动条。方向由当前工具的 layout 决定：
@@ -163,17 +184,19 @@ export default function App() {
     if (!activeId && tools.length > 0) setActiveId(tools[0].meta.id);
   }, [tools, activeId]);
 
-  // 编辑态随 tools 清理：工具被删（含导入替换/外部变更）时移除其编辑条目，
-  // 避免残留 key 让渲染层挂着不存在的工具。
+  // per-tool 常驻弹层状态（编辑器/预览）随 tools 清理：工具被删（含导入替换/
+  // 外部变更）时移除其条目，避免残留 key 让渲染层挂着不存在的工具。
   useEffect(() => {
-    setEditingIds((m) => {
+    const prune = <T,>(m: Record<string, T>): Record<string, T> => {
       const ids = Object.keys(m);
       if (ids.length === 0) return m;
       const alive = new Set(tools.map((t) => t.meta.id));
       const next = ids.filter((id) => alive.has(id));
       if (next.length === ids.length) return m;
-      return Object.fromEntries(next.map((id) => [id, true as const]));
-    });
+      return Object.fromEntries(next.map((id) => [id, m[id]]));
+    };
+    setEditingIds((m) => prune(m));
+    setPreviews((m) => prune(m));
   }, [tools]);
 
   // Poll the active shell's live cwd (resolved from its OS pid) so the terminal
@@ -283,6 +306,7 @@ export default function App() {
       onReorder={reorderTools}
       onMove={moveTool}
       onNew={createTool}
+      onCollapse={() => setSidebarCollapsed(true)}
       onExport={exportTools}
       onImport={importTools}
       onHelp={() => setHelpOpen(true)}
@@ -320,6 +344,9 @@ export default function App() {
   // docCollapsed 把文档折为浮动 Peek（终端撑满）。派生自 per-tool map。
   const layout = active?.meta.layout ?? 'LR';
   const docCollapsed = !!activeId && !!docCollapsedMap[activeId];
+  // 覆盖层（编辑/预览）打开时锁定顶栏操作按钮（CSS .overlay-open）：这些按钮
+  // 作用于终端/文档区，覆盖态下点击会产生错乱状态；☰ 工具列表开关保持可点。
+  const overlayOpen = !!activeId && !!(editingIds[activeId] || previews[activeId]);
   // termHidden 派生：map 有记录用记录，否则用配置默认值（effect 会异步补进 map）。
   const termHidden = activeId
     ? activeId in termHiddenMap
@@ -331,17 +358,23 @@ export default function App() {
     <div className="app">
       {!sidebarCollapsed && sidebarContent}
       <section className="main-area">
-        {/* 顶栏：跨布局一致，始终在主区顶部 */}
-        <div className="term-header">
-          <PanelToggle
-            side="left"
-            collapsed={sidebarCollapsed}
-            icon="☰"
-            title="工具列表"
-            onToggle={() => setSidebarCollapsed((v) => !v)}
-            peekContent={sidebarContent}
-            closePeekOnClick
-          />
+        {/* 顶栏：跨布局一致，始终在主区顶部。覆盖层打开时加 .overlay-open
+            锁定终端/文档操作按钮（☰ 开关保持可点，用于收起/展开工具列表）。 */}
+        <div className={`term-header${overlayOpen ? ' overlay-open' : ''}`}>
+          {/* 折叠态的展开入口（☰ + hover peek）留在这里；展开态的收起入口在
+              侧栏顶行（Sidebar onCollapse）——编辑/预览覆盖层盖住主区顶栏，
+              收起按钮放顶栏会在覆盖层打开时不可点。 */}
+          {sidebarCollapsed && (
+            <PanelToggle
+              side="left"
+              collapsed={sidebarCollapsed}
+              icon="☰"
+              title="工具列表"
+              onToggle={() => setSidebarCollapsed((v) => !v)}
+              peekContent={sidebarContent}
+              closePeekOnClick
+            />
+          )}
           {sidebarCollapsed && active && (
             <span className="term-active-tool" title={active.meta.name}>
               {active.meta.icon && <span className="term-active-tool-icon">{active.meta.icon}</span>}
@@ -482,6 +515,64 @@ export default function App() {
               <div className="placeholder">选择一个工具</div>
             )}
           </div>
+          {/* 工具内编辑层：挂 .main-body 内（absolute inset:0 只盖文档/终端主体，
+              露出顶栏——折叠态 ☰ 展开按钮保持可点；顶栏操作按钮经 .overlay-open
+              锁定）。切工具时非激活工具的编辑器仅隐藏（display:none），EditorPane
+              常驻不卸载，草稿保留；切回即恢复。关闭（保存/确认丢弃）才从
+              editingIds 移除。 */}
+          {tools
+            .filter((t) => editingIds[t.meta.id])
+            .map((t) => (
+              <div
+                key={t.meta.id}
+                className="editor-overlay"
+                role="dialog"
+                aria-label={`编辑工具 ${t.meta.name}`}
+                style={{ display: t.meta.id === activeId ? 'flex' : 'none' }}
+              >
+                <div className="editor-panel">
+                  <EditorPane
+                    tool={t}
+                    active={t.meta.id === activeId}
+                    onDone={() =>
+                      setEditingIds((m) => {
+                        if (!(t.meta.id in m)) return m;
+                        const next = { ...m };
+                        delete next[t.meta.id];
+                        return next;
+                      })
+                    }
+                    existingGroups={existingGroups}
+                  />
+                </div>
+              </div>
+            ))}
+          {/* 工具内预览层：同编辑层——挂 .main-body 只盖主体、露出顶栏。切工具时
+              非激活工具的预览仅隐藏（display:none），实例常驻不卸载（iframe
+              不重载），切回即恢复；关闭才从 previews 移除。面板全宽（编辑限
+              900px）。点遮罩关闭（预览无草稿，区别于编辑器的防误关）。 */}
+          {tools.map((t) => {
+            const p = previews[t.meta.id];
+            if (!p) return null;
+            return (
+              <div
+                key={t.meta.id}
+                className="preview-overlay"
+                role="dialog"
+                aria-label={`预览 ${p.title}`}
+                style={{ display: t.meta.id === activeId ? 'flex' : 'none' }}
+                onClick={() => closePreview(t.meta.id)}
+              >
+                <div className="preview-panel" onClick={(e) => e.stopPropagation()}>
+                  <PreviewOverlay
+                    state={p}
+                    active={t.meta.id === activeId}
+                    onClose={() => closePreview(t.meta.id)}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
         {/* 文档折叠后：主区不渲染文档，终端撑满；hover 顶栏文档按钮 → Peek 浮动展开。
             Peek 宽度：LR 跟 docked 右栏联动（calc 100vw - sidebar - 终端宽 - splitter），
@@ -506,36 +597,6 @@ export default function App() {
             </div>
           </Peek>
         )}
-        {/* 工具内编辑层：盖住主区（顶栏+文档+终端），侧栏保留可点——切工具时
-            非激活工具的编辑器仅隐藏（display:none），EditorPane 常驻不卸载，
-            草稿保留；切回即恢复。关闭（保存/确认丢弃）才从 editingIds 移除。 */}
-        {tools
-          .filter((t) => editingIds[t.meta.id])
-          .map((t) => (
-            <div
-              key={t.meta.id}
-              className="editor-overlay"
-              role="dialog"
-              aria-label={`编辑工具 ${t.meta.name}`}
-              style={{ display: t.meta.id === activeId ? 'flex' : 'none' }}
-            >
-              <div className="editor-panel">
-                <EditorPane
-                  tool={t}
-                  active={t.meta.id === activeId}
-                  onDone={() =>
-                    setEditingIds((m) => {
-                      if (!(t.meta.id in m)) return m;
-                      const next = { ...m };
-                      delete next[t.meta.id];
-                      return next;
-                    })
-                  }
-                  existingGroups={existingGroups}
-                />
-              </div>
-            </div>
-          ))}
       </section>
       {errors.length > 0 && <Notifications errors={errors} />}
       {quickAddOpen && active && (
@@ -553,7 +614,6 @@ export default function App() {
           toolId={recordsToolId === '__global__' ? undefined : recordsToolId}
         />
       )}
-      {preview && <PreviewOverlay state={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

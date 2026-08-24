@@ -22,6 +22,9 @@ export function Sidebar(props: {
   /** 跨分组移动：把工具移到 targetGroup（null=未分组），beforeId 为 null 时追加到分组末尾。 */
   onMove: (toolId: string, targetGroup: string | null, beforeId: string | null) => void;
   onNew: () => void;
+  /** 收起整个侧栏（顶行 ‹ 按钮）。编辑/预览覆盖层盖住主区顶栏，折叠入口放
+   *  侧栏顶行才能在覆盖层打开时保持可点。 */
+  onCollapse: () => void;
   onExport: () => void;
   onImport: () => void;
   onHelp: () => void;
@@ -367,10 +370,18 @@ export function Sidebar(props: {
 
   return (
     <nav className="sidebar" style={{ width: `${width}px`, flex: `0 0 ${width}px` }}>
-      {/* 顶部顶栏：与中、右列顶栏等高，固定不滚动。展开态放「新建工具」。
+      {/* 顶部顶栏：与中、右列顶栏等高，固定不滚动。展开态放「‹ 收起」+「新建工具」。
           折叠态（浮层）不渲染——浮层只用于选中工具/跑命令，顶栏无意义且占高度。 */}
       {!props.floating && (
         <div className="sidebar-top">
+          <button
+            className="sidebar-collapse"
+            title="收起工具列表"
+            aria-label="收起工具列表"
+            onClick={props.onCollapse}
+          >
+            ‹
+          </button>
           <button className="new-tool" onClick={props.onNew}>+ 新建工具</button>
         </div>
       )}
