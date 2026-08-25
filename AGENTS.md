@@ -196,7 +196,7 @@ termstep/
 - 每个工具一个 xterm Terminal + portable-pty，**首次激活才创建**，之后跨工具切换常驻（`PtyService` 按 toolId 缓存）。
 - **坑**：绝不在 `display:none` 容器里创建 xterm —— 渲染器不画提示符。只在 tab 可见时创建，并在显示后用 `requestAnimationFrame` 调 `fit()`。
 - 实时 cwd：顶栏显示，由后端 `pty_probe` 命令先试 lsof 取 shell pid 的 cwd，失败回退 meta.cwd 再回退 home。
-- **模式残留自动复位**：远程 tmux/全屏程序异常断开（SSH 掉线）没机会发 DECRST，鼠标追踪等 private mode 残留在 xterm.js → 点击/滚动被编码成 `0;61;22M` 类序列直写 pty 变乱码。`pty_probe` 轮询（复用 1.5s cwd 链路）用 `master.process_group_leader()`（tcgetpgrp）检测「前台程序 → shell」跳变，返回一次性 `modesReset` 标志（状态存 Rust `PtyEntry.fg_was_foreign`，工具切后台不丢）；前端 `termReset.ts` 收到后向 xterm **parser** 写 DECRST 序列复位——不清屏、不写 pty、不碰 `?2004`（zsh/zle 自管 bracketed paste）。序列幂等，vim/less 正常退出重复触发无害；本地 tmux 工具（child 被 `exec tmux` 替换）fg 恒等于自身，永不触发。顶栏「修复终端」按钮手动兜底（`exec ssh` 替换 shell 的场景检测不到）。
+- **模式残留自动复位**：远程 tmux/全屏程序异常断开（SSH 掉线）没机会发 DECRST，鼠标追踪等 private mode 残留在 xterm.js → 点击/滚动被编码成 `0;61;22M` 类序列直写 pty 变乱码。`pty_probe` 轮询（复用 1.5s cwd 链路）用 `master.process_group_leader()`（tcgetpgrp）检测「前台程序 → shell」跳变，返回一次性 `modesReset` 标志（状态存 Rust `PtyEntry.fg_was_foreign`，工具切后台不丢）；前端 `termReset.ts` 收到后向 xterm **parser** 写 DECRST 序列复位——不清屏、不写 pty、不碰 `?2004`（zsh/zle 自管 bracketed paste）；**备用屏退出（?47/?1047/?1049）是条件发送**：仅 `buffer.active.type === 'alternate'`（确实残留备用屏）才补——`?1049l` 在 xterm.js 里带 restoreCursor，本会话没进过备用屏时保存值是 (0,0)，无条件发送会让光标每次命令结束跳到左上角、与旧内容重叠（1.4.1 后修）。序列幂等，vim/less 正常退出重复触发无害；本地 tmux 工具（child 被 `exec tmux` 替换）fg 恒等于自身，永不触发。顶栏「修复终端」按钮手动兜底（`exec ssh` 替换 shell 的场景检测不到）。
 
 ### 6.3 PtyService（`src-tauri/src/pty.rs`）
 
