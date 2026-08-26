@@ -3,6 +3,7 @@ import type { Tool, ToolMeta } from '../../shared/types';
 import { api } from '../lib/api';
 import { draftFromTool, isDraftDirty, type EditorDraft } from '../../shared/editorDraft';
 import { insertButtonAttr, insertButtonsFence, type InsertAttrResult } from '../../shared/buttonAttrInsert';
+import { normalizeWebUrl } from '../../shared/toolConfig';
 import { confirmDialog } from '../lib/dialog';
 import { SyntaxHelp } from './SyntaxHelp';
 
@@ -62,6 +63,7 @@ export function EditorPane(props: {
   // document 级键，重名会让不同工具的编辑器互相干扰单选与下拉建议。
   const groupsListId = `ts-groups-${meta.id}`;
   const layoutRadioName = `tool-layout-${meta.id}`;
+  const kindRadioName = `tool-kind-${meta.id}`;
   // The open tab is also the source selection: the checked (✓) tab is the
   // EFFECTIVE source — the one the tool's help will use.
   const [tab, setTab] = useState<'local' | 'remote'>(meta.useRemote ? 'remote' : 'local');
@@ -77,6 +79,10 @@ export function EditorPane(props: {
   const [group, setGroup] = useState(meta.group ?? '');
   const [layout, setLayout] = useState<'LR' | 'TB'>(meta.layout === 'TB' ? 'TB' : 'LR');
   const [terminalHidden, setTerminalHidden] = useState<boolean>(!!meta.terminalHidden);
+  // 工具形态：'web' = 网页型（隐藏终端/内容区，显示网页配置）。默认态下 webUrl
+  // 仍留在表单 state——临时切网页再切回不丢输入；保存时默认态不发送（磁盘保留旧值）。
+  const [kind, setKind] = useState<'default' | 'web'>(meta.kind === 'web' ? 'web' : 'default');
+  const [webUrl, setWebUrl] = useState(meta.webUrl ?? '');
   const [iconOpen, setIconOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +156,8 @@ export function EditorPane(props: {
     group,
     layout,
     terminalHidden,
+    kind,
+    webUrl,
     markdown: markdownText,
     useRemote: effective === 'remote',
   });
@@ -204,8 +212,13 @@ export function EditorPane(props: {
       // mergeToolJson 会跳过这个 key，旧的 true 值无法清除）；false 由 mergeToolJson 裁剪。
       layout: (layout === 'LR' ? '' : 'TB') as 'LR' | 'TB',
       terminalHidden,
+      // kind 同 layout 的空串裁剪模式：默认形态发 '' 让 mergeToolJson 裁掉。
+      kind: (kind === 'web' ? 'web' : '') as 'web',
       initCommands: initList,
     };
+    // webUrl 仅网页态发送（规范化补 http://）；默认态不发 → 磁盘旧值保留，
+    // 误切回默认再切网页可无损恢复。
+    if (kind === 'web') meta.webUrl = normalizeWebUrl(webUrl);
     const mins = Number(autoUpdate);
     if (mdUrl.trim() && autoUpdate.trim() !== '' && Number.isFinite(mins)) {
       meta.autoUpdateMinutes = mins;
@@ -342,48 +355,81 @@ export function EditorPane(props: {
             </label>
             <div className="field-in span4">
               <span className="fi-label">
-                布局
-                <Hint text="LR = 终端左/文档右（默认）；TB = 文档上/终端下" />
+                类型
+                <Hint text="默认 = 终端+文档；网页 = 主区内嵌网页（无终端/文档）" />
               </span>
-              <div className="mode-radio-group" role="radiogroup" aria-label="布局方向">
+              <div className="mode-radio-group" role="radiogroup" aria-label="工具类型">
                 <label className="mode-radio">
                   <input
                     type="radio"
-                    name={layoutRadioName}
-                    value="LR"
-                    checked={layout === 'LR'}
-                    onChange={() => setLayout('LR')}
+                    name={kindRadioName}
+                    value="default"
+                    checked={kind === 'default'}
+                    onChange={() => setKind('default')}
                   />
-                  <span>LR</span>
+                  <span>默认</span>
                 </label>
                 <label className="mode-radio">
                   <input
                     type="radio"
-                    name={layoutRadioName}
-                    value="TB"
-                    checked={layout === 'TB'}
-                    onChange={() => setLayout('TB')}
+                    name={kindRadioName}
+                    value="web"
+                    checked={kind === 'web'}
+                    onChange={() => setKind('web')}
                   />
-                  <span>TB</span>
+                  <span>网页</span>
                 </label>
               </div>
             </div>
-            <label className="field-in span4">
-              <span className="fi-label">
-                隐藏终端
-                <Hint text="默认隐藏（打开工具只看文档）；运行时可随时显示" />
-              </span>
-              <input
-                type="checkbox"
-                checked={terminalHidden}
-                onChange={(e) => setTerminalHidden(e.target.checked)}
-              />
-            </label>
+            {kind === 'default' && (
+              <div className="field-in span4">
+                <span className="fi-label">
+                  布局
+                  <Hint text="LR = 终端左/文档右（默认）；TB = 文档上/终端下" />
+                </span>
+                <div className="mode-radio-group" role="radiogroup" aria-label="布局方向">
+                  <label className="mode-radio">
+                    <input
+                      type="radio"
+                      name={layoutRadioName}
+                      value="LR"
+                      checked={layout === 'LR'}
+                      onChange={() => setLayout('LR')}
+                    />
+                    <span>LR</span>
+                  </label>
+                  <label className="mode-radio">
+                    <input
+                      type="radio"
+                      name={layoutRadioName}
+                      value="TB"
+                      checked={layout === 'TB'}
+                      onChange={() => setLayout('TB')}
+                    />
+                    <span>TB</span>
+                  </label>
+                </div>
+              </div>
+            )}
+            {kind === 'default' && (
+              <label className="field-in span4">
+                <span className="fi-label">
+                  隐藏终端
+                  <Hint text="默认隐藏（打开工具只看文档）；运行时可随时显示" />
+                </span>
+                <input
+                  type="checkbox"
+                  checked={terminalHidden}
+                  onChange={(e) => setTerminalHidden(e.target.checked)}
+                />
+              </label>
+            )}
           </div>
         </fieldset>
 
-        <fieldset className="form-section">
-          <legend>终端</legend>
+        {kind === 'default' && (
+          <fieldset className="form-section">
+            <legend>终端</legend>
           <div className="form-grid">
             <label className="field-in span6">
               <span className="fi-label">起始目录</span>
@@ -434,9 +480,37 @@ export function EditorPane(props: {
             </label>
           </div>
         </fieldset>
+        )}
       </div>
 
-      {/* Tabbed sub-region: switches only the markdown / URL area */}
+      {/* Tabbed sub-region: switches only the markdown / URL area. 网页型工具
+          整个子区替换为网页配置（URL）——本地/远程 markdown 配置对它无意义。 */}
+      {kind === 'web' ? (
+        <div className="md-subregion web-subregion">
+          <fieldset className="form-section">
+            <legend>网页</legend>
+            <div className="form-grid">
+              <label className="field-in span8">
+                <span className="fi-label">
+                  URL
+                  <Hint text="http(s) 地址；不带协议保存时自动补 http://" />
+                </span>
+                <input
+                  value={webUrl}
+                  onChange={(e) => setWebUrl(e.target.value)}
+                  placeholder="http://localhost:38311/"
+                  {...noTransform}
+                />
+              </label>
+            </div>
+            <div className="md-hint">
+              打开工具时在主区内嵌该网页，切换工具不重载。部分站点（如 Google）设置
+              X-Frame-Options 拒绝内嵌、会显示空白——届时可用顶栏「↗ 浏览器」按钮在
+              外部浏览器打开。
+            </div>
+          </fieldset>
+        </div>
+      ) : (
       <div className="md-subregion">
         <div className="editor-tabs" role="tablist">
           <button
@@ -577,6 +651,7 @@ export function EditorPane(props: {
           </div>
         )}
       </div>
+      )}
 
       </div>
       <div className="editor-footer">

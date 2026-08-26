@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseToolMeta } from '../src/shared/toolConfig';
+import { parseToolMeta, normalizeWebUrl } from '../src/shared/toolConfig';
 
 describe('parseToolMeta', () => {
   it('fills defaults from id when fields missing', () => {
@@ -138,5 +138,56 @@ describe('parseToolMeta layout/terminalHidden', () => {
   it('terminalHidden defaults undefined when missing', () => {
     const m = parseToolMeta({ name: 't' }, 't');
     expect(m.terminalHidden).toBeUndefined();
+  });
+});
+
+// 对偶 src-tauri/src/pure.rs parse_tool_meta kind/webUrl。
+describe('parseToolMeta kind/webUrl', () => {
+  it('parses kind=web', () => {
+    const m = parseToolMeta({ name: 't', kind: 'web' }, 't');
+    expect(m.kind).toBe('web');
+  });
+  it('drops invalid kind values (treated as default)', () => {
+    expect(parseToolMeta({ name: 't', kind: 'terminal' }, 't').kind).toBeUndefined();
+    expect(parseToolMeta({ name: 't', kind: '' }, 't').kind).toBeUndefined();
+    expect(parseToolMeta({ name: 't', kind: 'WEB' }, 't').kind).toBeUndefined();
+  });
+  it('kind defaults undefined when missing', () => {
+    expect(parseToolMeta({ name: 't' }, 't').kind).toBeUndefined();
+  });
+  it('parses webUrl (trimmed)', () => {
+    const m = parseToolMeta({ name: 't', kind: 'web', webUrl: '  http://localhost:38311/  ' }, 't');
+    expect(m.webUrl).toBe('http://localhost:38311/');
+  });
+  it('drops blank webUrl', () => {
+    expect(parseToolMeta({ name: 't', webUrl: '   ' }, 't').webUrl).toBeUndefined();
+  });
+  it('webUrl preserved without kind (切回默认保留场景)', () => {
+    const m = parseToolMeta({ name: 't', webUrl: 'http://x/' }, 't');
+    expect(m.kind).toBeUndefined();
+    expect(m.webUrl).toBe('http://x/');
+  });
+});
+
+describe('normalizeWebUrl', () => {
+  it('empty/whitespace → empty (clears the field)', () => {
+    expect(normalizeWebUrl('')).toBe('');
+    expect(normalizeWebUrl('   ')).toBe('');
+  });
+  it('no scheme → auto-prefix http://', () => {
+    expect(normalizeWebUrl('localhost:38311')).toBe('http://localhost:38311');
+    expect(normalizeWebUrl(' example.com/x ')).toBe('http://example.com/x');
+  });
+  it('host:port is NOT treated as a scheme (关键：localhost:38311)', () => {
+    // "localhost:" 形似 scheme，但无 // —— 必须 prepend 而不是原样保留
+    expect(normalizeWebUrl('localhost:38311')).not.toBe('localhost:38311');
+  });
+  it('keeps existing scheme:// unchanged', () => {
+    expect(normalizeWebUrl('http://localhost:38311/')).toBe('http://localhost:38311/');
+    expect(normalizeWebUrl('https://example.com/')).toBe('https://example.com/');
+    expect(normalizeWebUrl('file:///Users/x/page.html')).toBe('file:///Users/x/page.html');
+  });
+  it('scheme detection is case-insensitive', () => {
+    expect(normalizeWebUrl('HTTP://x/')).toBe('HTTP://x/');
   });
 });

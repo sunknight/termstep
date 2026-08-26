@@ -46,5 +46,21 @@ export function parseToolMeta(raw: unknown, id: string): ToolMeta {
   if (typeof o.terminalHidden === 'boolean') {
     meta.terminalHidden = o.terminalHidden;
   }
+  // kind 仅接受 'web'，其它值（含空串）视为默认形态（缺省）。
+  if (o.kind === 'web') meta.kind = 'web';
+  if (typeof o.webUrl === 'string' && o.webUrl.trim()) meta.webUrl = o.webUrl.trim();
   return meta;
+}
+
+/**
+ * 规范化网页型工具的 URL：trim；非空且不带 `<scheme>://` 前缀时补 `http://`
+ * （`localhost:38311` 这类输入会被 iframe 当相对路径导致加载失败）。带任何
+ * `scheme://`（http/https/file…，大小写不敏感）原样保留。仅编辑器保存时用，
+ * 磁盘数据在落盘前已归一（纯前端表单关注点，无 Rust 对偶）。
+ */
+export function normalizeWebUrl(raw: string): string {
+  const url = raw.trim();
+  if (!url) return '';
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url)) return url;
+  return `http://${url}`;
 }

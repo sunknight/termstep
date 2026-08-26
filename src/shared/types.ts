@@ -73,6 +73,17 @@ export interface ToolMeta {
    * toggle 状态不写回配置。隐藏时 pty 保持活着，可随时重新显示。
    */
   terminalHidden?: boolean;
+  /**
+   * 工具形态：`"web"` = 网页型（主区直接内嵌 iframe 打开 webUrl，无终端/文档
+   * 面板）；缺省 = 默认形态（终端 + 文档）。字段名刻意不用 `type`——历史
+   * `type`（document/terminal）已被迁移逻辑无条件删除，复用会被清掉。
+   */
+  kind?: 'web';
+  /**
+   * 网页型工具（kind==='web'）加载的 URL（http/https）。仅网页形态使用；
+   * 切回默认形态时保留不清除（误切换可无损切回）。
+   */
+  webUrl?: string;
 }
 
 export interface Tool {

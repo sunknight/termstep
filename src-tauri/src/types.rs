@@ -47,6 +47,15 @@ pub struct ToolMeta {
     /// 对偶 src/shared/types.ts 的 meta.terminalHidden。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal_hidden: Option<bool>,
+    /// 工具形态：`"web"` = 网页型（主区 iframe 打开 webUrl，无终端/文档面板）；
+    /// 缺省 = 默认形态。字段名刻意不用 `type`——历史 `type` 已被迁移逻辑
+    /// 无条件删除，复用会被清掉。对偶 src/shared/types.ts 的 meta.kind。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// 网页型工具（kind=="web"）加载的 URL。切回默认形态时保留不清除。
+    /// 对偶 src/shared/types.ts 的 meta.webUrl。
+    #[serde(skip_serializing_if = "Option::is_none", rename = "webUrl")]
+    pub web_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

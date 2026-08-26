@@ -23,7 +23,7 @@ pub fn merge_tool_json(existing: &Value, patch: &Value) -> Value {
         }
     }
     // 裁掉被清空的 optional 字段（空字符串 = 清空）
-    for k in &["cwd", "rootDir", "tmux", "mdUrl", "group", "layout"] {
+    for k in &["cwd", "rootDir", "tmux", "mdUrl", "group", "layout", "kind", "webUrl"] {
         if merged.get(*k).and_then(|v| v.as_str()) == Some("") {
             merged.remove(*k);
         }
@@ -213,6 +213,8 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
         group: None,
         layout: None,
         terminal_hidden: None,
+        kind: None,
+        web_url: None,
     };
     if let Some(cwd) = trim_str_field(o, "cwd") {
         meta.cwd = Some(cwd);
@@ -259,6 +261,13 @@ pub fn parse_tool_meta(raw: &Value, id: &str) -> ToolMeta {
     }
     if let Some(b) = o.and_then(|m| m.get("terminalHidden")).and_then(|v| v.as_bool()) {
         meta.terminal_hidden = Some(b);
+    }
+    // kind 仅接受 "web"，其它值（含空串）视为默认形态（缺省）。
+    if o.and_then(|m| m.get("kind")).and_then(|v| v.as_str()) == Some("web") {
+        meta.kind = Some("web".into());
+    }
+    if let Some(u) = trim_str_field(o, "webUrl") {
+        meta.web_url = Some(u);
     }
     meta
 }
@@ -604,6 +613,73 @@ mod tests {
     fn meta_terminal_hidden_defaults_none() {
         let m = parse_tool_meta(&json!({"name":"t"}), "t");
         assert!(m.terminal_hidden.is_none());
+    }
+
+    // ── kind / webUrl（对偶 tests/toolConfig.test.ts + toolJson.test.ts）────────
+    #[test]
+    fn meta_parses_kind_web() {
+        let m = parse_tool_meta(&json!({"name":"t","kind":"web"}), "t");
+        assert_eq!(m.kind.as_deref(), Some("web"));
+    }
+
+    #[test]
+    fn meta_drops_invalid_kind() {
+        assert!(parse_tool_meta(&json!({"name":"t","kind":"terminal"}), "t").kind.is_none());
+        assert!(parse_tool_meta(&json!({"name":"t","kind":""}), "t").kind.is_none());
+        assert!(parse_tool_meta(&json!({"name":"t","kind":"WEB"}), "t").kind.is_none());
+    }
+
+    #[test]
+    fn meta_kind_defaults_none() {
+        let m = parse_tool_meta(&json!({"name":"t"}), "t");
+        assert!(m.kind.is_none());
+    }
+
+    #[test]
+    fn meta_parses_weburl_trimmed() {
+        let m = parse_tool_meta(&json!({"name":"t","webUrl":"  http://localhost:38311/  "}), "t");
+        assert_eq!(m.web_url.as_deref(), Some("http://localhost:38311/"));
+    }
+
+    #[test]
+    fn meta_drops_blank_weburl() {
+        let m = parse_tool_meta(&json!({"name":"t","webUrl":"   "}), "t");
+        assert!(m.web_url.is_none());
+    }
+
+    #[test]
+    fn meta_weburl_preserved_without_kind() {
+        // 切回默认形态时 webUrl 保留在文件里（误切换可无损切回）
+        let m = parse_tool_meta(&json!({"name":"t","webUrl":"http://x/"}), "t");
+        assert!(m.kind.is_none());
+        assert_eq!(m.web_url.as_deref(), Some("http://x/"));
+    }
+
+    #[test]
+    fn merge_keeps_kind_web_when_patched() {
+        let m = merge_tool_json(&json!({"name":"t"}), &json!({"kind":"web","webUrl":"http://localhost:38311/"}));
+        assert_eq!(m["kind"], "web");
+        assert_eq!(m["webUrl"], "http://localhost:38311/");
+    }
+
+    #[test]
+    fn merge_prunes_cleared_kind() {
+        let m = merge_tool_json(&json!({"name":"t","kind":"web"}), &json!({"kind":""}));
+        assert!(m.get("kind").is_none(), "cleared kind must be pruned");
+    }
+
+    #[test]
+    fn merge_prunes_cleared_weburl() {
+        let m = merge_tool_json(&json!({"name":"t","webUrl":"http://x/"}), &json!({"webUrl":""}));
+        assert!(m.get("webUrl").is_none(), "cleared webUrl must be pruned");
+    }
+
+    #[test]
+    fn merge_preserves_weburl_when_patch_untouched() {
+        // 默认形态保存时编辑器不发 webUrl —— 文件里的旧值必须保留
+        let m = merge_tool_json(&json!({"name":"t","webUrl":"http://x/"}), &json!({"cwd":"/y"}));
+        assert_eq!(m["webUrl"], "http://x/");
+        assert_eq!(m["cwd"], "/y");
     }
 
 }

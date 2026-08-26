@@ -907,6 +907,10 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   display: flex; flex-direction: column; overflow: hidden;
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
 }
+/* 网页型工具的子区：没有 tabs 头，外层 box 不画边框（里面的 .form-section
+   fieldset 自带一层），否则两层边框直接相贴成「双边框」。保留 flex/min-height
+   占位与 overflow 约束。 */
+.md-subregion.web-subregion { border: 0; background: transparent; }
 /* Local/remote tabs — header of the sub-region. */
 .editor-tabs {
   flex: 0 0 auto; display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface-inset);
@@ -1482,3 +1486,33 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   height: 13px;
   cursor: pointer;
 }
+
+/* ----------------------------------------------------------------------------
+   网页型工具（kind=web）：主区 iframe 模式
+   ------------------------------------------------------------------------- */
+/* web-mode：隐藏终端/文档三件套——必须用 CSS 隐藏而非条件渲染（卸载会销毁
+   TerminalPane 里全部常驻终端/xterm）。display:none 对 xterm 只在「创建时」有
+   坑，临时隐藏后切回会经 active effect 重新 fit()，与既有工具切换路径一致。 */
+.main-body.web-mode > .doc-pane,
+.main-body.web-mode > .term-splitter,
+.main-body.web-mode > .term-pane { display: none; }
+/* .web-pane 常驻挂载（iframe 跨切换保活），非 web-mode 时隐藏。 */
+.web-pane { display: none; }
+.main-body.web-mode > .web-pane {
+  display: flex; flex-direction: column;
+  flex: 1 1 auto; min-width: 0; min-height: 0;
+  background: var(--surface);
+}
+.web-view {
+  flex: 1 1 auto; display: flex;
+  min-width: 0; min-height: 0;
+  background: var(--surface);
+}
+.web-iframe { flex: 1 1 auto; width: 100%; height: 100%; border: 0; background: #fff; }
+.web-empty {
+  flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); font-size: 13px; padding: 16px;
+}
+/* 网页工具顶栏的 URL：复用 .term-cwd 骨架，但正常 LTR 方向、右端省略
+   （URL 的关键部分是左侧 host，不像 cwd 需要展示尾部）。 */
+.term-cwd-path.web-url-path { direction: ltr; }

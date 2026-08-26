@@ -22,6 +22,10 @@ export interface EditorDraft {
   group: string;
   layout: 'LR' | 'TB';
   terminalHidden: boolean;
+  /** 工具形态：'web' = 网页型；'default' = 默认终端+文档（表单态，磁盘上缺省）。 */
+  kind: 'default' | 'web';
+  /** 网页型工具的 URL（表单原文；默认形态下也有值——切回网页态不丢输入）。 */
+  webUrl: string;
   /** 本地 help.md 草稿。 */
   markdown: string;
   /** 生效源是否为远程（与 EditorPane 的 effective 计算一致：远程 tab 且 URL 非空）。 */
@@ -43,6 +47,8 @@ export function draftFromTool(tool: Tool): EditorDraft {
     group: m.group ?? '',
     layout: m.layout === 'TB' ? 'TB' : 'LR',
     terminalHidden: !!m.terminalHidden,
+    kind: m.kind === 'web' ? 'web' : 'default',
+    webUrl: m.webUrl ?? '',
     markdown: tool.helpMarkdown,
     // 与保存语义对齐：useRemote=true 但 URL 为空的脏数据在编辑器里 effective
     // 恒为本地（保存会写回 false），初值同样按 effective 折算，避免打开即误报脏。

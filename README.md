@@ -2,7 +2,7 @@
 
 > 把任意 CLI 命令变成可点击的菜单按钮，也能作为团队文档入口 —— 一个本地 macOS Tauri 应用。
 
-为每个「工具」分配一个**持久终端**和一个 **markdown 帮助页**；帮助页里的 ```` ```buttons ```` 代码块会渲染成一键执行的命令按钮。终端基于 portable-pty + xterm.js，跑的是真实 shell。终端可以隐藏（只看文档）、文档可以折叠为浮动小窗，布局方向可选左右或上下——既适合在终端里干活，也适合给不用 CLI 的同事当文档入口。
+为每个「工具」分配一个**持久终端**和一个 **markdown 帮助页**；帮助页里的 ```` ```buttons ```` 代码块会渲染成一键执行的命令按钮。终端基于 portable-pty + xterm.js，跑的是真实 shell。终端可以隐藏（只看文档）、文档可以折叠为浮动小窗，布局方向可选左右或上下——既适合在终端里干活，也适合给不用 CLI 的同事当文档入口。工具也可以选「网页」形态：主区直接内嵌一个网页（本地面板、监控台等），切换工具不重载。
 
 ---
 
@@ -11,6 +11,7 @@
 - **命令即按钮**：在 markdown 里写一行命令，就得到一个可点击按钮。复杂带参数的命令用 JSON 描述，点击后弹出参数表单，填完安全转义后执行。
 - **每个工具一个持久终端**：基于 portable-pty 的真实 shell（zsh/bash），在真实 xterm.js 终端里运行；切换工具只切换可见性，终端进程常驻、历史不丢。
 - **灵活布局**：终端和文档可左右排，也可上下排；终端可一键隐藏（只看文档，pty 仍在后台保持会话），文档可折叠成浮动小窗。给不用 CLI 的同事把终端藏起来当纯文档入口。
+- **网页型工具**：工具类型可选「网页」——主区直接内嵌配置的 URL（如本地管理台 `http://localhost:38311/`），顶栏带强制刷新与「在浏览器打开」兜底；切换工具网页不重载，状态保留。
 - **工具就是磁盘上的数据**：每个工具是一个目录（`tool.json` + `help.md`），不是代码。整个 UI 从扫描这些目录派生而来，可用任意编辑器改，也可在应用内编辑。
 - **磁盘改动自动刷新**：文件监听监视工具目录，新建 / 编辑 / 删除 / 重排工具后 UI 自动更新，无需手动刷新状态。
 - **零配置即可用**：首次启动自动生成一个示例 Git 工具。
@@ -36,6 +37,16 @@
 文档区可折叠成浮动小窗（点文档区右上角 ⤢），让终端独占主区；折叠后点小窗的 ▾ 展开。终端隐藏 + 文档折叠两种状态独立切换。
 
 终端隐藏时，帮助页里的命令按钮点击会提示「请先打开终端」（不会静默失败）；`⌘/Ctrl + 点击` 复制命令到剪贴板照常工作。
+
+### 网页型工具
+
+编辑工具时把**类型**选为「网页」，工具就不再有终端和文档面板，主区直接内嵌配置的网页（适合本地管理台、监控面板这类 Web 入口）：
+
+- **URL 配置**：编辑表单只保留基本区 + 网页地址；不带协议的输入（如 `localhost:38311`）保存时自动补 `http://`。
+- **切换不重载**：切到别的工具再切回来，网页保持原状态（登录态、输入、滚动位置）；只有点「刷新」、改 URL 保存或重启应用才会重载。
+- **顶栏**：左侧显示网页地址；右侧只有「⟳ 刷新」（按配置 URL 强制重载）、「↗ 浏览器」（站点拒绝内嵌显示空白时，在默认浏览器打开兜底）和「编辑」。
+- 网页型工具不启动终端进程；由默认型改成网页型时，已启动的 shell 会被自动回收，改回来时终端配置原样恢复。
+- 导入 / 导出 bundle 携带类型与 URL。
 
 ### 终端
 - 每个工具有独立、**懒加载且持久**的 xterm 终端：首次打开才创建，之后跨工具切换保持存活。隐藏终端时实例和会话都保留，重新显示输出不丢。
@@ -218,6 +229,8 @@ npm run dev        # 启动开发模式（Tauri dev：Vite dev server + Rust 窗
 {
   "name": "Git",
   "icon": "🌿",
+  "kind": "web",
+  "webUrl": "http://localhost:38311/",
   "layout": "LR",
   "group": "版本控制",
   "cwd": "~/projects/myapp",
@@ -236,7 +249,8 @@ npm run dev        # 启动开发模式（Tauri dev：Vite dev server + Rust 窗
 | 字段 | 说明 |
 |---|---|
 | `name` / `icon` | 侧边栏显示名 / emoji 图标 |
-| `layout` | 布局方向：`"LR"`（文档左/终端右，默认）或 `"TB"`（文档上/终端下） |
+| `kind` | 工具形态：`"web"` = 网页型（主区内嵌 `webUrl`，无终端/文档面板）；缺省 = 默认终端+文档形态 |
+| `layout` | 布局方向：`"LR"`（文档左/终端右，默认）或 `"TB"`（文档上/终端下）；仅默认形态使用 |
 | `terminalHidden` | 终端初始是否隐藏（可选；默认不隐藏）。运行时顶栏可随时 toggle，不写回配置 |
 | `group` | 分组名（可选）；同分组工具在侧栏分区展示 |
 | `cwd` | shell 启动目录（支持 `~`）；仅终端型工具使用 |
@@ -245,10 +259,11 @@ npm run dev        # 启动开发模式（Tauri dev：Vite dev server + Rust 窗
 | `env` | 额外环境变量 |
 | `tmux` | tmux 会话名；设置后以 `tmux new -A -s <name>` 启动 |
 | `initCommands` | 启动时自动注入的命令 |
-| `mdUrl` | 远程帮助 markdown 的 URL 或本地路径（扩展名限 `.md`/`.markdown`/`.txt`） |
+| `mdUrl` | 远程帮助 markdown 的 URL 或本地路径（扩展名限 `.md`/`.markdown`/`.txt`）；网页型工具忽略 |
 | `useRemote` | 是否启用远程订阅模式（`true` 才读 `mdUrl`） |
 | `autoUpdateMinutes` | 远程模式自动刷新间隔（分钟），本地文件用 0 |
 | `sourceId` | 导入去重的稳定键（UUID）；同一 `sourceId` 的 bundle 重复导入会更新而非新建 |
+| `webUrl` | 网页型工具加载的 URL；仅 `kind: "web"` 时使用，切回默认形态时保留 |
 
 **`help.md`** —— 帮助页 / 文档 markdown，其中 ```` ```buttons ```` / ```` ```buttons-json ```` 围栏渲染为命令按钮。
 
@@ -261,7 +276,7 @@ npm run dev        # 启动开发模式（Tauri dev：Vite dev server + Rust 窗
 **Tauri v2**（Rust 后端）+ **React 18 / TypeScript**（渲染端，WKWebView）+ **Vite**。
 
 - **后端**（`src-tauri/src/`）：`lib.rs`（Builder / setup / State 注入 / 命令注册）、`commands.rs`（所有 `#[tauri::command]`，薄封装）、`pty.rs`（portable-pty 池，按 toolId 缓存，含 generation guard 解决重启竞态）、`tools.rs`（扫描 + 远程 markdown + SSRF/敏感路径守卫）、`tool_io.rs`（CRUD / 排序索引 / 迁移）、`watcher.rs`（notify 文件监听）、`vcs.rs`（配置版本控制，调系统 git）、`updater.rs`（版本清单检查）。
-- **渲染端**（`src/renderer/`）：React 18。`App.tsx` 用统一的双面板布局——主区始终是「文档区 + 终端区」，`layout` 决定左右或上下排，`terminalHidden` 控制终端显隐（隐藏时 pty 保持活着）。
+- **渲染端**（`src/renderer/`）：React 18。`App.tsx` 用统一的双面板布局——主区始终是「文档区 + 终端区」，`layout` 决定左右或上下排，`terminalHidden` 控制终端显隐（隐藏时 pty 保持活着）；网页型工具（`kind: "web"`）经 `WebPane.tsx` 常驻 iframe 撑满主区，切换工具不重载。
 - **共享**（`src/shared/`）：`types.ts`（类型 + `IPC` 通道名常量，三端共用）、`buttonBlock.ts`（buttons 围栏解析与渲染）、`toolJson.ts`（与后端对偶的合并逻辑）、`bundle.ts`（导入/导出 bundle）、`dangerous.ts`（危险命令检测）等。
 
 **IPC 契约**：`shared/types.ts` 定义一个含全部通道名的 `IPC` 常量对象，三端共用。新增一个 IPC 调用 = 加通道常量 → 在后端加 `#[tauri::command]`（命令名 = 通道名把 `:` → `_`）→ 在 `lib.rs` `generate_handler!` 注册 → 在渲染端 `lib/api.ts` 加方法。

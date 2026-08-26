@@ -15,6 +15,7 @@ import { Peek } from './components/Peek';
 import { usePeek } from './hooks/usePeek';
 import { PreviewOverlay } from './components/PreviewOverlay';
 import type { PreviewState, PreviewRequest } from './components/PreviewOverlay';
+import { WebPane } from './components/WebPane';
 import { termRegistry } from './lib/termRegistry';
 import { api } from './lib/api';
 import { confirmDialog, alertDialog } from './lib/dialog';
@@ -60,7 +61,12 @@ export default function App() {
   // 展示的网页/文档/加载中/错误态。实例随工具常驻（切工具只隐藏不卸载，iframe
   // 不重载），关闭才从 map 移除。
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
+  // 网页型工具（kind=web）的刷新计数：+1 = WebPane 按配置 URL 强制重载该工具。
+  const [webRefreshTick, setWebRefreshTick] = useState<Record<string, number>>({});
   const active = tools.find((t) => t.meta.id === activeId) ?? null;
+  // 网页型工具派生：激活工具是否网页型、全部网页型工具列表。
+  const activeIsWeb = !!active && active.meta.kind === 'web';
+  const webTools = tools.filter((t) => t.meta.kind === 'web');
   const [liveCwd, setLiveCwd] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     () => localStorage.getItem('termstep:sidebar-collapsed') === '1',
@@ -197,14 +203,16 @@ export default function App() {
     };
     setEditingIds((m) => prune(m));
     setPreviews((m) => prune(m));
+    setWebRefreshTick((m) => prune(m));
   }, [tools]);
 
   // Poll the active shell's live cwd (resolved from its OS pid) so the terminal
   // header follows the user's `cd`. Cheap readlink, ~1.5s cadence.
   // 同一轮询顺带取「前台程序退出回到 shell」跳变标志（SSH/tmux 异常断开后
   // 鼠标追踪等 private mode 残留），静默复位 xterm —— 不清屏、不写 pty。
+  // 网页型工具没有终端，轮询无意义，跳过。
   useEffect(() => {
-    if (!activeId) {
+    if (!activeId || activeIsWeb) {
       setLiveCwd(null);
       return;
     }
@@ -230,7 +238,25 @@ export default function App() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [activeId]);
+  }, [activeId, activeIsWeb]);
+
+  // 网页型工具不持有终端：工具由终端型改成网页型后（保存 → scan → tools 更新），
+  // 回收其残留 shell。ref 集合按「当前是否 web」增删——每次进入 web 形态只 kill
+  // 一次（scan 会频繁重发 tools 数组，不能每次都 invoke）；切回终端形态时清记录，
+  // 再改回网页仍能回收。未 spawn 过的 id 是 no-op。
+  const webKilledRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const t of tools) {
+      if (t.meta.kind === 'web') {
+        if (!webKilledRef.current.has(t.meta.id)) {
+          webKilledRef.current.add(t.meta.id);
+          void api.pty.kill(t.meta.id);
+        }
+      } else {
+        webKilledRef.current.delete(t.meta.id);
+      }
+    }
+  }, [tools]);
 
   // Electron's window.prompt() is not implemented (returns null), so we create the
   // tool with a placeholder name and drop straight into the editor, where the user
@@ -381,14 +407,58 @@ export default function App() {
               <span className="term-active-tool-name">{active.meta.name}</span>
             </span>
           )}
-          <span className="term-cwd">
-            <span className="term-cwd-icon">📂</span>
-            <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
-              {liveCwd ?? active?.meta.cwd ?? '~'}
-            </HoverTip>
-          </span>
+          {activeIsWeb ? (
+            /* 网页型工具：左侧显示配置的网页地址（长 URL 右侧省略，title 看全）。 */
+            <span className="term-cwd">
+              <span className="term-cwd-icon">🔗</span>
+              <HoverTip className="term-cwd-path web-url-path" text={active.meta.webUrl ?? ''}>
+                {active.meta.webUrl ?? ''}
+              </HoverTip>
+            </span>
+          ) : (
+            <span className="term-cwd">
+              <span className="term-cwd-icon">📂</span>
+              <HoverTip className="term-cwd-path" text={liveCwd ?? active?.meta.cwd ?? '~'}>
+                {liveCwd ?? active?.meta.cwd ?? '~'}
+              </HoverTip>
+            </span>
+          )}
           <div className="term-actions">
             {active ? (
+              activeIsWeb ? (
+                /* 网页型工具：只留网页相关按钮（刷新 / 浏览器兜底）+ 编辑。
+                   终端/文档组按钮全部隐藏（无对应面板，语义不成立）。 */
+                <>
+                  <div className="term-group">
+                    <button
+                      className="term-restart"
+                      title="按配置 URL 强制刷新网页"
+                      onClick={() => {
+                        const id = active.meta.id;
+                        setWebRefreshTick((m) => ({ ...m, [id]: (m[id] ?? 0) + 1 }));
+                      }}
+                    >
+                      ⟳ 刷新
+                    </button>
+                    <button
+                      className="term-restart"
+                      title="在默认浏览器打开（拒绝被内嵌的站点显示空白时用）"
+                      onClick={() => {
+                        if (active.meta.webUrl) void api.shell.openExternal(active.meta.webUrl);
+                      }}
+                    >
+                      ↗ 浏览器
+                    </button>
+                    <button
+                      title="编辑"
+                      className="term-restart primary"
+                      onClick={() => setEditingIds((m) => ({ ...m, [active.meta.id]: true }))}
+                    >
+                      编辑
+                    </button>
+                  </div>
+                </>
+              ) : (
               <>
                 {/* 终端组：终端按钮在最右侧，快捷命令/重启终端向左展开。 */}
                 <div className="term-group">
@@ -466,12 +536,15 @@ export default function App() {
                   <button title="编辑" className="term-restart primary" onClick={() => setEditingIds((m) => ({ ...m, [active.meta.id]: true }))}>编辑</button>
                 </div>
               </>
+              )
             ) : (
               <QuickCommands activeTool={active} termHidden={termHidden} />
             )}
           </div>
         </div>
-        <div className={`main-body layout-${layout.toLowerCase()}`}>
+        {/* web-mode：激活工具是网页型——终端/文档三件套经 CSS display:none 隐藏
+            （必须保持挂载：TerminalPane 内所有常驻终端不能卸载），.web-pane 撑满。 */}
+        <div className={`main-body layout-${layout.toLowerCase()}${activeIsWeb ? ' web-mode' : ''}`}>
           {/* 文档区（docked）。docCollapsed 时不渲染——内容移到浮动 doc-peek，
               避免与 HelpPane 实例重复（HelpPane 有内部 ref/state/监听）。 */}
           {!docCollapsed && (
@@ -510,11 +583,14 @@ export default function App() {
             }
           >
             {activeId ? (
-              <TerminalPane tools={tools} activeId={activeId} />
+              <TerminalPane tools={tools.filter((t) => t.meta.kind !== 'web')} activeId={activeId} />
             ) : (
               <div className="placeholder">选择一个工具</div>
             )}
           </div>
+          {/* 网页型工具面板：常驻（默认 display:none），web-mode 时撑满主区。
+              每工具一个 iframe 实例，切工具不重载。放在三件套之后、覆盖层之前。 */}
+          <WebPane tools={webTools} activeId={activeId} refreshTick={webRefreshTick} />
           {/* 工具内编辑层：挂 .main-body 内（absolute inset:0 只盖文档/终端主体，
               露出顶栏——折叠态 ☰ 展开按钮保持可点；顶栏操作按钮经 .overlay-open
               锁定）。切工具时非激活工具的编辑器仅隐藏（display:none），EditorPane

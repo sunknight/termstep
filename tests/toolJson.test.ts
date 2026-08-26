@@ -131,3 +131,31 @@ describe('migrateMeta', () => {
     expect('type' in after).toBe(false);
   });
 });
+
+// 对偶 src-tauri/src/pure.rs merge_tool_json kind/webUrl 裁剪。
+describe('mergeToolJson kind/webUrl', () => {
+  it('keeps kind=web when patched', () => {
+    const m = mergeToolJson({ name: 't' }, { kind: 'web', webUrl: 'http://localhost:38311/' });
+    expect(m.kind).toBe('web');
+    expect(m.webUrl).toBe('http://localhost:38311/');
+  });
+  it('prunes cleared kind (back to default)', () => {
+    const m = mergeToolJson({ name: 't', kind: 'web' }, { kind: '' });
+    expect('kind' in m).toBe(false);
+  });
+  it('prunes cleared webUrl', () => {
+    const m = mergeToolJson({ name: 't', webUrl: 'http://x/' }, { webUrl: '' });
+    expect('webUrl' in m).toBe(false);
+  });
+  it('preserves webUrl when patch does not touch it (默认态不发送)', () => {
+    const m = mergeToolJson({ name: 't', webUrl: 'http://x/' }, { cwd: '/y' });
+    expect(m.webUrl).toBe('http://x/');
+    expect(m.cwd).toBe('/y');
+  });
+  it('never strips legacy `type` via merge (migrateMeta owns that)', () => {
+    // merge 不做 type 迁移语义——历史 type 字段由迁移链处理，merge 只透传。
+    const m = mergeToolJson({ name: 't', type: 'document' }, { kind: 'web' });
+    expect(m.type).toBe('document');
+    expect(m.kind).toBe('web');
+  });
+});

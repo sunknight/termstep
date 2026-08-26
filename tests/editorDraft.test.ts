@@ -27,6 +27,8 @@ describe('draftFromTool', () => {
     expect(d.group).toBe('');
     expect(d.layout).toBe('LR');
     expect(d.terminalHidden).toBe(false);
+    expect(d.kind).toBe('default');
+    expect(d.webUrl).toBe('');
     expect(d.useRemote).toBe(false);
     expect(d.markdown).toBe('# hi\n');
   });
@@ -43,6 +45,8 @@ describe('draftFromTool', () => {
         group: 'g1',
         layout: 'TB',
         terminalHidden: true,
+        kind: 'web',
+        webUrl: 'http://localhost:38311/',
         useRemote: true,
       }),
     );
@@ -56,6 +60,8 @@ describe('draftFromTool', () => {
       group: 'g1',
       layout: 'TB',
       terminalHidden: true,
+      kind: 'web',
+      webUrl: 'http://localhost:38311/',
       useRemote: true,
     });
   });
@@ -77,7 +83,8 @@ describe('isDraftDirty', () => {
     const base = draftFromTool(makeTool({ mdUrl: 'u.md', initCommands: ['a'] }, 'm'));
     const fields: (keyof typeof base)[] = [
       'name', 'icon', 'cwd', 'rootDir', 'tmux', 'initCommands', 'mdUrl',
-      'autoUpdate', 'group', 'layout', 'terminalHidden', 'markdown', 'useRemote',
+      'autoUpdate', 'group', 'layout', 'terminalHidden', 'kind', 'webUrl',
+      'markdown', 'useRemote',
     ];
     for (const f of fields) {
       const next = { ...base };

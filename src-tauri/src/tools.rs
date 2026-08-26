@@ -396,8 +396,10 @@ pub async fn scan_tools(tools_dir: &Path) -> ScanResult {
         // （App.tsx: useRemote ? remoteMarkdown : helpMarkdown）。否则即便 mdUrl
         // 指向 ~/Downloads 等受 TCC 保护的目录，也不会每次扫描都读文件、触发
         // macOS「想访问下载文件夹」权限弹窗。
+        // 网页型工具（kind=="web"）没有文档面板，mdUrl 对它无意义——拉了失败还会
+        // 在通知区弹「远程帮助加载失败」造成困惑，一并跳过。
         let mut remote_markdown = None;
-        if meta.use_remote == Some(true) {
+        if meta.use_remote == Some(true) && meta.kind.as_deref() != Some("web") {
             if let Some(md_url) = meta.md_url.clone() {
                 if meta.auto_update_minutes.is_none() {
                     meta.auto_update_minutes = Some(DEFAULT_AUTO_UPDATE_MINUTES);
@@ -590,6 +592,24 @@ mod tests {
         assert!(r.errors.is_empty());
         std::fs::remove_dir_all(&dir).ok();
         // _dir (TempDir) drops here, auto-cleaning.
+    }
+
+    // 网页型工具（kind=web）即便 useRemote:true 也跳过远程拉取——它没有文档面板，
+    // mdUrl 无意义；拉了失败还会在通知区弹「远程帮助加载失败」造成困惑。
+    #[tokio::test]
+    async fn scan_skips_remote_md_for_web_kind() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        // mdUrl 指向一个不存在的 URL：若被拉取必产生 error，测试据此判断是否跳过
+        let json = r#"{"name":"W","kind":"web","webUrl":"http://localhost:38311/","mdUrl":"https://nonexistent.invalid/x.md","useRemote":true}"#;
+        write_tool(&dir, "w", Some(json), "# Local").await;
+        let r = scan_tools(&dir).await;
+        assert_eq!(r.tools.len(), 1);
+        assert_eq!(r.tools[0].meta.kind.as_deref(), Some("web"));
+        assert_eq!(r.tools[0].meta.web_url.as_deref(), Some("http://localhost:38311/"));
+        assert!(r.tools[0].remote_markdown.is_none(), "web kind must skip remote fetch");
+        assert!(r.errors.is_empty(), "web kind must not surface remote-fetch errors");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     async fn write_md(dir: &Path, name: &str, content: &str) -> PathBuf {
