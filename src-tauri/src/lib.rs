@@ -160,6 +160,7 @@ pub fn run() {
             commands::tool_create,
             commands::tool_delete,
             commands::tool_reorder,
+            commands::tools_reorder_groups,
             commands::tool_move,
             commands::fetch_md_preview,
             commands::pick_md_file,

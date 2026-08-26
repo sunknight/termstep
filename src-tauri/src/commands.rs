@@ -231,6 +231,36 @@ pub async fn tool_reorder(
     Ok(())
 }
 
+/// 重排分组展示顺序（侧栏分组头拖拽）。只写 order.json 的 groups，工具的
+/// order 不动；emit 时 tools 取缓存原样、groups 现读 order.json，前端零延迟。
+#[tauri::command]
+pub async fn tools_reorder_groups(
+    handle: AppHandle,
+    tools_dir: State<'_, ToolsDir>,
+    configs_dir: State<'_, ConfigsDir>,
+    vcs_state: State<'_, VcsState>,
+    watcher_state: State<'_, WatcherArc>,
+    ordered_groups: Vec<String>,
+) -> Result<(), String> {
+    for g in &ordered_groups {
+        if g.trim().is_empty() {
+            return Err("分组名不能为空".into());
+        }
+    }
+    let td = lock_or_recover!(&tools_dir.0).clone();
+    tool_io::tool_reorder_groups(&td, &ordered_groups)
+        .await
+        .map_err(|e| e.to_string())?;
+    // 立即生效：tools 顺序不变，emit_reordered 内部会现读 order.json 的
+    // groups 组装 ScanResult（分组顺序即最新）。
+    let idx = tool_io::read_order_index(&td);
+    emit_reordered(&handle, &watcher_state, &td, &idx.order);
+    // 自动提交：分组排序只动 order.json。
+    let cd = lock_or_recover!(&configs_dir.0).clone();
+    try_auto_commit(&vcs_state, &cd, "tools/order.json", "重排分组顺序");
+    Ok(())
+}
+
 /// 把 watcher 缓存的工具按 ordered_ids 重排（重算各 meta.order）并立即 emit。
 /// 不读盘、不抓远程——纯内存重排，前端零延迟收到新顺序。
 fn emit_reordered(

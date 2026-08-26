@@ -14,6 +14,7 @@ export const IPC = {
   TOOL_CREATE: 'tool:create',
   TOOL_DELETE: 'tool:delete',
   TOOL_REORDER: 'tool:reorder',
+  TOOL_REORDER_GROUPS: 'tools:reorderGroups',
   TOOL_MOVE: 'tool:move',
   OPEN_EXTERNAL: 'shell:openExternal',
   CLIPBOARD_READ: 'clipboard:read',

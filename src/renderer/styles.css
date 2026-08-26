@@ -246,16 +246,53 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   background: var(--accent-subtle);
 }
 
-/* 分组标题：区别于普通工具项（不可选中、不可拖拽、无 hover 高亮）。 */
+/* 分组标题：区别于普通工具项（不可选中、无 hover 高亮）。整行可拖排序
+   （cursor: grab），轻点折叠/展开。 */
 .sidebar li.group-header {
   padding: 10px 10px 4px;
-  cursor: default;
+  cursor: grab;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-3);
   gap: 6px;
+}
+/* 分组拖拽排序的落点指示线：分组头只有上沿一个落点（移到此分组之前）。
+   与工具拖拽的 li.drag-over 同视觉（3px 平直 accent 线，伪元素避免圆角与布局位移）。
+   「移到最后」不走分组头下沿（会悬在分组名与组内工具之间，折叠态下歧义更大），
+   由列表末尾的 group-drop-zone 放置区承担。 */
+.sidebar li.group-header.group-drag-over::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 0;
+  pointer-events: none;
+}
+/* 「移到最后」放置区：常驻在最后一个普通分组之后（有未分组时视觉上即未分组
+   头的正上沿）。**完全零占位**——height/margin/padding 全零（padding 必须
+   显式归零：公共 .sidebar li 规则有 7px 10px padding，会撑开 height:0 的
+   元素）；常驻渲染使 DOM 恒定，连 .sidebar-list 的 2px flex gap 都不随拖拽
+   增减，布局零变化。仅作命中区（computeGroupDropTarget 以 ±容差命中），
+   命中时在边界上画与其他落点完全一致的 3px accent 指示线。 */
+.sidebar li.group-drop-zone {
+  position: relative;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.sidebar li.group-drop-zone.active::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: 0; right: 0;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 0;
+  pointer-events: none;
 }
 .sidebar li.group-header:hover { background: transparent; color: var(--text-3); }
 .sidebar li.group-header .caret {

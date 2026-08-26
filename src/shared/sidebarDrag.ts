@@ -75,6 +75,49 @@ export function sameDropTarget(a: DropTarget | null, b: DropTarget | null): bool
   return a.id === (b as { id: string }).id;
 }
 
+// ── 分组拖拽排序 ─────────────────────────────────────────────────────────────
+
+/** 分组头拖拽的释放目标：落在分组 group 的上沿（before）/ 下沿（after）。
+ *  displayOrder 语义见 buildNewGroupsOrder。 */
+export interface GroupDropTarget {
+  group: string;
+  place: 'before' | 'after';
+}
+
+/**
+ * 拖分组头后，按 target 计算新的分组展示顺序（分组名数组）。
+ * 纯函数，便于单测。
+ *
+ * displayOrder = 当前展示的分组名序列（**不含未分组**——未分组恒末尾不参与
+ * 排序）。返回值整体写回 order.json 的 groups 数组：unindexed 分组一旦参与
+ * 重排即被登记（位置固化）。
+ *
+ * - before G：把 from 移到 G 之前。
+ * - after G：把 from 移到 G 之后（含「最后一个分组之后」= 全部分组末尾，
+ *   组件层把「未分组头上沿」映射为该落点）。
+ */
+export function buildNewGroupsOrder(displayOrder: string[], from: string, target: GroupDropTarget): string[] {
+  const order = [...displayOrder];
+  const fromIdx = order.indexOf(from);
+  if (fromIdx < 0) return order;
+  order.splice(fromIdx, 1);
+  let insertIdx = order.indexOf(target.group);
+  if (insertIdx < 0) return displayOrder; // target 已不在序列中（防御），保持原序
+  if (target.place === 'after') insertIdx += 1;
+  order.splice(insertIdx, 0, from);
+  return order;
+}
+
+/** 分组拖拽是否 no-op（新顺序与当前一致，不显示落点指示）。 */
+export function isNoopGroupTarget(displayOrder: string[], from: string, target: GroupDropTarget): boolean {
+  return JSON.stringify(buildNewGroupsOrder(displayOrder, from, target)) === JSON.stringify(displayOrder);
+}
+
+/** 比较两个分组 drop target 是否等价（避免无谓 re-render）。 */
+export function sameGroupDropTarget(a: GroupDropTarget | null, b: GroupDropTarget | null): boolean {
+  return a === b || (!!a && !!b && a.group === b.group && a.place === b.place);
+}
+
 /** 由 toolId 查所属分组名（未分组返回 null）。 */
 function groupOfId(tools: Tool[], id: string): string | null {
   const t = tools.find((x) => x.meta.id === id);

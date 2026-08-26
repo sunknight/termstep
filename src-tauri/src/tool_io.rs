@@ -241,6 +241,21 @@ pub async fn write_order_index(tools_dir: &Path, ordered_ids: &[String]) -> std:
     Ok(())
 }
 
+/// 原子写排序索引：只更新 groups，**保留**已存在的 order（read-modify-write，
+/// 与 write_order_index 镜像）。分组拖拽排序用。
+pub async fn write_groups_index(tools_dir: &Path, groups: &[String]) -> std::io::Result<()> {
+    let mut idx = read_order_index(tools_dir); // 保留 order
+    idx.groups = groups.to_vec();
+    let obj = serde_json::json!({ "order": idx.order, "groups": idx.groups });
+    let pretty = serde_json::to_string_pretty(&obj)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let final_path = tools_dir.join(ORDER_INDEX_FILE);
+    let tmp = tools_dir.join(format!(".{}.tmp", ORDER_INDEX_FILE));
+    tokio::fs::write(&tmp, format!("{}\n", pretty)).await?;
+    tokio::fs::rename(&tmp, &final_path).await?;
+    Ok(())
+}
+
 /// 同步读取所有工具目录的 group 字段（key = tool id，value = 分组名或 None）。
 /// 用于 tool_move 在 order.json 中定位目标分组的插入位置。不走 scan_tools
 /// 是因为后者会拉取远程 md，移动操作不需要。
@@ -699,6 +714,12 @@ pub async fn tool_reorder(tools_dir: &Path, ordered_ids: &[String]) -> std::io::
     write_order_index(tools_dir, ordered_ids).await
 }
 
+/// tool_reorder_groups：写 order.json 的 groups（分组展示顺序），order 不动。
+/// 对偶 TOOL_REORDER_GROUPS。
+pub async fn tool_reorder_groups(tools_dir: &Path, ordered_groups: &[String]) -> std::io::Result<()> {
+    write_groups_index(tools_dir, ordered_groups).await
+}
+
 /// quick_get：读 quick-commands.md，缺失返回 DEFAULT_QUICK_MD。对偶 QUICK_GET。
 pub async fn quick_get(user_data_dir: &Path) -> String {
     let file = user_data_dir.join("quick-commands.md");
@@ -848,6 +869,33 @@ mod tests {
         let idx = read_order_index(dir);
         assert_eq!(idx.order, vec!["b".to_string(), "a".into()]);
         assert_eq!(idx.groups, vec!["前端".to_string()], "groups must be preserved");
+    }
+
+    #[tokio::test]
+    async fn write_groups_index_preserves_existing_order() {
+        // write_groups_index 只改 groups，不得覆盖已存在的 order
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(
+            dir.join("order.json"),
+            r#"{"order":["a","b"],"groups":["前端","后端"]}"#,
+        )
+        .unwrap();
+        write_groups_index(dir, &["后端".into(), "前端".into()]).await.unwrap();
+        let idx = read_order_index(dir);
+        assert_eq!(idx.order, vec!["a".to_string(), "b".into()], "order must be preserved");
+        assert_eq!(idx.groups, vec!["后端".to_string(), "前端".into()]);
+    }
+
+    #[tokio::test]
+    async fn tool_reorder_groups_roundtrip() {
+        let _dir = tmp();
+        let dir = _dir.path();
+        std::fs::write(dir.join("order.json"), r#"{"order":["a"]}"#).unwrap();
+        tool_reorder_groups(dir, &["前端".into(), "后端".into()]).await.unwrap();
+        let idx = read_order_index(dir);
+        assert_eq!(idx.groups, vec!["前端".to_string(), "后端".into()]);
+        assert_eq!(idx.order, vec!["a".to_string()], "order untouched");
     }
 
     #[tokio::test]

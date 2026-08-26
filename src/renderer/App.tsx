@@ -281,6 +281,10 @@ export default function App() {
   const reorderTools = async (orderedIds: string[]) => {
     await api.tool.reorder(orderedIds);
   };
+  // 分组头拖拽排序：重写 order.json 的 groups（工具 order 不动）。
+  const reorderGroups = async (orderedGroups: string[]) => {
+    await api.tool.reorderGroups(orderedGroups);
+  };
   // 跨分组移动：拖拽到别的分组时，改 group 字段并调整 order。
   const moveTool = async (toolId: string, targetGroup: string | null, beforeId: string | null) => {
     await api.tool.move(toolId, targetGroup, beforeId);
@@ -330,6 +334,7 @@ export default function App() {
       activeId={activeId}
       onSelect={setActiveId}
       onReorder={reorderTools}
+      onReorderGroups={reorderGroups}
       onMove={moveTool}
       onNew={createTool}
       onCollapse={() => setSidebarCollapsed(true)}

@@ -41,6 +41,7 @@ export const api = {
     create: (name: string) => invoke<string>('tool_create', { name }),
     del: (toolId: string) => invoke('tool_delete', { toolId }),
     reorder: (orderedIds: string[]) => invoke('tool_reorder', { orderedIds }),
+    reorderGroups: (orderedGroups: string[]) => invoke('tools_reorder_groups', { orderedGroups }),
     move: (toolId: string, targetGroup: string | null, beforeId: string | null) =>
       invoke('tool_move', { toolId, targetGroup, beforeId }),
   },

@@ -1,8 +1,17 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { Tool } from '../../shared/types';
 import { buildGroupedView, UNGROUPED } from '../../shared/grouping';
-import { buildNewOrder, isNoopTarget, resolveBeforeId, sameDropTarget } from '../../shared/sidebarDrag';
-import type { DropTarget } from '../../shared/sidebarDrag';
+import type { GroupSection } from '../../shared/grouping';
+import {
+  buildNewGroupsOrder,
+  buildNewOrder,
+  isNoopGroupTarget,
+  isNoopTarget,
+  resolveBeforeId,
+  sameDropTarget,
+  sameGroupDropTarget,
+} from '../../shared/sidebarDrag';
+import type { DropTarget, GroupDropTarget } from '../../shared/sidebarDrag';
 import { UpdateChecker } from './UpdateChecker';
 import { SettingsSection } from './SettingsSection';
 
@@ -19,6 +28,8 @@ export function Sidebar(props: {
   activeId: string | null;
   onSelect: (id: string) => void;
   onReorder: (orderedIds: string[]) => void;
+  /** 分组头拖拽排序：orderedGroups 为新的分组展示顺序（不含未分组）。 */
+  onReorderGroups: (orderedGroups: string[]) => void;
   /** 跨分组移动：把工具移到 targetGroup（null=未分组），beforeId 为 null 时追加到分组末尾。 */
   onMove: (toolId: string, targetGroup: string | null, beforeId: string | null) => void;
   onNew: () => void;
@@ -56,6 +67,21 @@ export function Sidebar(props: {
   const DRAG_THRESHOLD = 4;
   const dragStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const dragActiveRef = useRef(false); // 超过阈值、真正进入拖拽态
+
+  // 分组头拖拽排序状态（与工具拖拽互斥：一次 pointer 流只激活一种）。
+  const [dragGroup, setDragGroup] = useState<string | null>(null);
+  const [groupDropTarget, setGroupDropTarget] = useState<GroupDropTarget | null>(null);
+  // groupDropTarget 的 ref 镜像（同 dropTargetRef 的理由：pointerup 闭包读不到最新 state）。
+  const groupDropTargetRef = useRef<GroupDropTarget | null>(null);
+  useEffect(() => {
+    groupDropTargetRef.current = groupDropTarget;
+  }, [groupDropTarget]);
+  const groupDragStartRef = useRef<{ group: string; x: number; y: number } | null>(null);
+  const groupDragActiveRef = useRef(false);
+  // 分组头拖动过阈值后，pointerup 随之派发的 click 不再触发折叠/展开。
+  // pointerdown 时复位（新交互开始），防止某次拖拽后 click 未派发导致标志残留、
+  // 下一次轻点被误吞。
+  const suppressHeaderClickRef = useRef(false);
 
   // 分组折叠态：存「已折叠」的分组名集合。默认空 = 全展开。
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
@@ -256,6 +282,61 @@ export function Sidebar(props: {
     setDropTarget(null);
   };
 
+  // ── 分组头拖拽排序 ────────────────────────────────────────────────────────
+  // displayOrder = 当前展示的分组名序列（不含未分组，未分组恒末尾不参与排序）。
+  // 拖拽期间数据不变，每次现算即最新。
+  const displayGroupOrder = () => groupedView.filter((g) => !g.isUngrouped).map((g) => g.name);
+
+  /** 分组拖拽时按指针位置计算落点。每个分组头**整行**只有一个落点（before，
+   *  指示线画在头上沿）——不再提供分组头下半的 after 落点：它视觉上悬在
+   *  「分组名与组内第一个工具之间」，折叠态下更是夹在两个分组名之间，歧义大。
+   *  「移到最后」由列表末尾的 group-drop-zone 放置区承担（after 最后一个
+   *  普通分组）。未分组头与工具行都不是落点；行间细缝按 ±TOLERANCE 归属
+   *  （半缝归上一行、半缝归下一行）。 */
+  const computeGroupDropTarget = (ev: PointerEvent): GroupDropTarget | null => {
+    const list = listRef.current;
+    if (!list) return null;
+    const headers = Array.from(list.querySelectorAll<HTMLLIElement>(':scope > li.group-header'));
+    if (headers.length === 0) return null;
+    const y = ev.clientY;
+    const TOLERANCE = 7;
+
+    const normalNames = groupedView.filter((g) => !g.isUngrouped).map((g) => g.name);
+    const last = normalNames[normalNames.length - 1];
+    const zone = list.querySelector<HTMLLIElement>(':scope > li.group-drop-zone');
+
+    type Row = { li: HTMLLIElement; target: GroupDropTarget };
+    const rows: Row[] = [];
+    for (const li of headers) {
+      const name = li.getAttribute('data-group') ?? '';
+      if (!name || name === UNGROUPED) continue; // 未分组头不是落点
+      rows.push({ li, target: { group: name, place: 'before' } });
+    }
+    if (zone && last) rows.push({ li: zone, target: { group: last, place: 'after' } });
+
+    for (const r of rows) {
+      const rect = r.li.getBoundingClientRect();
+      if (y >= rect.top - TOLERANCE && y <= rect.bottom + TOLERANCE) return r.target;
+    }
+    return null;
+  };
+
+  /** 分组拖拽释放：算新分组序，与当前不同才上抛（no-op 已在 move 中过滤，
+   *  这里再兜底比较一次）。 */
+  const handleGroupDrop = () => {
+    const from = groupDragStartRef.current?.group ?? dragGroup;
+    const target = groupDropTargetRef.current;
+    if (from && target) {
+      const current = displayGroupOrder();
+      const newOrder = buildNewGroupsOrder(current, from, target);
+      if (JSON.stringify(newOrder) !== JSON.stringify(current)) {
+        props.onReorderGroups(newOrder);
+      }
+    }
+    setDragGroup(null);
+    setGroupDropTarget(null);
+  };
+
   const renderToolRow = (t: Tool) => {
     const id = t.meta.id;
     const isTopTarget = dropTarget?.kind === 'before-tool' && dropTarget.id === id;
@@ -394,18 +475,97 @@ export function Sidebar(props: {
           if (flat) {
             return groupedView.flatMap((g) => g.tools).map((t) => renderToolRow(t));
           }
-          return groupedView.map((g) => {
+          // 分组拖拽排序的落点指示：分组头只有上沿一个落点（before），「移到最后」
+          // 由普通分组之后的 group-drop-zone 放置区承担（与工具拖拽的 isGroupTarget
+          // 互斥：两种拖拽不会同时激活）。
+          const renderSection = (g: GroupSection) => {
             // 空未分组不渲染（buildGroupedView 已保证，双保险）
             if (g.isUngrouped && g.tools.length === 0) return null;
             const isCollapsed = !props.floating && collapsed.has(g.name);
             const isGroupTarget = dropTarget?.kind === 'append-group' && dropTarget.group === (g.isUngrouped ? null : g.name);
+            const isGroupDragTop =
+              dragGroup !== null && groupDropTarget?.group === g.name && groupDropTarget.place === 'before';
+            const headerCls = [
+              'group-header',
+              dragGroup === g.name ? 'dragging' : '',
+              isGroupDragTop ? 'group-drag-over' : '',
+              isGroupTarget ? 'drag-over-bottom' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
             return (
               <Fragment key={g.name}>
                 <li
-                  className={`group-header${isGroupTarget ? ' drag-over-bottom' : ''}`}
+                  className={headerCls}
                   data-group={g.name}
-                  onClick={() => toggleGroup(g.name)}
-                  title={props.floating ? undefined : '点击折叠/展开'}
+                  onClick={() => {
+                    // 分组头拖动过阈值后随之派发的 click 不触发折叠（suppressHeaderClickRef
+                    // 在 pointerdown 复位，轻点不受影响）。
+                    if (suppressHeaderClickRef.current) {
+                      suppressHeaderClickRef.current = false;
+                      return;
+                    }
+                    toggleGroup(g.name);
+                  }}
+                  title={props.floating || g.isUngrouped ? undefined : '点击折叠/展开，拖动调整分组顺序'}
+                  // 分组头整行可拖（非浮层、非未分组）：轻点 = 折叠 toggle（click 路径），
+                  // 按住拖动超阈值 = 拖拽分组排序。与工具行图标手柄同一套 pointer 事件
+                  // 模式（setPointerCapture 保证 pointerup 稳定到达，规避触控板轻点
+                  // mouseup 不派发的坑）。
+                  onPointerDown={
+                    props.floating || g.isUngrouped
+                      ? undefined
+                      : (e) => {
+                          if (e.button !== 0) return; // 仅左键
+                          // 捕获元素引用：pointerdown 事件结束后 e.currentTarget 会变 null，
+                          // 后续 pointerup 回调里不能再从 e 上读，必须用闭包里的 handle。
+                          const handle = e.currentTarget;
+                          const pointerId = e.pointerId;
+                          suppressHeaderClickRef.current = false;
+                          groupDragStartRef.current = { group: g.name, x: e.clientX, y: e.clientY };
+                          groupDragActiveRef.current = false;
+                          // 锁定指针：后续 move/up/cancel 都派发给本元素，即使指针移出分组头。
+                          handle.setPointerCapture(pointerId);
+                          const onMove = (ev: PointerEvent) => {
+                            const s = groupDragStartRef.current;
+                            if (!s) return;
+                            if (!groupDragActiveRef.current) {
+                              const dx = ev.clientX - s.x;
+                              const dy = ev.clientY - s.y;
+                              if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return; // 阈值内不算拖拽
+                              groupDragActiveRef.current = true; // 超过阈值 → 进入拖拽态
+                              suppressHeaderClickRef.current = true; // 松手后的 click 不再触发折叠
+                              setDragGroup(s.group);
+                            }
+                            // 拖拽中：扫描分组头 <li> 的几何位置计算落点；no-op
+                            // （拖到原位/相邻位）不显示指示线。
+                            let next = computeGroupDropTarget(ev);
+                            if (next && isNoopGroupTarget(displayGroupOrder(), s.group, next)) next = null;
+                            const finalNext = next;
+                            setGroupDropTarget((cur) => (sameGroupDropTarget(cur, finalNext) ? cur : finalNext));
+                          };
+                          const finish = () => {
+                            handle.removeEventListener('pointermove', onMove);
+                            handle.removeEventListener('pointerup', finish);
+                            handle.removeEventListener('pointercancel', finish);
+                            try {
+                              handle.releasePointerCapture(pointerId);
+                            } catch {
+                              // pointerId 已失效（如元素已卸载）——忽略
+                            }
+                            if (groupDragActiveRef.current) {
+                              handleGroupDrop(); // 真拖拽 → 重排分组顺序
+                            }
+                            groupDragStartRef.current = null;
+                            groupDragActiveRef.current = false;
+                            setDragGroup(null);
+                            setGroupDropTarget(null);
+                          };
+                          handle.addEventListener('pointermove', onMove);
+                          handle.addEventListener('pointerup', finish);
+                          handle.addEventListener('pointercancel', finish);
+                        }
+                  }
                 >
                   <span className="caret" aria-hidden>
                     {isCollapsed ? '▸' : '▾'}
@@ -416,7 +576,22 @@ export function Sidebar(props: {
                 {!isCollapsed && g.tools.map((t) => renderToolRow(t))}
               </Fragment>
             );
-          });
+          };
+
+          // 普通分组 → 「移到最后」放置区 → 未分组（恒末尾）。
+          // 放置区**常驻**渲染（不可见、零占位：height/margin/padding 全零），
+          // 拖拽开始/结束 DOM 恒定——条件渲染会因 flex gap 与 padding 撑开空白。
+          // 位置在最后一个普通分组之后：有未分组时视觉上即「未分组上方」。
+          const normal = groupedView.filter((g) => !g.isUngrouped);
+          const ungrouped = groupedView.find((g) => g.isUngrouped) ?? null;
+          const zoneActive = groupDropTarget?.place === 'after';
+          return (
+            <>
+              {normal.map((g) => renderSection(g))}
+              <li className={`group-drop-zone${zoneActive ? ' active' : ''}`} aria-hidden />
+              {ungrouped && renderSection(ungrouped)}
+            </>
+          );
         })()}
       </ul>
       {!props.floating && (

@@ -46,13 +46,18 @@ describe('buildGroupedView', () => {
     expect(view.map((g) => g.name)).toEqual(['前端', '后端', UNGROUPED]);
   });
 
-  it('keeps empty indexed groups (explicitly created groups do not vanish)', () => {
-    // indexedGroups 含 '空分组'，但没有工具引用它 → 仍渲染（空 section）
+  it('hides empty indexed groups (no tool references them)', () => {
+    // indexedGroups 含 '空分组'，但没有工具引用它 → 不渲染（分组头隐藏）
     const tools = [tool('a', '前端', 0)];
     const view = buildGroupedView(tools, ['前端', '空分组']);
-    // 无未分组工具，故不渲染空「未分组」section
-    expect(view.map((g) => g.name)).toEqual(['前端', '空分组']);
-    expect(view[1].tools).toHaveLength(0);
+    expect(view.map((g) => g.name)).toEqual(['前端']);
+  });
+
+  it('restores an emptied group at its indexed position when a tool references it again', () => {
+    // 分组被清空后登记名仍留在 order.json 的 groups 里；工具重新引用 → 按登记位置恢复
+    const tools = [tool('a', '前端', 0), tool('b', '测试', 1)];
+    const view = buildGroupedView(tools, ['测试', '前端']);
+    expect(view.map((g) => g.name)).toEqual(['测试', '前端']);
   });
 
   it('omits ungrouped section when it is empty', () => {

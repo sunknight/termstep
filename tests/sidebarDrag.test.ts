@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { Tool } from '../src/shared/types';
-import { buildNewOrder, isNoopTarget, resolveBeforeId, sameDropTarget } from '../src/shared/sidebarDrag';
+import {
+  buildNewGroupsOrder,
+  buildNewOrder,
+  isNoopGroupTarget,
+  isNoopTarget,
+  resolveBeforeId,
+  sameGroupDropTarget,
+  sameDropTarget,
+} from '../src/shared/sidebarDrag';
 
 // 构造一个最小 Tool（只关心 meta.id 和 meta.group，buildNewOrder 用到的字段）。
 function tool(id: string, group?: string): Tool {
@@ -181,5 +189,74 @@ describe('isNoopTarget', () => {
     expect(isNoopTarget(multi, 'b', { kind: 'append-group', group: '前端' })).toBe(true);
     // drag a (not last of 前端) append to 前端 → moves to end → not no-op
     expect(isNoopTarget(multi, 'a', { kind: 'append-group', group: '前端' })).toBe(false);
+  });
+});
+
+describe('buildNewGroupsOrder', () => {
+  const order = ['前端', '后端', '运维'];
+
+  it('before moves dragged group before target', () => {
+    // 拖 运维 到 前端 之前 → [运维, 前端, 后端]
+    expect(buildNewGroupsOrder(order, '运维', { group: '前端', place: 'before' })).toEqual([
+      '运维',
+      '前端',
+      '后端',
+    ]);
+  });
+
+  it('after moves dragged group after target', () => {
+    // 拖 前端 到 后端 之后 → [后端, 前端, 运维]
+    expect(buildNewGroupsOrder(order, '前端', { group: '后端', place: 'after' })).toEqual([
+      '后端',
+      '前端',
+      '运维',
+    ]);
+  });
+
+  it('after last group = end of all groups (未分组头上沿映射)', () => {
+    // 拖 前端 到 运维 之后 → [后端, 运维, 前端]
+    expect(buildNewGroupsOrder(order, '前端', { group: '运维', place: 'after' })).toEqual([
+      '后端',
+      '运维',
+      '前端',
+    ]);
+  });
+
+  it('returns unchanged order when from not found', () => {
+    expect(buildNewGroupsOrder(order, '不存在', { group: '前端', place: 'before' })).toEqual(order);
+  });
+
+  it('returns unchanged order when target not found (defensive)', () => {
+    expect(buildNewGroupsOrder(order, '前端', { group: '不存在', place: 'before' })).toEqual(order);
+  });
+});
+
+describe('isNoopGroupTarget', () => {
+  const order = ['前端', '后端', '运维'];
+
+  it('adjacent position is no-op', () => {
+    // 前端 已在 后端 之前 → before 后端 = no-op
+    expect(isNoopGroupTarget(order, '前端', { group: '后端', place: 'before' })).toBe(true);
+    // 后端 已在 前端 之后 → after 前端 = no-op
+    expect(isNoopGroupTarget(order, '后端', { group: '前端', place: 'after' })).toBe(true);
+  });
+
+  it('real move is not no-op', () => {
+    expect(isNoopGroupTarget(order, '运维', { group: '前端', place: 'before' })).toBe(false);
+    expect(isNoopGroupTarget(order, '前端', { group: '运维', place: 'after' })).toBe(false);
+  });
+});
+
+describe('sameGroupDropTarget', () => {
+  it('null vs null is equal', () => {
+    expect(sameGroupDropTarget(null, null)).toBe(true);
+  });
+
+  it('same group and place is equal', () => {
+    expect(sameGroupDropTarget({ group: '前端', place: 'before' }, { group: '前端', place: 'before' })).toBe(true);
+  });
+
+  it('different place on same group is not equal', () => {
+    expect(sameGroupDropTarget({ group: '前端', place: 'before' }, { group: '前端', place: 'after' })).toBe(false);
   });
 });
