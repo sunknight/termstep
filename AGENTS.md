@@ -172,9 +172,10 @@ termstep/
 ### 5.5 lib
 - **api.ts**：唯一 IPC 入口。结构与旧 Electron preload 的 `window.api` 同构，调用点只需 `window.api` → `api`。
 - **termRegistry.ts**：toolId → Terminal 映射；`runCommand` 把命令粘进正确终端。
-- **markdown.ts**：覆盖 markdown-it 的 `fence` 规则（§6.1）。
+- **markdown.ts**：覆盖 markdown-it 的 `fence` 规则（§6.1，含 mermaid 占位）。
+- **mermaid.ts**：帮助页/预览的 ```mermaid 围栏渲染（懒加载 + 主题跟随，§6.1）。
 - **runCommandChecked.ts**：执行前过 `isDangerousCommand` 二次确认。
-- **theme.ts / clipboardToast.ts / dialog.ts / paramPrompt.tsx**。
+- **theme.ts / clipboardToast.ts / dialog.ts / paramPrompt.tsx**（theme.ts 有 `onThemeChange` 订阅供重渲染消费方使用）。
 
 ---
 
@@ -188,6 +189,7 @@ termstep/
   - 行首（trim 后）`//` = **纯文本标签**（`<div class="cmd-text">`，不可点击）。
   - 行首 `#` = shell 注释，只留源码不渲染。
 - ` ```buttons-json `：JSON 描述，命令用 `{{name}}` 占位，点按钮弹表单。值做 **POSIX shell 转义**后替换（含空格/引号也安全，**占位符外面不要再包引号**）。参数可配 hint/options/default/required。
+- ` ```mermaid `（info 首词，大小写不敏感）：渲染流程图/时序图/状态图等。fence 只输出占位 `<div class="mermaid-wrap" data-src="源码">` + fallback pre，`renderer/lib/mermaid.ts` 在 DOM 插入后动态 `import('mermaid')`（懒加载独立 chunk）渲染成 SVG。要点：**initialize 必须带 `suppressErrorRendering: true`**（否则解析失败时 mermaid 会在 body 遗留默认「炸弹」错误图，v12 该开关同时负责清理临时元素）；主题 light/dark → mermaid default/dark，切换经 `theme.ts` 的 `onThemeChange` force 重渲染（从 data-src 重来）；关闭的 `<details>`（分节折叠）里也能渲染——mermaid 在 body 临时容器测量，不依赖目标可见；单块失败降级为红色提示 + 保留源码，不影响其他块。HelpPane 与 PreviewOverlay（md 态）都接入，HelpModal 未接（自控内容无 mermaid）。
 
 后端 `pure.rs` 有对偶实现（merge/serialize/parse/scan_tool_risk）。`scan_tool_risk` 在导入预检时汇总风险字段（自定义 shell / initCommands / mdUrl / envKeys），前端据此弹确认。
 

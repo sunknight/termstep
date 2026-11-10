@@ -91,6 +91,18 @@ function refresh(resolved: ResolvedTheme): void {
   currentResolved = resolved;
   applyResolvedToDom();
   applyResolvedToTerms();
+  listeners.forEach((fn) => fn(currentResolved));
+}
+
+// 主题变化订阅：供无法用 CSS 变量适配的消费方（如 mermaid 图需按主题重渲染）
+// 感知切换。返回取消函数。
+type ThemeListener = (resolved: ResolvedTheme) => void;
+const listeners = new Set<ThemeListener>();
+export function onThemeChange(fn: ThemeListener): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
 }
 
 /** 在 React 渲染前同步调用：读 localStorage + 设好 data-theme。 */

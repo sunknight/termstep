@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Tool } from '../../shared/types';
 import { md } from '../lib/markdown';
+import { renderMermaidIn } from '../lib/mermaid';
+import { onThemeChange } from '../lib/theme';
 import { runCommandChecked } from '../lib/runCommandChecked';
 import { useParamPrompt } from '../lib/paramPrompt';
 import { substituteParams, substituteCwd } from '../../shared/buttonBlock';
@@ -172,6 +174,18 @@ export function HelpPane(props: {
       setOpenIds(new Set());
     };
   }, [html, props.sidebarToc]);
+
+  // mermaid 图渲染：html 变化后渲染占位块（见 lib/mermaid.ts）；主题切换时
+  // force 重渲染让配色跟随。ref 元素跨 html 变化保持同一实例（React 只替换
+  // 子节点），闭包持有 root 安全。
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    void renderMermaidIn(root);
+    return onThemeChange(() => {
+      void renderMermaidIn(root, { force: true });
+    });
+  }, [html]);
 
   useEffect(() => {
     const el = ref.current;

@@ -1,5 +1,7 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { md } from '../lib/markdown';
+import { renderMermaidIn } from '../lib/mermaid';
+import { onThemeChange } from '../lib/theme';
 import { api } from '../lib/api';
 
 // 「请打开预览」的请求（由 HelpPane 链接点击产生，App 消费）。
@@ -31,12 +33,25 @@ export function PreviewOverlay(props: {
   onClose: () => void;
 }) {
   const { state, active, onClose } = props;
+  const mdRef = useRef<HTMLDivElement>(null);
 
   // md 内容预渲染（仅 md 态需要，txt/loading/error/web 不用）。
   const mdHtml = useMemo(
     () => (state.kind === 'md' ? md.render(state.content) : ''),
     [state],
   );
+
+  // mermaid 图渲染（与 HelpPane 同一管线）：md 内容变化后渲染占位块，主题切换
+  // force 重渲染配色跟随。仅 md 态挂 ref，其他态 mdRef.current 为 null 直接跳过。
+  useEffect(() => {
+    if (state.kind !== 'md') return;
+    const root = mdRef.current;
+    if (!root) return;
+    void renderMermaidIn(root);
+    return onThemeChange(() => {
+      void renderMermaidIn(root, { force: true });
+    });
+  }, [mdHtml, state.kind]);
 
   // Esc 关闭（与其他 modal 一致），仅当前可见实例响应。
   useEffect(() => {
@@ -81,7 +96,7 @@ export function PreviewOverlay(props: {
         )}
         {state.kind === 'md' && (
           <div className="preview-scroll">
-            <div className="help" dangerouslySetInnerHTML={{ __html: mdHtml }} />
+            <div className="help" ref={mdRef} dangerouslySetInnerHTML={{ __html: mdHtml }} />
           </div>
         )}
         {state.kind === 'txt' && (

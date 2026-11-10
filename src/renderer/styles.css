@@ -526,6 +526,18 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   border-radius: var(--radius-sm); overflow: auto;
 }
 .help pre code { background: none; padding: 0; }
+/* Mermaid 图（```mermaid 围栏，lib/mermaid.ts 把占位替换为 SVG）。
+   成功态：SVG 居中，mermaid 自带 width:100% + max-width:内容宽，随面板宽度缩放；
+   失败态：保留 fallback pre（源码可读，沿用 .help pre 底色）+ 错误提示条。 */
+.mermaid-wrap { margin: 0 0 0.8em; }
+.mermaid-wrap.mermaid-done svg { display: block; margin: 0 auto; }
+.mermaid-error-note {
+  margin: 0 0 6px; padding: 4px 10px;
+  font-size: 12px; color: var(--danger);
+  background: var(--danger-subtle); border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+}
+.mermaid-wrap.mermaid-error > pre { border-color: var(--danger-border); }
 /* Blockquote. */
 .help blockquote {
   margin: 0 0 0.8em; padding: 0.4em 1em;

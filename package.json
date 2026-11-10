@@ -36,6 +36,7 @@
     "@uiw/react-codemirror": "^4.23.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "markdown-it": "^14.1.0"
+    "markdown-it": "^14.1.0",
+    "mermaid": "^12.3.0"
   }
 }
